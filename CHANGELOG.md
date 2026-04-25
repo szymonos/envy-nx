@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ### Fixed
 
 - `sort_scopes()` dropping overlay/local scopes when re-running `setup.sh`
+- Orphaned overlay scope copies not cleaned up when source file is deleted
 
 ## [1.0.0] - 2026-04-25
 

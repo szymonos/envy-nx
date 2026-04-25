@@ -29,6 +29,8 @@ setup() {
   source "$REPO_ROOT/nix/lib/io.sh"
   # shellcheck source=../../nix/lib/phases/bootstrap.sh
   source "$REPO_ROOT/nix/lib/phases/bootstrap.sh"
+  # shellcheck source=../../nix/lib/phases/platform.sh
+  source "$REPO_ROOT/nix/lib/phases/platform.sh"
   # shellcheck source=../../nix/lib/phases/scopes.sh
   source "$REPO_ROOT/nix/lib/phases/scopes.sh"
   # shellcheck source=../../nix/lib/phases/nix_profile.sh
@@ -912,4 +914,27 @@ NIX
   echo "$scopes" | grep -qx "shell"
   echo "$scopes" | grep -qx "python"
   echo "$scopes" | grep -qx "local_mytools"
+}
+
+# =============================================================================
+# Overlay scope GC
+# =============================================================================
+
+@test "overlay: orphaned local_ scope removed on setup" {
+  mkdir -p "$ENV_DIR/local/scopes"
+  printf '{ pkgs }: with pkgs; [ hello ]\n' >"$ENV_DIR/scopes/local_mytools.nix"
+  OVERLAY_DIR="$ENV_DIR/local"
+  phase_platform_discover_overlay
+  [ ! -f "$ENV_DIR/scopes/local_mytools.nix" ]
+}
+
+@test "overlay: active scopes preserved, only orphans removed" {
+  mkdir -p "$ENV_DIR/local/scopes"
+  printf '{ pkgs }: with pkgs; [ bat ]\n' >"$ENV_DIR/local/scopes/active.nix"
+  printf '{ pkgs }: with pkgs; [ bat ]\n' >"$ENV_DIR/scopes/local_active.nix"
+  printf '{ pkgs }: with pkgs; [ hello ]\n' >"$ENV_DIR/scopes/local_orphan.nix"
+  OVERLAY_DIR="$ENV_DIR/local"
+  phase_platform_discover_overlay
+  [ -f "$ENV_DIR/scopes/local_active.nix" ]
+  [ ! -f "$ENV_DIR/scopes/local_orphan.nix" ]
 }

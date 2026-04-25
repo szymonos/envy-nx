@@ -43,6 +43,16 @@ phase_platform_discover_overlay() {
         _overlay_name="local_$(basename "$_overlay_nix")"
         cp "$_overlay_nix" "$ENV_DIR/scopes/$_overlay_name"
       done
+      local _local_nix _src_name
+      for _local_nix in "$ENV_DIR/scopes"/local_*.nix; do
+        [ -f "$_local_nix" ] || continue
+        _src_name="$(basename "$_local_nix")"
+        _src_name="${_src_name#local_}"
+        if [ ! -f "$OVERLAY_DIR/scopes/$_src_name" ]; then
+          rm -f "$_local_nix"
+          info "  removed orphaned overlay scope: ${_src_name%.nix}"
+        fi
+      done
       ok "  synced overlay scopes"
     fi
   fi
