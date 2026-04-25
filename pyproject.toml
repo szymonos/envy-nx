@@ -1,0 +1,14 @@
+[project]
+name = "envy-nx"
+version = "1.0.0"
+requires-python = "~=3.14.0"
+dependencies = ["prek"]
+
+[project.optional-dependencies]
+docs = [
+  "mkdocs-material",
+  "mkdocs-mermaid2-plugin",
+]
+
+[tool.uv]
+native-tls = true
