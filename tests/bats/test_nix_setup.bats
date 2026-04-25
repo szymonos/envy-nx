@@ -855,3 +855,61 @@ STUB
   grep -q 'nix profile wipe-history' "$BATS_TEST_TMPDIR/nix.log"
   grep -q 'nix store gc' "$BATS_TEST_TMPDIR/nix.log"
 }
+
+# =============================================================================
+# Overlay scope preservation
+# =============================================================================
+
+@test "config.nix: overlay scopes survive setup.sh config write" {
+  printf '{ pkgs }: with pkgs; [ hello ]\n' >"$ENV_DIR/scopes/local_mytools.nix"
+  cat >"$CONFIG_NIX" <<'NIX'
+{
+  isInit = false;
+  allowUnfree = false;
+  scopes = [
+    "shell"
+    "local_mytools"
+  ];
+}
+NIX
+  _scope_set=" "
+  any_scope=false
+  remove_scopes=()
+  phase_scopes_load_existing
+  phase_scopes_resolve_and_sort
+  is_init=false
+  phase_scopes_write_config
+
+  local scopes
+  scopes="$(read_config_scopes)"
+  echo "$scopes" | grep -qx "shell"
+  echo "$scopes" | grep -qx "local_mytools"
+}
+
+@test "config.nix: adding CLI scope preserves existing overlay scopes" {
+  printf '{ pkgs }: with pkgs; [ hello ]\n' >"$ENV_DIR/scopes/local_mytools.nix"
+  cat >"$CONFIG_NIX" <<'NIX'
+{
+  isInit = false;
+  allowUnfree = false;
+  scopes = [
+    "shell"
+    "local_mytools"
+  ];
+}
+NIX
+  _scope_set=" "
+  any_scope=true
+  remove_scopes=()
+  scope_add "python"
+  phase_scopes_load_existing
+  phase_scopes_resolve_and_sort
+  is_init=false
+  phase_scopes_write_config
+
+  local scopes
+  scopes="$(read_config_scopes)"
+  echo "$scopes" | grep -qx "shell"
+  echo "$scopes" | grep -qx "python"
+  echo "$scopes" | grep -qx "local_mytools"
+}

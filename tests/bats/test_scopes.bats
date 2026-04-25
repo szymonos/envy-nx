@@ -169,6 +169,26 @@ setup() {
   [[ "${sorted_scopes[*]}" == "python" ]]
 }
 
+@test "sort_scopes preserves overlay scopes not in INSTALL_ORDER" {
+  scope_add "shell"
+  scope_add "local_mytools"
+  sort_scopes
+  [[ "${sorted_scopes[*]}" == *"shell"* ]]
+  [[ "${sorted_scopes[*]}" == *"local_mytools"* ]]
+  [[ "${sorted_scopes[0]}" == "shell" ]]
+}
+
+@test "sort_scopes preserves multiple overlay scopes" {
+  scope_add "python"
+  scope_add "local_dev"
+  scope_add "local_ops"
+  sort_scopes
+  [[ ${#sorted_scopes[@]} -eq 3 ]]
+  [[ "${sorted_scopes[0]}" == "python" ]]
+  [[ "${sorted_scopes[*]}" == *"local_dev"* ]]
+  [[ "${sorted_scopes[*]}" == *"local_ops"* ]]
+}
+
 # -- hyphen normalization (nix/setup.sh pattern) ------------------------------
 
 @test "global hyphen-to-underscore normalization works" {
