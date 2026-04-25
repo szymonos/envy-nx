@@ -1,0 +1,186 @@
+name: Release
+
+# Triggered on version tags. Runs the full test matrix, builds the release
+# tarball, generates SBOM, signs artifacts with cosign, and publishes a
+# GitHub Release with all artifacts attached.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  # ---- test: full matrix on Linux + macOS ----------------------------------
+  test-linux:
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - name: daemon
+            nix-method: determinate
+            default-scopes: "--shell --omp-theme base"
+          - name: no-daemon
+            nix-method: no-daemon
+            default-scopes: "--shell --starship-theme base"
+
+    if: github.event_name == 'push'
+    name: "test linux (${{ matrix.name }})"
+    runs-on: ubuntu-slim
+    timeout-minutes: 30
+    env:
+      NIX_CONFIG: "access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}"
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Nix (Determinate)
+        if: matrix.nix-method == 'determinate'
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Install Nix (no-daemon)
+        if: matrix.nix-method == 'no-daemon'
+        run: |
+          curl -sL https://nixos.org/nix/install | sh -s -- --no-daemon
+          echo "$HOME/.nix-profile/bin" >> "$GITHUB_PATH"
+          mkdir -p "$HOME/.config/nix"
+          printf 'experimental-features = nix-command flakes\n' > "$HOME/.config/nix/nix.conf"
+
+      - name: Run setup.sh
+        run: nix/setup.sh ${{ matrix.default-scopes }} --unattended --quiet-summary
+
+      - name: Verify core binaries
+        run: |
+          for cmd in git gh jq curl openssl fzf eza bat rg yq; do
+            command -v "$cmd" >/dev/null || { echo "MISSING: $cmd"; exit 1; }
+          done
+
+      - name: Run nx doctor
+        run: bash "$HOME/.config/nix-env/nx_doctor.sh" --strict
+
+      - name: Run bats tests
+        run: bats tests/bats/test_nix_setup.bats
+
+  test-macos:
+    if: github.event_name == 'push'
+    name: "test macos"
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      NIX_CONFIG: "access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}"
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run setup.sh
+        run: nix/setup.sh --shell --omp-theme base --unattended --quiet-summary
+
+      - name: Verify core binaries
+        run: |
+          for cmd in git gh jq curl openssl fzf eza bat rg yq; do
+            command -v "$cmd" >/dev/null || { echo "MISSING: $cmd"; exit 1; }
+          done
+
+      - name: Run nx doctor
+        run: bash "$HOME/.config/nix-env/nx_doctor.sh" --strict
+
+      - name: Run bats tests
+        run: bats tests/bats/test_nix_setup.bats
+
+  # ---- build + sign + publish ----------------------------------------------
+  release:
+    needs: [test-linux, test-macos]
+    if: ${{ !cancelled() && (needs.test-linux.result == 'success' || needs.test-linux.result == 'skipped') && (needs.test-macos.result == 'success' || needs.test-macos.result == 'skipped') }}
+    runs-on: ubuntu-slim
+    timeout-minutes: 15
+    env:
+      NIX_CONFIG: "access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}"
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Set version
+        id: version
+        run: |
+          if [[ "$GITHUB_REF_NAME" == v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+            echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          else
+            VERSION="0.0.0-dev.$(git rev-parse --short HEAD)"
+            echo "tag=" >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Build release tarball
+        run: |
+          VERSION="${{ steps.version.outputs.version }}" .assets/tools/build_release.sh
+          cp dist/envy-nx-*.tar.gz dist/envy-nx.tar.gz
+
+      # SBOM: capture the nix closure as SPDX JSON
+      - name: Build nix environment
+        run: |
+          # generate a minimal config.nix for the build
+          cat > nix/config.nix <<'NIX'
+          {
+            scopes = [ "shell" ];
+            allowUnfree = false;
+            isInit = false;
+          }
+          NIX
+          git add --force nix/config.nix
+          nix build ./nix#default --no-link --print-out-paths > /tmp/out-path
+
+      - name: Generate SBOM
+        run: |
+          nix path-info --json --recursive "$(cat /tmp/out-path)" \
+            | python3 -m tests.hooks.nix_closure_to_spdx > dist/sbom.spdx.json
+          nix path-info --recursive "$(cat /tmp/out-path)" | sort > dist/closure.txt
+
+      # cosign keyless signing via GitHub OIDC
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign artifacts
+        run: |
+          cd dist
+          for f in envy-nx-*.tar.gz sbom.spdx.json; do
+            cosign sign-blob --yes --bundle "${f}.bundle" "$f"
+          done
+
+      # extract CHANGELOG excerpt for the release body
+      - name: Extract changelog
+        id: changelog
+        run: |
+          tag="${{ steps.version.outputs.tag }}"
+          version="${{ steps.version.outputs.version }}"
+          # extract content between ## [version] and the next ## [
+          body="$(sed -n "/^## \[$version\]/,/^## \[/{/^## \[/!p}" CHANGELOG.md)"
+          if [ -z "$body" ]; then
+            body="$(sed -n '/^## \[Unreleased\]/,/^## \[/{/^## \[/!p}' CHANGELOG.md)"
+          fi
+          # write to file to avoid heredoc escaping issues
+          printf '%s\n' "$body" > /tmp/release-body.md
+
+      - name: Create GitHub Release
+        if: steps.version.outputs.tag != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" \
+            --title "envy-nx ${{ steps.version.outputs.version }}" \
+            --notes-file /tmp/release-body.md \
+            dist/envy-nx.tar.gz \
+            dist/envy-nx-${{ steps.version.outputs.version }}.tar.gz \
+            dist/CHECKSUMS.sha256 \
+            dist/sbom.spdx.json \
+            dist/closure.txt \
+            dist/*.bundle
