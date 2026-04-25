@@ -121,7 +121,9 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Build release tarball
-        run: VERSION="${{ steps.version.outputs.version }}" .assets/tools/build_release.sh
+        run: |
+          VERSION="${{ steps.version.outputs.version }}" .assets/tools/build_release.sh
+          cp dist/envy-nx-*.tar.gz dist/envy-nx.tar.gz
 
       # SBOM: capture the nix closure as SPDX JSON
       - name: Build nix environment
@@ -176,7 +178,8 @@ jobs:
           gh release create "${{ steps.version.outputs.tag }}" \
             --title "envy-nx ${{ steps.version.outputs.version }}" \
             --notes-file /tmp/release-body.md \
-            dist/envy-nx-*.tar.gz \
+            dist/envy-nx.tar.gz \
+            dist/envy-nx-${{ steps.version.outputs.version }}.tar.gz \
             dist/CHECKSUMS.sha256 \
             dist/sbom.spdx.json \
             dist/closure.txt \

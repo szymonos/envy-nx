@@ -147,7 +147,7 @@ The orchestrator runs seven phases in sequence, writes durable state to `~/.conf
 
 See [Architecture](architecture.md) for phase details, package composition, and design principles.
 
-??? warning "Limitations"
+!!! warning "Limitations"
 
     - **WSL not e2e-tested in CI.** WSL orchestration is covered by 66 mocked Pester tests, but no CI job boots a real WSL2 guest. Real `wsl.exe` behavior (encoding, path translation, distro lifecycle) is validated manually.
     - **Single-maintainer project.** Bus factor is mitigated by comprehensive tests, CI gates, and documentation - but there is no team behind this.
@@ -158,6 +158,26 @@ See [Architecture](architecture.md) for phase details, package composition, and 
 
 ## Getting started
 
+=== "macOS / Linux (tarball)"
+
+    No git required:
+
+    ```bash
+    curl -LO https://github.com/szymonos/envy-nx/releases/latest/download/envy-nx.tar.gz
+    tar xzf envy-nx.tar.gz && cd envy-nx-*/
+    nix/setup.sh --shell --python --pwsh
+    ```
+
+    On macOS, Nix is installed automatically via the [Determinate Systems](https://determinate.systems/) installer if not already present.
+
+=== "macOS / Linux (git)"
+
+    ```bash
+    git clone https://github.com/szymonos/envy-nx.git
+    cd envy-nx
+    nix/setup.sh --shell --python --pwsh
+    ```
+
 === "WSL (Windows)"
 
     Run from **PowerShell on the Windows host**. The script installs the WSL distro if needed, sets up Nix inside it, and provisions the environment end-to-end - including certificate propagation from Windows:
@@ -166,16 +186,6 @@ See [Architecture](architecture.md) for phase details, package composition, and 
     git clone https://github.com/szymonos/envy-nx.git
     cd envy-nx
     wsl/wsl_setup.ps1 'Ubuntu' -s @('shell', 'python', 'pwsh')
-    ```
-
-=== "macOS"
-
-    Nix is installed automatically by `nix/setup.sh` via the [Determinate Systems](https://determinate.systems/) installer if not already present - no manual pre-installation needed:
-
-    ```bash
-    git clone https://github.com/szymonos/envy-nx.git
-    cd envy-nx
-    nix/setup.sh --shell --python --pwsh
     ```
 
 === "Coder / containers"

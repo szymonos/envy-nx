@@ -12,7 +12,7 @@ nix/setup.sh --shell --python --pwsh
 
 # macOS / Linux (tarball - no git required)
 curl -LO https://github.com/szymonos/envy-nx/releases/latest/download/envy-nx.tar.gz
-tar xzf envy-nx.tar.gz && cd envy-nx-*
+tar xzf envy-nx.tar.gz && cd envy-nx-*/
 nix/setup.sh --shell --python --pwsh
 ```
 
