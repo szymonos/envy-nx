@@ -71,7 +71,7 @@ $OmpTheme = 'nerd'
 wsl/wsl_setup.ps1 $Distro -s $Scope -o $OmpTheme
 wsl/wsl_setup.ps1 $Distro -s $Scope -o $OmpTheme -AddCertificate
 # :set up WSL distro and clone specified GitHub repositories
-$Repos = @('szymonos/envy-nx', 'szymonos/ps-modules')
+$Repos = @('szymonos/envy-nx')
 wsl/wsl_setup.ps1 $Distro -r $Repos -s $Scope -o $OmpTheme
 wsl/wsl_setup.ps1 $Distro -r $Repos -s $Scope -o $OmpTheme -AddCertificate
 # :update all existing WSL distros
@@ -147,9 +147,8 @@ begin {
 
     # set location to workspace folder
     Push-Location "$PSScriptRoot/.."
-    # import InstallUtils for the Invoke-GhRepoClone function
+    Import-Module (Convert-Path './modules/do-common') -Force
     Import-Module (Convert-Path './modules/InstallUtils') -Force
-    # import SetupUtils for scope resolution, Set-WslConf, etc.
     Import-Module (Convert-Path './modules/SetupUtils') -Force
 
     if (-not $SkipRepoUpdate) {
@@ -250,8 +249,7 @@ begin {
         Show-LogContext 'getting GitHub authentication config from the default distro'
         $defDistro = $lxss.Where({ $_.Default }).Name
         if ($defDistro -ne $Distro) {
-            $cmdArgs = @('-u', (wsl.exe --distribution $defDistro -- id -un), '-k')
-            $gh_cfg = wsl.exe --distribution $defDistro --user root --exec .assets/setup/setup_gh_https.sh @cmdArgs
+            $gh_cfg = wsl.exe --distribution $defDistro -- cat "`$HOME/.config/gh/hosts.yml" 2>$null
         }
         # get installed distro details
         $lxss = Get-WslDistro -FromRegistry | Where-Object Name -EQ $Distro
@@ -272,7 +270,7 @@ begin {
     }
 
     # *set script variables
-    $script:sshStatus = @{ 'sshKey' = 'missing' }
+    $script:sshKeyFp = ''
     $script:pwshEnvSet = $true
     # sets to track success and failed distros
     $script:successDistros = [System.Collections.Generic.SortedSet[string]]::new()
@@ -418,24 +416,20 @@ process {
         #endregion
 
         $script:distroRecords[$Distro].phase = 'github'
-        #region setup GitHub
-        # *setup GitHub CLI
-        wsl.exe --distribution $Distro --user root --exec .assets/provision/install_gh.sh
-        $cmdArgs = [System.Collections.Generic.List[string]]::new([string[]]@('-u', $chk.user))
-        if ($sshStatus.sshKey -eq 'missing') {
-            $cmdArgs.Add('-k')
-        }
-        if ($Script:gh_cfg -match 'github\.com') {
-            $cmdArgs.AddRange([string[]]@('-c', ($gh_cfg -join "`n")))
-        }
-        $gh_cfg = wsl.exe --distribution $Distro --user root --exec .assets/setup/setup_gh_https.sh @cmdArgs
-        if (-not $?) {
-            $script:distroRecords[$Distro].error = 'GitHub authentication failed'
-            Write-Host "`nRun the script again to reconfigure GitHub authentication!`n" -ForegroundColor Yellow
-            exit 1
+        #region setup GitHub and SSH keys
+        # *pre-populate gh config from default distro (user-scope, no gh binary needed)
+        if ($gh_cfg -match 'github\.com') {
+            Show-LogContext 'pre-populating GitHub CLI config'
+            $cmnd = [string]::Join("`n",
+                'mkdir -p $HOME/.config/gh',
+                "cat > `$HOME/.config/gh/hosts.yml << 'GHEOF'",
+                ($gh_cfg -join "`n"),
+                'GHEOF'
+            )
+            wsl.exe --distribution $Distro --exec bash -c $cmnd
         }
 
-        # *check SSH keys and create if necessary
+        # *exchange SSH keys between Windows and WSL
         $sshKey = 'id_ed25519'
         $sshDir = [System.IO.Path]::Combine($HOME, '.ssh')
         $winKey = [System.IO.Path]::Combine($sshDir, $sshKey)
@@ -474,26 +468,6 @@ process {
             }
             wsl.exe --distribution $Distro --exec sh -c $cmnd
         }
-
-        # *add SSH key to GitHub if needed
-        if ($sshStatus.sshKey -eq 'missing') {
-            try {
-                $sshStatus = wsl.exe --distribution $Distro --exec .assets/setup/setup_gh_ssh.sh | ConvertFrom-Json -AsHashtable -ErrorAction Stop
-                if ($sshStatus.sshKey -eq 'added') {
-                    Clear-Host
-                    # display message asking to authorize the SSH key
-                    $msg = [string]::Join("`n",
-                        "`e[97;1mSSH key added to GitHub:`e[0;90m $($sshStatus.title)`e[0m`n",
-                        "`e[97mTo finish setting up SSH authentication, open `e[34;4mhttps://github.com/settings/ssh`e[97;24m",
-                        "and authorize the newly added key for your organization (enable SSO if required).`e[0m",
-                        "`npress Enter to continue"
-                    )
-                    Read-Host $msg
-                }
-            } catch {
-                $sshStatus.sshKey = 'missing'
-            }
-        }
         #endregion
 
         $script:distroRecords[$Distro].phase = 'scopes'
@@ -521,7 +495,6 @@ process {
             $nixArgs.Add('--update-modules')
         }
         # map scopes to nix flags (exclude distrobox, docker - installed system-wide;
-        # pwsh/zsh - system-prefer, skipped by nix/setup.sh when system binary exists;
         # oh_my_posh/starship - handled via --omp-theme/--starship-theme)
         foreach ($sc in $scopes) {
             if ($sc -notin @('distrobox', 'docker', 'oh_my_posh', 'starship')) {
@@ -534,12 +507,20 @@ process {
 
         # -- run nix setup (packages + configure scripts + profiles) --
         Show-LogContext 'running nix setup'
+        if ($sshKeyFp -and $env:NX_SSH_KEY_FP -ne $sshKeyFp) {
+            $env:WSLENV = "${env:WSLENV}:NX_SSH_KEY_FP/u"
+            $env:NX_SSH_KEY_FP = $sshKeyFp
+        }
         wsl.exe --distribution $Distro --exec nix/setup.sh @nixArgs
         if (-not $?) {
             Show-LogContext 'nix/setup.sh failed' -Level ERROR
             $script:distroRecords[$Distro].error = 'nix/setup.sh failed'
             $failDistros.Add($Distro) | Out-Null
             continue
+        }
+        # capture SSH key fingerprint after first successful setup
+        if (-not $sshKeyFp -and (Test-Path $winKeyPub)) {
+            $sshKeyFp = (Get-Content $winKeyPub).Split(' ')[1]
         }
 
         # -- scopes not available in nix (traditional install) --
@@ -549,85 +530,22 @@ process {
             wsl.exe --distribution $Distro --user root --exec .assets/provision/install_distrobox.sh $chk.user
         }
 
-        # -- nodejs cert fix (WSL-specific, after nix installs nodejs) --
-        if ('nodejs' -in $scopes -and $AddCertificate) {
-            wsl.exe --distribution $Distro --user root --exec .assets/fix/fix_nodejs_certs.sh
-        }
-
-        # -- pwsh: system-wide install + ps-modules + Az modules + WSLENV --
-        if ('pwsh' -in $scopes) {
-            Show-LogContext 'installing pwsh'
-            $rel_pwsh = wsl.exe --distribution $Distro --user root --exec .assets/provision/install_pwsh.sh $Script:rel_pwsh && $($chk.pwsh = $true)
-            $pwshOk = wsl.exe --distribution $Distro --exec sh -c 'command -v pwsh >/dev/null && echo true || echo false'
-            if ($pwshOk -ne 'true') {
-                Show-LogContext 'pwsh installation failed, skipping PowerShell setup' -Level WARNING
-            } else {
-            # setup profiles
-            $profileArgs = [System.Collections.Generic.List[string]]::new()
-            $profileArgs.AddRange([string[]]@('--distribution', $Distro, '--user', 'root', '--exec', '.assets/setup/setup_profile_allusers.ps1', '-UserName', $chk.user))
-            if (-not $PSBoundParameters.SkipModulesUpdate) { $profileArgs.Add('-UpdateModules') }
-            Show-LogContext 'setting up profile for all users'
-            wsl.exe @profileArgs
-            $profileArgs = [System.Collections.Generic.List[string]]::new()
-            $profileArgs.AddRange([string[]]@('--distribution', $Distro, '--exec', '.assets/setup/setup_profile_user.ps1'))
-            if (-not $PSBoundParameters.SkipModulesUpdate) { $profileArgs.Add('-UpdateModules') }
-            Show-LogContext 'setting up profile for current user'
-            wsl.exe @profileArgs
-            Show-LogContext 'configuring nix PowerShell profile'
-            wsl.exe --distribution $Distro --exec pwsh -nop -f nix/configure/profiles.ps1
-
-            # *install PowerShell modules from ps-modules repository
-            $repoClone = Invoke-GhRepoClone -OrgRepo 'szymonos/ps-modules' -Path '..'
-            if ($repoClone) {
-                Write-Verbose "Repository `"ps-modules`" $($repoClone -eq 1 ? 'cloned': 'refreshed') successfully."
-            } else {
-                Write-Error 'Cloning ps-modules repository failed.'
+        # -- pwsh: set persistent WSLENV variables on Windows host --
+        if ('pwsh' -in $scopes -and $pwshEnvSet) {
+            $envVars = @{
+                POWERSHELL_TELEMETRY_OPTOUT = '1'
+                POWERSHELL_UPDATECHECK      = 'Off'
             }
-            Show-LogContext 'installing ps-modules'
-            Write-Host "`e[32mAllUsers    :`e[0;90m do-common`e[0m"
-            wsl.exe --distribution $Distro --user root -- ../ps-modules/module_manage.ps1 'do-common' -CleanUp
-            $modules = [System.Collections.Generic.SortedSet[String]]::new([string[]]@('aliases-git', 'do-linux'))
-            if ('az' -in $scopes) {
-                $modules.Add('do-az') | Out-Null
-                Write-Verbose "Added `e[3mdo-az`e[23m to be installed from ps-modules."
-            }
-            if ('k8s_base' -in $scopes) {
-                $modules.Add('aliases-kubectl') | Out-Null
-                Write-Verbose "Added `e[3maliases-kubectl`e[23m to be installed from ps-modules."
-            }
-            Write-Host "`e[32mCurrentUser :`e[0;90m $($modules -join ', ')`e[0m"
-            $cmd = "@($($modules | Join-String -SingleQuote -Separator ',')) | ../ps-modules/module_manage.ps1 -CleanUp"
-            wsl.exe --distribution $Distro -- pwsh -nop -c $cmd
-            # *install PowerShell Az modules
-            if ('az' -in $scopes) {
-                $cmd = [string]::Join("`n",
-                    'if (-not (Get-Module -ListAvailable "Az")) {',
-                    "`tWrite-Host 'installing Az...'",
-                    "`tInvoke-CommandRetry { Install-PSResource Az -WarningAction SilentlyContinue -ErrorAction Stop }`n}",
-                    'if (-not (Get-Module -ListAvailable "Az.ResourceGraph")) {',
-                    "`tWrite-Host 'installing Az.ResourceGraph...'",
-                    "`tInvoke-CommandRetry { Install-PSResource Az.ResourceGraph -ErrorAction Stop }`n}"
-                )
-                wsl.exe --distribution $Distro -- pwsh -nop -c $cmd
-            }
-            # *set persistent environment variables for pwsh
-            if ($pwshEnvSet) {
-                $envVars = @{
-                    POWERSHELL_TELEMETRY_OPTOUT = '1'
-                    POWERSHELL_UPDATECHECK      = 'Off'
+            foreach ($key in $envVars.Keys) {
+                if ([System.Environment]::GetEnvironmentVariable($key, 'User') -ne $envVars[$key]) {
+                    [System.Environment]::SetEnvironmentVariable($key, $envVars[$key], 'User')
                 }
-                foreach ($key in $envVars.Keys) {
-                    if ([System.Environment]::GetEnvironmentVariable($key, 'User') -ne $envVars[$key]) {
-                        [System.Environment]::SetEnvironmentVariable($key, $envVars[$key], 'User')
-                    }
-                    $wslEnv = [System.Environment]::GetEnvironmentVariable('WSLENV', 'User')
-                    if ($wslEnv -notmatch "\b$key\b") {
-                        [System.Environment]::SetEnvironmentVariable('WSLENV', "${wslEnv}$($wslEnv ? ':' : '')${key}/u", 'User')
-                    }
+                $wslEnv = [System.Environment]::GetEnvironmentVariable('WSLENV', 'User')
+                if ($wslEnv -notmatch "\b$key\b") {
+                    [System.Environment]::SetEnvironmentVariable('WSLENV', "${wslEnv}$($wslEnv ? ':' : '')${key}/u", 'User')
                 }
-                $pwshEnvSet = $false
             }
-            } # else pwshOk
+            $pwshEnvSet = $false
         }
         #endregion
 

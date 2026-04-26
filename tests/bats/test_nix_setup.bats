@@ -375,34 +375,12 @@ _scope_pkgs() {
 # System-prefer scope skipping (phase_scopes_skip_system_prefer)
 # =============================================================================
 
-@test "system-prefer: pwsh removed on Linux when installed system-wide" {
+@test "system-prefer: pwsh always kept (always-nix tier)" {
   _scope_set=" "
   scope_add "shell"
   scope_add "pwsh"
   uname() { echo "Linux"; }
-  has_system_cmd() { [[ "$1" == "pwsh" ]] && return 0 || return 1; }
-  phase_scopes_skip_system_prefer
-  run ! scope_has "pwsh"
-  scope_has "shell"
-}
-
-@test "system-prefer: pwsh kept on Darwin even if system command exists" {
-  _scope_set=" "
-  scope_add "shell"
-  scope_add "pwsh"
-  uname() { echo "Darwin"; }
   has_system_cmd() { return 0; }
-  phase_scopes_skip_system_prefer
-  scope_has "pwsh"
-  scope_has "shell"
-}
-
-@test "system-prefer: pwsh kept on Linux when not installed system-wide" {
-  _scope_set=" "
-  scope_add "shell"
-  scope_add "pwsh"
-  uname() { echo "Linux"; }
-  has_system_cmd() { return 1; }
   phase_scopes_skip_system_prefer
   scope_has "pwsh"
   scope_has "shell"
@@ -455,7 +433,7 @@ _scope_pkgs() {
   scope_has "shell"
 }
 
-@test "system-prefer: both pwsh and zsh removed on Linux when system-wide" {
+@test "system-prefer: zsh removed on Linux when system-wide (pwsh stays - always-nix)" {
   _scope_set=" "
   scope_add "shell"
   scope_add "pwsh"
@@ -463,7 +441,7 @@ _scope_pkgs() {
   uname() { echo "Linux"; }
   has_system_cmd() { return 0; }
   phase_scopes_skip_system_prefer
-  run ! scope_has "pwsh"
+  scope_has "pwsh"
   run ! scope_has "zsh"
   scope_has "shell"
 }

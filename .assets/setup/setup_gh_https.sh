@@ -19,8 +19,7 @@ elif ! [ -x /usr/bin/gh ]; then
   exit 1
 fi
 
-# dotsource file with common functions
-. .assets/provision/source.sh
+. .assets/provision/gh_helpers.sh
 
 # initialize local variables
 user="$(id -un 1000 2>/dev/null || echo "unknown")"
@@ -76,9 +75,9 @@ fi
 
 # *Authenticate user to GitHub
 if [ "$key" = true ]; then
-  gh_auth="$(login_gh_user -u "$user" -k)"
+  gh_auth="$(gh_login_user -u "$user" -k)"
 else
-  gh_auth="$(login_gh_user -u "$user")"
+  gh_auth="$(gh_login_user -u "$user")"
 fi
 
 if [ "$gh_auth" = 'none' ]; then
@@ -98,7 +97,7 @@ else
     exit 0
   elif [ "$gh_auth" = 'keyring' ]; then
     printf "\e[32mLogging in user \e[1m$(id -un)\e[22m user separately, as \e[1m$user\e[22m user is authenticated to GitHub using keyring.\e[0m\n" >&2
-    gh_auth="$(login_gh_user)"
+    gh_auth="$(gh_login_user)"
     # check if the user is authenticated
     [ "$gh_auth" = 'none' ] && exit 1 || exit 0
   else
