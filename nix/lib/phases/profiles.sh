@@ -4,17 +4,20 @@
 # Reads:  CONFIGURE_DIR
 
 phase_profiles_bash() {
-  _io_run "$CONFIGURE_DIR/profiles.sh"
+  info "setting up bash profile..."
+  _io_run "$CONFIGURE_DIR/profiles.sh" || warn "bash profile setup failed"
 }
 
 phase_profiles_zsh() {
   if command -v zsh &>/dev/null; then
-    _io_run "$CONFIGURE_DIR/profiles.zsh"
+    info "setting up zsh profile..."
+    _io_run "$CONFIGURE_DIR/profiles.zsh" || warn "zsh profile setup failed"
   fi
 }
 
 phase_profiles_pwsh() {
   if command -v pwsh &>/dev/null; then
-    _io_run pwsh -nop "$CONFIGURE_DIR/profiles.ps1"
+    info "setting up PowerShell profile..."
+    _io_run pwsh -nop "$CONFIGURE_DIR/profiles.ps1" || warn "PowerShell profile setup failed"
   fi
 }
