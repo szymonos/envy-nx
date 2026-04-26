@@ -7,7 +7,8 @@
 #
 #   # set variables before calling (or before trap fires):
 #   _IR_ENTRY_POINT="nix"      # nix, linux, wsl/nix
-#   _IR_SCRIPT_ROOT="/path"    # repo root, for git version detection
+#   _IR_VERSION="v1.2.0"       # optional: skip git detection, use this version
+#   _IR_SCRIPT_ROOT="/path"    # repo root, for git version detection (unused when _IR_VERSION set)
 #   _IR_SCOPES="az shell"      # space-separated scope list
 #   _IR_MODE="install"         # install, upgrade, reconfigure, remove
 #   _IR_PLATFORM="Linux"       # macOS, Linux
@@ -38,19 +39,25 @@ write_install_record() {
 
   mkdir -p "$DEV_ENV_DIR"
 
-  # version priority: git describe > VERSION file (tarball) > "unknown"
+  # version priority: caller-supplied > git describe > VERSION file > "unknown"
   local version="" source="" source_ref=""
-  local script_root="${_IR_SCRIPT_ROOT:-}"
-  if [ -n "$script_root" ] && git -C "$script_root" rev-parse --is-inside-work-tree &>/dev/null; then
-    version="$(git -C "$script_root" describe --tags --dirty 2>/dev/null \
-      || git -C "$script_root" rev-parse --short HEAD 2>/dev/null)" || true
-    source="git"
-    source_ref="$(git -C "$script_root" rev-parse HEAD 2>/dev/null)" || true
-  elif [ -n "$script_root" ] && [ -f "$script_root/VERSION" ]; then
-    version="$(<"$script_root/VERSION")"
-    source="tarball"
+  if [ -n "${_IR_VERSION:-}" ]; then
+    version="$_IR_VERSION"
+    source="${_IR_SOURCE:-git}"
+    source_ref="${_IR_SOURCE_REF:-}"
   else
-    source="tarball"
+    local script_root="${_IR_SCRIPT_ROOT:-}"
+    if [ -n "$script_root" ] && git -C "$script_root" rev-parse --is-inside-work-tree &>/dev/null; then
+      version="$(git -C "$script_root" describe --tags --dirty 2>/dev/null \
+        || git -C "$script_root" rev-parse --short HEAD 2>/dev/null)" || true
+      source="git"
+      source_ref="$(git -C "$script_root" rev-parse HEAD 2>/dev/null)" || true
+    elif [ -n "$script_root" ] && [ -f "$script_root/VERSION" ]; then
+      version="$(<"$script_root/VERSION")"
+      source="tarball"
+    else
+      source="tarball"
+    fi
   fi
   version="${version:-unknown}"
 
