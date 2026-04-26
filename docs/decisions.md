@@ -74,25 +74,26 @@ The bootstrapper model means zero operational overhead: no agent to monitor, no 
 
 **The objection:** "Nix can install anything. Just put every package in the flake and stop maintaining system-level install scripts."
 
-Nix is a user-scope package manager. It runs without root after the one-time install. That is its greatest strength - and it creates a hard boundary around what it can provide. Some packages require root, setuid, or must exist before nix is available. Others need to live in system paths for `sudo`, `chsh`, or AllUsers profile setup to work. Forcing these into nix creates fragile workarounds that break under real-world conditions.
+Nix is a user-scope package manager. It runs without root after the one-time install. That is its greatest strength - and it creates a hard boundary around what it can provide. Some packages require root, setuid, or must exist before nix is available. Others need to live in system paths for `sudo` or `chsh` to work. Forcing these into nix creates fragile workarounds that break under real-world conditions.
 
 Every package in this project belongs to exactly one of three tiers:
 
 | Tier          | Installed by                  | Managed by     | Example packages                         |
 | ------------- | ----------------------------- | -------------- | ---------------------------------------- |
 | System-only   | `install_base.sh` (root)      | System pkg mgr | ca-certificates, curl, sudo, build tools |
-| System-prefer | System on Linux, nix on macOS | Conditional    | vim, pwsh, zsh                           |
-| Always nix    | `nix/setup.sh` (user-scope)   | Nix flake      | git, ripgrep, fzf, kubectl, uv           |
+| System-prefer | System on Linux, nix on macOS | Conditional    | vim, zsh                                 |
+| Always nix    | `nix/setup.sh` (user-scope)   | Nix flake      | git, ripgrep, fzf, kubectl, uv, pwsh     |
 
 **System-only** packages cannot be user-scoped by definition. `ca-certificates` populates the system TLS trust store read by every process. `sudo` requires setuid root. `curl` must exist before nix is available - it downloads the nix installer. `build-essential` provides the C compiler nix needs for flake builds. These are installed once by `install_base.sh` and never touched by nix.
 
-**System-prefer** packages need to exist in system paths (`/usr/bin/`) on Linux but have no system package manager on macOS. The detection is platform-based, not host-introspection: on Linux, if `/usr/bin/pwsh` exists, `nix/setup.sh` skips the nix pwsh scope automatically. On macOS (`uname -s == Darwin`), the check is skipped entirely and nix provides the package. This logic lives in `phase_scopes_skip_system_prefer()` in the scopes phase - centralized in `nix/setup.sh`, not scattered across callers.
+**System-prefer** packages need to exist in system paths (`/usr/bin/`) on Linux but have no system package manager on macOS. On macOS (`uname -s == Darwin`), `phase_scopes_skip_system_prefer()` skips all checks and nix provides the package. This logic lives in the scopes phase - centralized in `nix/setup.sh`, not scattered across callers.
 
-The three system-prefer packages each have a concrete reason they cannot be nix-only on Linux:
+The two system-prefer packages each have a concrete reason they cannot be nix-only on Linux:
 
 - **vim** - `sudo vim /etc/fstab` requires a vim binary accessible to root. Nix vim lives in `~/.nix-profile/bin/vim`, invisible to `sudo` without `env_keep` or explicit PATH forwarding. Every Linux distro ships vim - there is no version consistency benefit to justify the workaround.
-- **pwsh** - PowerShell's AllUsers profile (`/opt/microsoft/powershell/7/profile.ps1`) and system-wide module paths require a system-installed `/usr/bin/pwsh`. The nix pwsh would install a second copy that cannot serve these roles. On macOS, there is no system pwsh and no AllUsers profile convention, so nix is the correct provider.
 - **zsh** - `chsh -s /usr/bin/zsh` requires the shell path to exist in `/etc/shells`. Nix zsh lives in `~/.nix-profile/bin/zsh`, which is user-specific, may change on upgrades, and is rejected by PAM on some distributions. The nix `zsh.nix` scope ships only plugins (autosuggestions, syntax highlighting, completions) - not the zsh binary itself.
+
+**pwsh** was previously in the system-prefer tier because AllUsers profiles and system-wide module paths required `/usr/bin/pwsh`. This was removed: AllUsers profiles are a server-administration concern, not a developer-workstation concern. On developer workstations, CurrentUser scope is sufficient and consistent with the tool's user-scope architecture. macOS already ran pwsh user-scope via Nix with zero issues - the same model now applies to all platforms.
 
 **Always nix** is everything else. These packages benefit from cross-platform version consistency (same git version on macOS Sonoma and Ubuntu 22.04), atomic upgrades via `nx upgrade`, and user-scope installation without root. The flake output is deterministic per platform - same scopes produce the same packages.
 
@@ -102,12 +103,10 @@ The three system-prefer packages each have a concrete reason they cannot be nix-
 linux_setup.sh / wsl_setup.ps1 (requires root)
   ├── sudo install_base.sh          # system-only tier
   ├── sudo install_nix.sh           # one-time nix bootstrap
-  ├── sudo install_pwsh.sh          # system-prefer: pwsh on Linux
   ├── sudo install_zsh.sh           # system-prefer: zsh on Linux
-  └── nix/setup.sh --pwsh --zsh ... # always-nix tier
+  └── nix/setup.sh --pwsh --zsh ... # always-nix tier (pwsh included)
         └── phase_scopes_skip_system_prefer()
-              ├── pwsh exists at /usr/bin/pwsh → skip nix pwsh scope
-              └── zsh exists at /usr/bin/zsh  → skip nix zsh scope
+              └── zsh exists at /usr/bin/zsh → skip nix zsh scope
 
 nix/setup.sh on macOS (no root available)
   └── phase_scopes_skip_system_prefer()
@@ -238,8 +237,20 @@ This tool uses a **phase library** architecture: `nix/setup.sh` is a slim ~110-l
 ```bash
 _io_nix()        { nix "$@"; }
 _io_curl_probe() { curl -sS "$1" >/dev/null 2>&1; }
-_io_run()        { "$@"; }
+_io_run() {
+  local _err_file _rc=0
+  _err_file="$(mktemp)"
+  "$@" 2>"$_err_file" || _rc=$?
+  if [[ $_rc -ne 0 && -s "$_err_file" ]]; then
+    cat "$_err_file" >&2
+    # append structured error marker to log file if logging is active
+  fi
+  rm -f "$_err_file"
+  return $_rc
+}
 ```
+
+`_io_run` provides try/catch semantics: stdout streams to the terminal normally (preserving nix progress bars and tty detection), stderr is captured to a temp file and only surfaced on failure. Structured logging helpers (`info`, `ok`, `warn`, `err`) append plain-text markers to the log file without redirecting subprocess output.
 
 Tests override these wrappers by function redefinition before sourcing the phase under test - three lines per test, zero framework overhead:
 
