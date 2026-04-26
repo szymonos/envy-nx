@@ -10,7 +10,7 @@ if [ $EUID -ne 0 ]; then
 fi
 
 # dotsource file with common functions
-. .assets/provision/source.sh
+. .assets/provision/gh_helpers.sh
 
 # determine system id
 SYS_ID="$(sed -En '/^ID.*(alpine|arch|fedora|debian|ubuntu|opensuse).*/{s//\1/;p;q}' /etc/os-release)"
@@ -30,7 +30,7 @@ debian | ubuntu)
   # create temporary dir for the downloaded binary
   TMP_DIR=$(mktemp -d -p "$HOME")
   trap 'rm -fr "$TMP_DIR"' EXIT
-  if download_file --uri "https://cli.github.com/packages/githubcli-archive-keyring.gpg" --target_dir "$TMP_DIR"; then
+  if gh_download_file --uri "https://cli.github.com/packages/githubcli-archive-keyring.gpg" --target_dir "$TMP_DIR"; then
     mkdir -p -m 755 /etc/apt/keyrings
     install -m 0644 "$TMP_DIR/githubcli-archive-keyring.gpg" /etc/apt/keyrings
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" >/etc/apt/sources.list.d/github-cli.list

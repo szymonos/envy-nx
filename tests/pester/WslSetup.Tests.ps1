@@ -13,6 +13,7 @@ BeforeAll {
     $env:HOMEPATH = '\Users\testuser'
 
     # import modules so the real functions exist (we will mock them)
+    Import-Module "$Script:RepoRoot/modules/do-common" -Force
     Import-Module "$Script:RepoRoot/modules/InstallUtils" -Force
     Import-Module "$Script:RepoRoot/modules/SetupUtils" -Force
 
@@ -47,15 +48,13 @@ BeforeAll {
 
     # default check_distro response (overridden per test)
     $global:WslTestCheckDistroJson = New-CheckDistro
-    # default ssh setup response
-    $global:WslTestSshSetupJson = '{"sshKey":"exists"}'
 }
 
 AfterAll {
     $env:WSL_SETUP_TESTING = $null
     $env:HOMEDRIVE = $null
     $env:HOMEPATH = $null
-    Remove-Variable -Name WslTestCalls, WslTestCheckDistroJson, WslTestSshSetupJson -Scope Global -ErrorAction SilentlyContinue
+    Remove-Variable -Name WslTestCalls, WslTestCheckDistroJson -Scope Global -ErrorAction SilentlyContinue
 }
 
 Describe 'wsl_setup.ps1 orchestration' {
@@ -76,14 +75,8 @@ Describe 'wsl_setup.ps1 orchestration' {
             if ($argStr -match 'check_ssl\.sh') {
                 return 'true'
             }
-            if ($argStr -match 'setup_gh_https\.sh') {
+            if ($argStr -match 'hosts\.yml') {
                 return 'github.com'
-            }
-            if ($argStr -match 'setup_gh_ssh\.sh') {
-                return $global:WslTestSshSetupJson
-            }
-            if ($argStr -match 'id -un') {
-                return 'testuser'
             }
             if ($argStr -match 'command -v pwsh') {
                 return 'true'
@@ -256,11 +249,12 @@ Describe 'wsl_setup.ps1 orchestration' {
     Context 'DNS failure halts execution' {
         It 'exits with non-zero when DNS check fails' {
             # run in subprocess since `exit 1` terminates the process
-            $result = pwsh -NoProfile -Command @"
+            $null = pwsh -NoProfile -Command @"
                 `$env:WSL_SETUP_TESTING = '1'
                 `$env:HOMEDRIVE = 'C:'
                 `$env:HOMEPATH = '\Users\testuser'
                 Set-Location '$Script:RepoRoot'
+                Import-Module './modules/do-common' -Force
                 Import-Module './modules/InstallUtils' -Force
                 Import-Module './modules/SetupUtils' -Force
                 function wsl.exe {
@@ -268,8 +262,7 @@ Describe 'wsl_setup.ps1 orchestration' {
                     if (`$argStr -match 'check_distro\.sh') { return '$(New-CheckDistro)' }
                     if (`$argStr -match 'check_dns\.sh') { return 'false' }
                     if (`$argStr -match 'check_ssl\.sh') { return 'true' }
-                    if (`$argStr -match 'setup_gh_https') { return 'github.com' }
-                    if (`$argStr -match 'id -un') { return 'testuser' }
+                    if (`$argStr -match 'hosts\.yml') { return 'github.com' }
                     return ''
                 }
                 function Get-WslDistro {
