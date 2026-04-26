@@ -20,7 +20,8 @@ Everything sourced or called by `nix/setup.sh`, plus shell config files that get
 | File                                         | Role                                                           |
 | -------------------------------------------- | -------------------------------------------------------------- |
 | `nix/setup.sh`                               | Main entry point (slim orchestrator, sources phase libraries)  |
-| `nix/lib/io.sh`                              | Side-effect wrappers + output helpers (tests override these)   |
+| `nix/lib/io.sh`                              | Structured logging + side-effect wrappers (tests override)     |
+| `.assets/lib/setup_log.sh`                   | Log file creation and rotation (sourced by `nix/setup.sh`)     |
 | `nix/lib/phases/bootstrap.sh`                | Root guard, path resolution, nix/jq detection, arg parsing     |
 | `nix/lib/phases/platform.sh`                 | OS detection, overlay discovery, hook runner                   |
 | `nix/lib/phases/scopes.sh`                   | Load/merge scopes, resolve deps, write config.nix              |
@@ -61,16 +62,16 @@ Everything sourced or called by `nix/setup.sh`, plus shell config files that get
 
 Scripts that only run on Linux where bash 5.x is the standard.
 
-| File / Pattern                         | Role                                                                                                |
-| -------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `.assets/scripts/linux_setup.sh`       | Linux system prep + nix delegation                                                                  |
-| `.assets/provision/source.sh`          | Shared functions for provision scripts                                                              |
-| `.assets/provision/install_*.sh`       | System-scope installers (base, nix, docker, podman, distrobox, pwsh, zsh, gh, azurecli_uv, copilot) |
-| `.assets/provision/upgrade_system.sh`  | System upgrade                                                                                      |
-| `.assets/setup/setup_profile_user.zsh` | User zsh profile setup                                                                              |
-| `.assets/setup/setup_*.sh`             | Other setup scripts                                                                                 |
-| `.assets/check/*.sh`                   | System checks                                                                                       |
-| `.assets/fix/*.sh`                     | One-off fixes                                                                                       |
+| File / Pattern                         | Role                                                                                          |
+| -------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `.assets/scripts/linux_setup.sh`       | Linux system prep + nix delegation                                                            |
+| `.assets/provision/gh_helpers.sh`      | Shared GitHub helpers for provision and setup scripts (gh_download_file, gh_login_user)       |
+| `.assets/provision/install_*.sh`       | System-scope installers (base, nix, docker, podman, distrobox, zsh, gh, azurecli_uv, copilot) |
+| `.assets/provision/upgrade_system.sh`  | System upgrade                                                                                |
+| `.assets/setup/setup_profile_user.zsh` | User zsh profile setup                                                                        |
+| `.assets/setup/setup_*.sh`             | Other setup scripts                                                                           |
+| `.assets/check/*.sh`                   | System checks                                                                                 |
+| `.assets/fix/*.sh`                     | One-off fixes                                                                                 |
 
 ### powershell
 
@@ -79,8 +80,15 @@ Scripts that only run on Linux where bash 5.x is the standard.
 | `wsl/*.ps1`                                | WSL management (Windows host)                                 |
 | `.assets/config/pwsh_cfg/_aliases_nix.ps1` | PowerShell aliases + nx (bash proxy + native PS profile mgmt) |
 | `.assets/config/pwsh_cfg/profile_nix.ps1`  | Base profile template                                         |
-| `modules/InstallUtils/`                    | Install utility module                                        |
-| `modules/SetupUtils/`                      | Setup utility module                                          |
+| `.assets/scripts/module_manage.ps1`        | Vendored module clone/update management                       |
+| `modules/InstallUtils/`                    | Install utility module (repo cloning)                         |
+| `modules/SetupUtils/`                      | Setup utility module (scopes, WSL config)                     |
+| `modules/do-common/`                       | Vendored: common functions (certs, cfg, logging, CLI helpers) |
+| `modules/do-linux/`                        | Vendored: Linux-specific helpers                              |
+| `modules/do-az/`                           | Vendored: Azure CLI/Graph helpers                             |
+| `modules/psm-windows/`                     | Vendored: Windows-specific functions (env path, retry, admin) |
+| `modules/aliases-git/`                     | Vendored: git aliases and completers                          |
+| `modules/aliases-kubectl/`                 | Vendored: kubectl aliases and completers                      |
 
 ### nix declarations (not bash)
 
@@ -481,12 +489,18 @@ file exports functions prefixed with `phase_<name>_` (e.g. `phase_bootstrap_pars
 Side-effecting operations (`nix`, `curl`, external script invocations) are called through thin wrappers defined in
 `nix/lib/io.sh`:
 
-| Wrapper          | Wraps                            |
-| ---------------- | -------------------------------- |
-| `_io_nix`        | `nix`                            |
-| `_io_nix_eval`   | `nix eval --impure --raw --expr` |
-| `_io_curl_probe` | `curl -sS <url>`                 |
-| `_io_run`        | Direct command execution         |
+| Wrapper          | Wraps                                                    |
+| ---------------- | -------------------------------------------------------- |
+| `_io_nix`        | `nix`                                                    |
+| `_io_nix_eval`   | `nix eval --impure --raw --expr`                         |
+| `_io_curl_probe` | `curl -sS <url>`                                         |
+| `_io_run`        | Try/catch: captures stderr, shows + logs on failure only |
+
+`io.sh` also provides structured logging helpers (`info`, `ok`, `warn`, `err`) that write colored output to the
+terminal and append plain-text markers to the log file (`$_SETUP_LOG_FILE`). The log file is managed by
+`.assets/lib/setup_log.sh` (create, rotate, close). No global stdout/stderr redirect is used - subprocess output
+(including the nix progress bar) streams directly to the terminal. `_io_run` captures stderr to a temp file and
+only surfaces it (terminal + log) when the command fails, providing try/catch semantics in bash.
 
 Tests override these before sourcing phase files to assert commands without executing them:
 
