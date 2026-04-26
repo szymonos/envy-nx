@@ -27,6 +27,12 @@ function Invoke-GhRepoClone {
         $org, $repo = $OrgRepo.Split('/')
         # command for getting the remote url
         $getOrigin = { git config --get remote.origin.url; if (-not $?) { 'https://github.com/' } }
+        # determine clone protocol: prefer SSH if key is configured, fallback to HTTPS
+        $gitProtocol = if (ssh -T git@github.com 2>&1 | Select-String -Quiet 'successfully authenticated') {
+            'git@github.com:'
+        } else {
+            $(Invoke-Command $getOrigin) -replace '(^.+github\.com[:/]).*', '$1'
+        }
         # calculate destination path
         $destPath = Join-Path $Path -ChildPath $repo
     }
@@ -52,16 +58,23 @@ function Invoke-GhRepoClone {
             }
             Pop-Location
         } catch {
-            # determine GitHub protocol used (https/ssl)
-            $gitProtocol = $(Invoke-Command $getOrigin) -replace '(^.+github\.com[:/]).*', '$1'
-            # clone target repository
-            git clone "${gitProtocol}${org}/${repo}.git" "$destPath" --quiet
-            # determine state of cloning the repository
+            # clone target repository - try SSH first, fall back to HTTPS
+            $cloneUrl = "${gitProtocol}${org}/${repo}.git"
+            $cloneErr = $null
+            git clone $cloneUrl "$destPath" --quiet 2>&1 | ForEach-Object { $cloneErr += "$_`n" }
+            if (-not $?) {
+                if ($gitProtocol -eq 'git@github.com:') {
+                    Write-Warning "SSH clone failed, retrying with HTTPS: $($cloneErr?.Trim())"
+                    $cloneUrl = "https://github.com/${org}/${repo}.git"
+                    $cloneErr = $null
+                    git clone $cloneUrl "$destPath" --quiet 2>&1 | ForEach-Object { $cloneErr += "$_`n" }
+                }
+            }
             $status = if ($?) {
                 Write-Verbose "Repository `"$OrgRepo`" cloned successfully."
                 Write-Output 1
             } else {
-                Write-Warning "Cloning of the `"$OrgRepo`" repository failed."
+                Write-Warning "Cloning `"$OrgRepo`" failed ($cloneUrl): $($cloneErr?.Trim())"
                 Write-Output 0
             }
         }
