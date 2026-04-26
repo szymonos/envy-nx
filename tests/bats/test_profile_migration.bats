@@ -105,42 +105,40 @@ RC
 }
 
 # ---------------------------------------------------------------------------
-# nx profile regenerate - legacy cleanup
+# nx profile regenerate
 # ---------------------------------------------------------------------------
 
-@test "profile regenerate removes known legacy markers" {
-  _write_legacy_bashrc
-  run nx profile regenerate
-  [ "$status" -eq 0 ]
-  # legacy markers should be gone from outside managed blocks
-  local outside
-  outside="$(awk '/^# >>> .* >>>$/{s=1;next} s&&/^# <<< .* <<<$/{s=0;next} !s{print}' "$HOME/.bashrc")"
-  run grep -cF 'aliases_nix' <<< "$outside"
-  [ "$output" -eq 0 ]
-  run grep -cF 'NODE_EXTRA_CA_CERTS' <<< "$outside"
-  [ "$output" -eq 0 ]
-}
-
-@test "profile regenerate preserves user content outside legacy lines" {
+@test "profile regenerate preserves user content outside managed blocks" {
   _write_legacy_bashrc
   nx profile regenerate
   grep -q "alias ll='ls -la'" "$HOME/.bashrc"
+  grep -q 'aliases_nix' "$HOME/.bashrc"
 }
 
-@test "profile regenerate creates backup when legacy markers found" {
-  _write_legacy_bashrc
+@test "profile regenerate skips .local/bin in env block when already in profile" {
+  cat >"$HOME/.bashrc" <<'RC'
+if ! [[ "$PATH" =~ "$HOME/.local/bin" ]]; then
+    PATH="$HOME/.local/bin:$PATH"
+fi
+export PATH
+RC
   nx profile regenerate
-  local backups
-  backups="$(find "$HOME" -name '.bashrc.nixenv-backup-*' 2>/dev/null | wc -l)"
-  [ "$backups" -ge 1 ]
+  # .local/bin should not appear inside the managed env block
+  local inside
+  inside="$(awk '/^# >>> managed env >>>$/{s=1;next} s&&/^# <<< managed env <<<$/{s=0;next} s{print}' "$HOME/.bashrc")"
+  run grep -cF '.local/bin' <<< "$inside"
+  [ "$output" -eq 0 ]
+  # original content preserved
+  grep -q 'export PATH' "$HOME/.bashrc"
 }
 
-@test "profile regenerate skips backup on clean profile" {
-  _write_clean_bashrc_with_block
+@test "profile regenerate includes .local/bin in env block when not in profile" {
+  printf '# minimal bashrc\n' >"$HOME/.bashrc"
   nx profile regenerate
-  local backups
-  backups="$(find "$HOME" -name '.bashrc.nixenv-backup-*' 2>/dev/null | wc -l)"
-  [ "$backups" -eq 0 ]
+  local inside
+  inside="$(awk '/^# >>> managed env >>>$/{s=1;next} s&&/^# <<< managed env <<<$/{s=0;next} s{print}' "$HOME/.bashrc")"
+  run grep -cF '.local/bin' <<< "$inside"
+  [ "$output" -ge 1 ]
 }
 
 # ---------------------------------------------------------------------------

@@ -210,10 +210,13 @@ _nx_version() {
 # --- Profile block rendering ---
 
 _nx_render_env_block() {
-  printf '# :local path\n'
-  printf 'if [ -d "$HOME/.local/bin" ]; then\n'
-  printf '  export PATH="$HOME/.local/bin:$PATH"\n'
-  printf 'fi\n'
+  local skip_local_bin="${1:-false}"
+  if [ "$skip_local_bin" != "true" ]; then
+    printf '# :local path\n'
+    printf 'if [ -d "$HOME/.local/bin" ]; then\n'
+    printf '  export PATH="$HOME/.local/bin:$PATH"\n'
+    printf 'fi\n'
+  fi
 
   if [ -f "$HOME/.config/bash/functions.sh" ]; then
     printf '\n# :aliases\n'
@@ -352,14 +355,6 @@ _nx_profile_regenerate() {
 
   local _nix_marker="nix-env managed"
   local _env_marker="managed env"
-  local _legacy_markers=(
-    'aliases_nix' 'aliases_git' 'aliases_kubectl' 'functions.sh'
-    'fzf --bash' 'fzf --zsh' 'uv generate-shell-completion'
-    'kubectl completion' 'Makefile'
-    'NODE_EXTRA_CA_CERTS' 'REQUESTS_CA_BUNDLE' 'SSL_CERT_FILE' 'CLOUDSDK_CORE_CUSTOM_CA_CERTS_FILE'
-    'NIX_SSL_CERT_FILE' 'nix-profile/bin:' '.local/bin' 'nix-daemon.sh'
-    'oh-my-posh init' 'starship init'
-  )
   local _rc _shell _tmp
 
   for _rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
@@ -370,39 +365,17 @@ _nx_profile_regenerate() {
     command -v "$_shell" &>/dev/null || continue
     [ -f "$_rc" ] || continue
 
-    # strip legacy injections outside managed blocks (backup once if found)
-    local _outside _m _has_legacy=false
-    _outside="$(awk '
+    # check if .local/bin PATH is already handled outside managed blocks
+    local _has_local_bin=false
+    if awk '
       /^# >>> .* >>>$/{skip=1;next} skip&&/^# <<< .* <<<$/{skip=0;next} !skip{print}
-    ' "$_rc")"
-    for _m in "${_legacy_markers[@]}"; do
-      printf '%s\n' "$_outside" | grep -qwF "$_m" 2>/dev/null && _has_legacy=true && break
-    done
-    if [ "$_has_legacy" = true ]; then
-      cp -p "$_rc" "${_rc}.nixenv-backup-$(date +%Y%m%d%H%M%S)" 2>/dev/null || true
-      local _markers_file
-      _markers_file="$(mktemp)"
-      _tmp="$(mktemp)"
-      printf '%s\n' "${_legacy_markers[@]}" >"$_markers_file"
-      awk '
-        FILENAME==ARGV[1] { markers[NR]=$0; nm=NR; next }
-        /^# >>> .* >>>$/        { in_block=1; print; next }
-        in_block&&/^# <<< .* <<<$/{ in_block=0; print; next }
-        in_block                { print; next }
-        {
-          matched=0
-          for (i=1; i<=nm; i++) { if (index($0, markers[i])) { matched=1; break } }
-          if (!matched) print
-        }
-      ' "$_markers_file" "$_rc" >"$_tmp"
-      rm -f "$_markers_file"
-      command mv -f "$_tmp" "$_rc"
-      printf "\e[33mCleaned legacy injections from %s\e[0m\n" "${_rc/#$HOME/\~}"
+    ' "$_rc" | grep -qF '.local/bin'; then
+      _has_local_bin=true
     fi
 
     # render and upsert env block
     _tmp="$(mktemp)"
-    _nx_render_env_block >"$_tmp"
+    _nx_render_env_block "$_has_local_bin" >"$_tmp"
     manage_block "$_rc" "$_env_marker" upsert "$_tmp"
     rm -f "$_tmp"
 

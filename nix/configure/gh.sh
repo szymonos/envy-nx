@@ -13,11 +13,6 @@ info()  { printf "\e[96m%s\e[0m\n" "$*"; }
 ok()    { printf "\e[32m%s\e[0m\n" "$*"; }
 warn()  { printf "\e[33m%s\e[0m\n" "$*" >&2; }
 
-if [[ "$unattended" == "true" ]]; then
-  info "skipping GitHub authentication setup (unattended)."
-  exit 0
-fi
-
 if ! command -v gh &>/dev/null; then
   warn "gh CLI not found - skipping GitHub authentication setup."
   exit 0
@@ -29,6 +24,9 @@ if gh auth status -h github.com &>/dev/null; then
   ok "already authenticated to GitHub"
 elif gh auth token -h github.com &>/dev/null; then
   ok "GitHub device already authorized"
+elif [[ "$unattended" == "true" ]]; then
+  info "skipping GitHub authentication setup (unattended, not pre-authenticated)."
+  exit 0
 else
   gh auth login --scopes admin:public_key
 fi
@@ -44,12 +42,8 @@ if [[ ! -f "$SSH_KEY" ]]; then
   ssh-keygen -t ed25519 -f "$SSH_KEY" -N "" -q
 fi
 
-# determine hostname label
-if [[ "$(uname -s)" == "Darwin" ]]; then
-  host_label="macOS $(hostname -s)"
-else
-  host_label="$(hostname -s)"
-fi
+# determine SSH key title
+host_label="${USER}@$(uname -n)"
 
 # skip when auth comes from an external token (e.g. CI, containers) - can't control scopes
 if [[ -n "${GITHUB_TOKEN:-}" ]]; then
@@ -59,7 +53,9 @@ fi
 
 # add SSH key to GitHub if not already registered
 pub_key_fp=$(awk '{print $2}' "$SSH_KEY.pub")
-if ! gh ssh-key list 2>/dev/null | grep -q "$pub_key_fp"; then
+if [[ -n "${NX_SSH_KEY_FP:-}" && "$NX_SSH_KEY_FP" == "$pub_key_fp" ]]; then
+  ok "SSH key already registered on GitHub (matched by fingerprint)"
+elif ! gh ssh-key list 2>/dev/null | grep -q "$pub_key_fp"; then
   info "adding SSH key to GitHub..."
   if ! gh ssh-key add "$SSH_KEY.pub" --title "$host_label $(date +%Y-%m-%d)"; then
     # existing token may lack admin:public_key scope (pre-scoped auth)
@@ -72,4 +68,10 @@ if ! gh ssh-key list 2>/dev/null | grep -q "$pub_key_fp"; then
   fi
 else
   ok "SSH key already registered on GitHub"
+fi
+
+# add github.com to known_hosts for SSH git operations
+if ! grep -qw 'github.com' "$HOME/.ssh/known_hosts" 2>/dev/null; then
+  info "adding GitHub fingerprint to known_hosts..."
+  ssh-keyscan github.com >>"$HOME/.ssh/known_hosts" 2>/dev/null
 fi
