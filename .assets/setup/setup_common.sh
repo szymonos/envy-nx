@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 : '
-# common post-install setup (called by nix/setup.sh and linux_setup.sh)
+# common post-install setup (called by nix/setup.sh, which is invoked by wsl_setup.ps1, linux_setup.sh, or directly)
 .assets/setup/setup_common.sh shell zsh az k8s_base pwsh
 # with module updates
 .assets/setup/setup_common.sh --update-modules shell zsh pwsh
@@ -46,7 +46,6 @@ fi
 
 # -- PowerShell user profile + modules (pwsh scope) ---------------------------
 if command -v pwsh &>/dev/null; then
-  # setup PowerShell user profile
   info "setting up PowerShell profile for current user..."
   if [[ "$update_modules" == "true" ]]; then
     pwsh -nop "$SCRIPT_ROOT/.assets/setup/setup_profile_user.ps1" -UpdateModules
@@ -54,29 +53,20 @@ if command -v pwsh &>/dev/null; then
     pwsh -nop "$SCRIPT_ROOT/.assets/setup/setup_profile_user.ps1"
   fi
 
-  # clone/refresh ps-modules and install user-scope modules
+  info "installing ps-modules..."
+  modules=('do-common' 'do-linux')
+  has_scope az && modules+=(do-az) || true
+  command -v git &>/dev/null && modules+=(aliases-git) || true
+  command -v kubectl &>/dev/null && modules+=(aliases-kubectl) || true
+  printf "\e[3;32mCurrentUser\e[23m : %s\e[0m\n" "${modules[*]}"
+  mods=''
+  for element in "${modules[@]}"; do
+    mods="$mods'$element',"
+  done
   pushd "$SCRIPT_ROOT" >/dev/null
-  cmnd="Import-Module (Resolve-Path './modules/InstallUtils'); Invoke-GhRepoClone -OrgRepo 'szymonos/ps-modules'"
-  cloned=$(pwsh -nop -c "$cmnd")
-  if [[ $cloned -gt 0 ]]; then
-    info "installing ps-modules..."
-    # determine current user scope modules to install
-    modules=('do-linux')
-    has_scope az && modules+=(do-az) || true
-    command -v git &>/dev/null && modules+=(aliases-git) || true
-    command -v kubectl &>/dev/null && modules+=(aliases-kubectl) || true
-    printf "\e[3;32mCurrentUser\e[23m : %s\e[0m\n" "${modules[*]}"
-    mods=''
-    for element in "${modules[@]}"; do
-      mods="$mods'$element',"
-    done
-    pwsh -nop -c "@(${mods%,}) | ../ps-modules/module_manage.ps1 -CleanUp"
-  else
-    warn "ps-modules repository cloning failed"
-  fi
+  pwsh -nop -c "@(${mods%,}) | .assets/scripts/module_manage.ps1 -CleanUp"
   popd >/dev/null
 
-  # install PowerShell Az modules from PSGallery
   if has_scope az; then
     cmnd='if (-not (Get-Module -ListAvailable "Az")) {
   Write-Host "installing Az..."

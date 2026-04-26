@@ -18,6 +18,19 @@
 # shellcheck disable=SC2034  # DEV_ENV_DIR used by sourcing scripts
 DEV_ENV_DIR="$HOME/.config/dev-env"
 
+# Ensure nix-installed tools (jq, git) are in PATH.
+# Non-interactive shells (bash -c) don't source profile.d, so we load
+# the nix profile here if the nix bin directory isn't already in PATH.
+if ! command -v jq &>/dev/null; then
+  for _ir_nix_profile in \
+    "$HOME/.nix-profile/etc/profile.d/nix.sh" \
+    /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh; do
+    # shellcheck source=/dev/null
+    if [ -f "$_ir_nix_profile" ]; then . "$_ir_nix_profile"; break; fi
+  done
+  unset _ir_nix_profile
+fi
+
 # write_install_record <status> <phase> [error_message]
 write_install_record() {
   local status="${1:-unknown}" phase="${2:-unknown}" error="${3:-}"
