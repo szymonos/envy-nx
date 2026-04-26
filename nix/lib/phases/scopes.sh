@@ -109,17 +109,11 @@ phase_scopes_detect_init() {
 }
 
 # On Linux, handle system-prefer scopes:
-#   - pwsh: skip nix scope if already installed system-wide (nix pwsh is a duplicate)
 #   - zsh: nix scope only provides plugins, not the binary. Remove if zsh is missing.
 # On macOS there is no system package manager, so nix is the correct provider.
 phase_scopes_skip_system_prefer() {
   [[ "$(uname -s)" == "Darwin" ]] && return 0
   local changed=false
-  if scope_has pwsh && has_system_cmd pwsh; then
-    scope_del pwsh
-    info "pwsh found system-wide - skipping nix scope"
-    changed=true
-  fi
   if scope_has zsh; then
     if has_system_cmd zsh; then
       scope_del zsh

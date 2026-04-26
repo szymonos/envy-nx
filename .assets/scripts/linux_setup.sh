@@ -123,10 +123,6 @@ for sc in "${scope_arr[@]}"; do
     printf "\e[96minstalling docker...\e[0m\n"
     sudo .assets/provision/install_docker.sh $user
     ;;
-  pwsh)
-    printf "\e[96minstalling pwsh system-wide...\e[0m\n"
-    sudo .assets/provision/install_pwsh.sh >/dev/null
-    ;;
   zsh)
     printf "\e[96minstalling zsh system-wide...\e[0m\n"
     sudo .assets/provision/install_zsh.sh
@@ -146,26 +142,6 @@ done
 [ -n "$omp_theme" ] && nix_args+=(--omp-theme "$omp_theme")
 printf "\e[96mrunning nix setup...\e[0m\n"
 nix/setup.sh "${nix_args[@]}"
-
-_ir_phase="profiles"
-# -- Post-nix pwsh setup (requires system-wide pwsh from above) ----------------
-if printf '%s\n' "${scope_arr[@]}" | grep -qx 'pwsh'; then
-  if command -v pwsh &>/dev/null; then
-    printf "\e[96msetting up profile for all users...\e[0m\n"
-    update_flag=""
-    [ "$update_modules" = true ] && update_flag="-UpdateModules"
-    sudo pwsh -nop .assets/setup/setup_profile_allusers.ps1 -UserName $user $update_flag
-    # install do-common module for all users (requires root)
-    cmnd="Import-Module (Resolve-Path './modules/InstallUtils'); Invoke-GhRepoClone -OrgRepo 'szymonos/ps-modules'"
-    cloned=$(pwsh -nop -c "$cmnd")
-    if [ "$cloned" -gt 0 ]; then
-      printf "\e[3;32mAllUsers\e[23m    : do-common\e[0m\n"
-      sudo pwsh -nop ../ps-modules/module_manage.ps1 'do-common' -CleanUp
-    else
-      printf '\e[33mps-modules repository cloning failed\e[0m.\n'
-    fi
-  fi
-fi
 
 _ir_phase="complete"
 # restore working directory
