@@ -43,6 +43,8 @@ for _p in bootstrap platform scopes nix_profile configure profiles post_install 
 done
 # shellcheck source=../.assets/lib/install_record.sh
 source "$SCRIPT_ROOT/.assets/lib/install_record.sh"
+# shellcheck source=../.assets/lib/setup_log.sh
+source "$SCRIPT_ROOT/.assets/lib/setup_log.sh"
 
 # ---- trap + provenance -------------------------------------------------------
 _IR_ENTRY_POINT="nix"
@@ -56,11 +58,17 @@ sorted_scopes=()
 
 _on_exit() {
   local exit_code=$?
+  local log_path="$_SETUP_LOG_FILE"
+  setup_log_close
   [[ "$_ir_skip" == "true" ]] && return 0
   local status="success" error=""
   if [[ $exit_code -ne 0 ]]; then
     status="failed"
     error="${_ir_error:-exit code $exit_code}"
+    if [[ -n "$log_path" ]]; then
+      printf "\n\e[31;1mSetup failed at phase '%s'.\e[0m\n" "$_ir_phase" >&2
+      printf "\e[33mCheck %s for details.\e[0m\n\n" "$log_path" >&2
+    fi
   fi
   _IR_SCOPES="${sorted_scopes[*]:-}"
   _IR_ALLOW_UNFREE="${allow_unfree:-false}"
@@ -71,6 +79,8 @@ _on_exit() {
 trap _on_exit EXIT
 
 # ---- run phases --------------------------------------------------------------
+setup_log_start
+
 phase_bootstrap_check_root
 phase_bootstrap_resolve_paths "$SCRIPT_ROOT"
 phase_bootstrap_detect_nix
@@ -87,11 +97,13 @@ phase_summary_detect_mode
 
 phase_platform_detect
 _ir_phase="pre-setup"
+
 export NIX_ENV_PHASE="pre-setup"
 phase_platform_run_hooks "$ENV_DIR/hooks/pre-setup.d"
 phase_platform_discover_overlay
 
 _ir_phase="scope-resolve"
+
 phase_scopes_load_existing
 phase_scopes_apply_removes
 phase_scopes_enforce_prompt_exclusivity
@@ -101,6 +113,7 @@ phase_scopes_detect_init
 phase_scopes_write_config
 
 _ir_phase="nix-profile"
+
 phase_nix_profile_load_pinned_rev
 phase_nix_profile_print_mode
 phase_nix_profile_update_flake
@@ -108,12 +121,14 @@ phase_nix_profile_apply
 phase_nix_profile_mitm_probe
 
 _ir_phase="configure"
+
 # shellcheck disable=SC2154  # unattended - set by phase_bootstrap_parse_args
 phase_configure_gh "$unattended"
 phase_configure_git "$unattended"
 phase_configure_per_scope
 
 _ir_phase="profiles"
+
 phase_profiles_bash
 phase_profiles_zsh
 phase_profiles_pwsh
@@ -121,11 +136,14 @@ export NIX_ENV_PHASE="post-setup"
 phase_platform_run_hooks "$ENV_DIR/hooks/post-setup.d"
 
 _ir_phase="post-install"
+
 # shellcheck disable=SC2154  # update_modules - set by phase_bootstrap_parse_args
 phase_post_install_common "$update_modules" "${sorted_scopes[@]}"
 
 _ir_phase="complete"
+
 phase_post_install_gc
+setup_log_close
 # re-detect: scope removal may have changed the mode
 phase_summary_detect_mode
 phase_summary_print
