@@ -96,7 +96,7 @@ begin {
 
     # set location to workspace folder
     Push-Location "$PSScriptRoot/.."
-    # import InstallUtils for the Update-SessionEnvironmentPath function
+    Import-Module (Resolve-Path './modules/psm-windows') -Force
     Import-Module (Resolve-Path './modules/InstallUtils') -Force
 
     if (-not $SkipRepoUpdate) {
