@@ -649,6 +649,12 @@ end {
 }
 
 clean {
+    # resolve version on the Windows host (avoids safe.directory issues inside WSL)
+    $irVersion = git describe --tags --dirty 2>$null
+    if (-not $irVersion) { $irVersion = git rev-parse --short HEAD 2>$null }
+    $irSourceRef = git rev-parse HEAD 2>$null
+    $irSource = $irVersion ? 'git' : 'tarball'
+
     # write install provenance record inside each processed WSL distro
     foreach ($name in $script:distroRecords.Keys) {
         $rec = $script:distroRecords[$name]
@@ -657,7 +663,9 @@ clean {
         $bashCmd = [string]::Join("`n",
             "source .assets/lib/install_record.sh",
             "_IR_ENTRY_POINT='wsl/nix'",
-            "_IR_SCRIPT_ROOT='`$(pwd)'",
+            "_IR_VERSION='$irVersion'",
+            "_IR_SOURCE='$irSource'",
+            "_IR_SOURCE_REF='$irSourceRef'",
             "_IR_SCOPES='$irScopes'",
             "_IR_MODE='$($rec.mode)'",
             "_IR_PLATFORM='WSL'",
