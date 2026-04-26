@@ -33,6 +33,7 @@ microsoftonline
 miniforge
 minisign
 mkdocs
+mktemp
 namerefs
 nixos
 nixpkgs
