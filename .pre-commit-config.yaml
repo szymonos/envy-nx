@@ -47,7 +47,7 @@ repos:
         entry: python3 -m tests.hooks.check_changelog
         language: system
         pass_filenames: true
-        files: (nix/|\.assets/lib/|\.assets/config/|\.assets/setup/|\.assets/provision/|wsl/)
+        files: (CHANGELOG\.md|nix/|\.assets/lib/|\.assets/config/|\.assets/setup/|\.assets/provision/|wsl/)
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
