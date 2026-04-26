@@ -1,8 +1,8 @@
 #Requires -Modules Pester
-# Unit tests for ConvertFrom-Cfg and ConvertTo-Cfg in SetupUtils module
+# Unit tests for ConvertFrom-Cfg and ConvertTo-Cfg in do-common module
 
 BeforeAll {
-    . $PSScriptRoot/../../modules/SetupUtils/Functions/common.ps1
+    . $PSScriptRoot/../../modules/do-common/Functions/common.ps1
 }
 
 Describe 'ConvertFrom-Cfg' {

@@ -66,6 +66,7 @@ begin {
     }
 
     # import SetupUtils for the Get-WslDistro function
+    Import-Module (Convert-Path './modules/do-common')
     Import-Module (Convert-Path './modules/SetupUtils')
 
     # get list of existing WSL distros
