@@ -53,7 +53,7 @@ if command -v pwsh &>/dev/null; then
     pwsh -nop "$SCRIPT_ROOT/.assets/setup/setup_profile_user.ps1"
   fi
 
-  info "installing ps-modules..."
+  info "installing PS modules..."
   modules=('do-common' 'do-linux')
   has_scope az && modules+=(do-az) || true
   command -v git &>/dev/null && modules+=(aliases-git) || true

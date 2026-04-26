@@ -50,6 +50,7 @@ begin {
     try {
         Get-Command Get-WslDistro -CommandType Function | Out-Null
     } catch {
+        Import-Module (Resolve-Path './modules/do-common')
         Import-Module (Resolve-Path './modules/SetupUtils')
     }
 
