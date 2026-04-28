@@ -850,8 +850,8 @@ EOF
   mkdir -p "$ENV_DIR/local/scopes"
   printf '{ pkgs }: with pkgs; []\n' >"$ENV_DIR/local/scopes/devtools.nix"
   printf '{ pkgs }: with pkgs; []\n' >"$ENV_DIR/scopes/local_devtools.nix"
-  mkdir -p "$ENV_DIR/local/bash_cfg"
-  printf '# custom\n' >"$ENV_DIR/local/bash_cfg/custom.sh"
+  mkdir -p "$ENV_DIR/local/shell_cfg"
+  printf '# custom\n' >"$ENV_DIR/local/shell_cfg/custom.sh"
   run nx overlay
   [ "$status" -eq 0 ]
   [[ "$output" == *"devtools"* ]]
@@ -894,4 +894,274 @@ EOF
   run nx scope show
   [ "$status" -eq 1 ]
   [[ "$output" == *"Usage: nx scope show"* ]]
+}
+
+# -- _nx_read_install_field ---------------------------------------------------
+
+@test "read_install_field reads field with jq" {
+  if ! command -v jq &>/dev/null; then
+    skip "jq not available"
+  fi
+  mkdir -p "$HOME/.config/dev-env"
+  cat >"$HOME/.config/dev-env/install.json" <<'EOF'
+{
+  "repo_path": "/home/user/envy-nx",
+  "repo_url": "https://github.com/szymonos/envy-nx.git",
+  "version": "1.0.0"
+}
+EOF
+  run _nx_read_install_field repo_path
+  [ "$status" -eq 0 ]
+  [ "$output" = "/home/user/envy-nx" ]
+
+  run _nx_read_install_field repo_url
+  [ "$status" -eq 0 ]
+  [ "$output" = "https://github.com/szymonos/envy-nx.git" ]
+}
+
+@test "read_install_field falls back to sed without jq" {
+  mkdir -p "$HOME/.config/dev-env"
+  cat >"$HOME/.config/dev-env/install.json" <<'EOF'
+{
+  "repo_path": "/tmp/my-repo",
+  "repo_url": "https://github.com/example/repo.git"
+}
+EOF
+  local nojq_dir="$TEST_DIR/nojq"
+  mkdir -p "$nojq_dir"
+  local cmd real
+  for cmd in nix cat sed grep head printf; do
+    real="$(builtin command -v "$cmd" 2>/dev/null)" || continue
+    ln -sf "$real" "$nojq_dir/$cmd"
+  done
+  ln -sf "$TEST_DIR/bin/nix" "$nojq_dir/nix"
+  PATH="$nojq_dir" run _nx_read_install_field repo_path
+  [ "$status" -eq 0 ]
+  [ "$output" = "/tmp/my-repo" ]
+}
+
+@test "read_install_field returns empty when file missing" {
+  run _nx_read_install_field repo_path
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "read_install_field returns empty for missing field" {
+  if ! command -v jq &>/dev/null; then
+    skip "jq not available"
+  fi
+  mkdir -p "$HOME/.config/dev-env"
+  printf '{"version":"1.0.0"}\n' >"$HOME/.config/dev-env/install.json"
+  run _nx_read_install_field repo_path
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+# -- _nx_self_sync ------------------------------------------------------------
+
+@test "self_sync copies nx files to env dir" {
+  local fake_repo="$TEST_DIR/fake-repo"
+  mkdir -p "$fake_repo/.assets/lib" "$fake_repo/nix/scopes"
+  printf '#!/bin/sh\necho nx\n' >"$fake_repo/.assets/lib/nx.sh"
+  printf 'doctor\n' >"$fake_repo/.assets/lib/nx_doctor.sh"
+  printf 'profile\n' >"$fake_repo/.assets/lib/profile_block.sh"
+  printf '{ }\n' >"$fake_repo/nix/flake.nix"
+  printf '{ pkgs }: []\n' >"$fake_repo/nix/scopes/shell.nix"
+
+  run _nx_self_sync "$fake_repo"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"synced"* ]]
+  [ -f "$ENV_DIR/nx.sh" ]
+  [ -x "$ENV_DIR/nx.sh" ]
+  [ -f "$ENV_DIR/nx_doctor.sh" ]
+  [ -f "$ENV_DIR/profile_block.sh" ]
+  [ -f "$ENV_DIR/flake.nix" ]
+  [ -f "$ENV_DIR/scopes/shell.nix" ]
+}
+
+@test "self_sync skips missing files gracefully" {
+  local fake_repo="$TEST_DIR/empty-repo"
+  mkdir -p "$fake_repo/.assets/lib"
+  printf '#!/bin/sh\necho nx\n' >"$fake_repo/.assets/lib/nx.sh"
+
+  run _nx_self_sync "$fake_repo"
+  [ "$status" -eq 0 ]
+  [ -f "$ENV_DIR/nx.sh" ]
+  [ ! -f "$ENV_DIR/nx_doctor.sh" ]
+}
+
+# -- nx help includes setup and self ------------------------------------------
+
+@test "nx help shows setup and self commands" {
+  run nx help
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"setup"* ]]
+  [[ "$output" == *"self"* ]]
+  [[ "$output" == *"nix/setup.sh"* ]]
+  [[ "$output" == *"source repository"* ]]
+}
+
+# -- nx self help -------------------------------------------------------------
+
+@test "nx self help shows usage" {
+  run nx self help
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Usage: nx self"* ]]
+  [[ "$output" == *"update"* ]]
+  [[ "$output" == *"path"* ]]
+  [[ "$output" == *"--force"* ]]
+}
+
+@test "nx self without subcommand shows help" {
+  run nx self
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Usage: nx self"* ]]
+}
+
+# -- nx self path -------------------------------------------------------------
+
+@test "self path prints repo path from install.json" {
+  mkdir -p "$HOME/.config/dev-env"
+  printf '{"repo_path": "/home/user/envy-nx"}\n' >"$HOME/.config/dev-env/install.json"
+  run nx self path
+  [ "$status" -eq 0 ]
+  [ "$output" = "/home/user/envy-nx" ]
+}
+
+@test "self path fails when no repo path recorded" {
+  run nx self path
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"No repo path"* ]]
+}
+
+@test "self path fails with empty repo_path field" {
+  mkdir -p "$HOME/.config/dev-env"
+  printf '{"repo_path": ""}\n' >"$HOME/.config/dev-env/install.json"
+  run nx self path
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"No repo path"* ]]
+}
+
+# -- nx self update -----------------------------------------------------------
+
+@test "self update fails when repo not found" {
+  mkdir -p "$HOME/.config/dev-env"
+  printf '{"repo_path": "/nonexistent/path"}\n' >"$HOME/.config/dev-env/install.json"
+  run nx self update
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Repo not found"* ]]
+  [[ "$output" == *"nx setup"* ]]
+}
+
+@test "self update fails when no repo path set" {
+  run nx self update
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Repo not found"* ]]
+}
+
+
+@test "self update git pull succeeds on clean repo" {
+  # clone from bare so tracking is set up automatically
+  local bare_repo="$TEST_DIR/bare.git"
+  git init --bare "$bare_repo" >/dev/null 2>&1
+  local seed_repo="$TEST_DIR/seed"
+  git clone "$bare_repo" "$seed_repo" >/dev/null 2>&1
+  git -C "$seed_repo" config user.email "test@test.com"
+  git -C "$seed_repo" config user.name "Test"
+  printf 'initial\n' >"$seed_repo/file.txt"
+  git -C "$seed_repo" add file.txt
+  git -C "$seed_repo" commit -m "init" >/dev/null 2>&1
+  git -C "$seed_repo" push >/dev/null 2>&1
+  local git_repo="$TEST_DIR/git-repo"
+  git clone "$bare_repo" "$git_repo" >/dev/null 2>&1
+  git -C "$git_repo" config user.email "test@test.com"
+  git -C "$git_repo" config user.name "Test"
+  # create lib files for self_sync
+  mkdir -p "$git_repo/.assets/lib"
+  printf '#!/bin/sh\n' >"$git_repo/.assets/lib/nx.sh"
+
+  mkdir -p "$HOME/.config/dev-env"
+  printf '{"repo_path": "%s"}\n' "$git_repo" >"$HOME/.config/dev-env/install.json"
+
+  run nx self update
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Updated"* ]]
+  [[ "$output" == *"synced"* ]]
+}
+
+@test "self update --force resets to origin" {
+  local bare_repo="$TEST_DIR/bare2.git"
+  git init --bare "$bare_repo" >/dev/null 2>&1
+  local seed_repo="$TEST_DIR/seed2"
+  git clone "$bare_repo" "$seed_repo" >/dev/null 2>&1
+  git -C "$seed_repo" config user.email "test@test.com"
+  git -C "$seed_repo" config user.name "Test"
+  printf 'initial\n' >"$seed_repo/file.txt"
+  git -C "$seed_repo" add file.txt
+  git -C "$seed_repo" commit -m "init" >/dev/null 2>&1
+  git -C "$seed_repo" push >/dev/null 2>&1
+  local git_repo="$TEST_DIR/git-repo2"
+  git clone "$bare_repo" "$git_repo" >/dev/null 2>&1
+  git -C "$git_repo" config user.email "test@test.com"
+  git -C "$git_repo" config user.name "Test"
+  mkdir -p "$git_repo/.assets/lib"
+  printf '#!/bin/sh\n' >"$git_repo/.assets/lib/nx.sh"
+
+  mkdir -p "$HOME/.config/dev-env"
+  printf '{"repo_path": "%s"}\n' "$git_repo" >"$HOME/.config/dev-env/install.json"
+
+  run nx self update --force
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Force-updated"* ]]
+  [[ "$output" == *"synced"* ]]
+}
+
+# -- nx setup -----------------------------------------------------------------
+
+@test "setup runs setup.sh when repo exists" {
+  local fake_repo="$TEST_DIR/setup-repo"
+  mkdir -p "$fake_repo/nix"
+  printf '#!/bin/sh\necho "SETUP_RAN $*"\n' >"$fake_repo/nix/setup.sh"
+  chmod +x "$fake_repo/nix/setup.sh"
+  mkdir -p "$HOME/.config/dev-env"
+  printf '{"repo_path": "%s"}\n' "$fake_repo" >"$HOME/.config/dev-env/install.json"
+
+  run nx setup --shell --python
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"SETUP_RAN --shell --python"* ]]
+}
+
+
+# -- nx version with repo_path -----------------------------------------------
+
+@test "version shows repo path when present" {
+  if ! command -v jq &>/dev/null; then
+    skip "jq not available"
+  fi
+  mkdir -p "$HOME/.config/dev-env"
+  cat >"$HOME/.config/dev-env/install.json" <<'EOF'
+{
+  "entry_point": "nix",
+  "version": "1.0.0",
+  "source": "git",
+  "source_ref": "abc123",
+  "repo_path": "/home/user/envy-nx",
+  "scopes": ["shell"],
+  "installed_at": "2026-04-25T12:00:00Z",
+  "mode": "install",
+  "status": "success",
+  "phase": "done",
+  "platform": "Linux",
+  "arch": "x86_64",
+  "nix_version": "nix 2.28.0",
+  "error": "",
+  "allow_unfree": false,
+  "installed_by": "testuser",
+  "shell": "/bin/bash"
+}
+EOF
+  run nx version
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Repo:"* ]]
+  [[ "$output" == *"/home/user/envy-nx"* ]]
 }

@@ -200,22 +200,6 @@ if (Test-Path "$HOME/$openCodePath/opencode" -PathType Leaf) {
     }
 }
 
-# set up local-path (~/.local/bin)
-$localBin = [IO.Path]::Combine($HOME, '.local', 'bin')
-if (-not ($profileContent | Select-String 'local-path' -SimpleMatch -Quiet)) {
-    Write-Verbose 'adding local-path to PATH...'
-    $profileContent.AddRange([string[]]@(
-            "`n#region local-path"
-            '$localBin = [IO.Path]::Combine([Environment]::GetFolderPath(''UserProfile''), ''.local/bin'')'
-            'if ([IO.Directory]::Exists($localBin) -and $localBin -notin $env:PATH.Split([IO.Path]::PathSeparator)) {'
-            '    [Environment]::SetEnvironmentVariable(''PATH'', [string]::Join([IO.Path]::PathSeparator, $localBin, $env:PATH))'
-            '}'
-            '#endregion'
-        )
-    )
-    $isProfileModified = $true
-}
-
 # set up custom CA certs environment variables for MITM proxy certificates
 $certCustom = [IO.Path]::Combine($HOME, '.config', 'certs', 'ca-custom.crt')
 $certBundle = [IO.Path]::Combine($HOME, '.config', 'certs', 'ca-bundle.crt')

@@ -158,7 +158,7 @@ function _NxProfileRegenerate {
     }
 
     # Migration: remove old region names (before nix: prefix convention)
-    foreach ($oldRegion in @('base', 'nix', 'oh-my-posh', 'starship', 'uv')) {
+    foreach ($oldRegion in @('base', 'nix', 'oh-my-posh', 'starship', 'uv', 'local-path')) {
         if (_NxRemoveProfileRegion -Lines $profileContent -RegionName $oldRegion) {
             Write-Host "`e[33m  migrated old region '$oldRegion'`e[0m"
         }
@@ -168,7 +168,7 @@ function _NxProfileRegenerate {
     $baseProfileDst = [IO.Path]::Combine($envDir, 'profile_base.ps1')
     $baseRegion = [string[]]@(
         '#region nix:base'
-        "if (Test-Path `"$baseProfileDst`" -PathType Leaf) { . `"$baseProfileDst`" }"
+        'if (Test-Path "$HOME/.config/nix-env/profile_base.ps1" -PathType Leaf) { . "$HOME/.config/nix-env/profile_base.ps1" }'
         '#endregion'
     )
     if (_NxUpdateProfileRegion -Lines $profileContent -RegionName 'nix:base' -Content $baseRegion) {
@@ -183,6 +183,7 @@ function _NxProfileRegenerate {
         '        [Environment]::SetEnvironmentVariable(''PATH'', [string]::Join([IO.Path]::PathSeparator, $nixPath, $env:PATH))'
         '    }'
         '}'
+        'if ($env:LD_LIBRARY_PATH) { $env:LD_LIBRARY_PATH = $null }'
         '#endregion'
     )
     if (_NxUpdateProfileRegion -Lines $profileContent -RegionName 'nix:path' -Content $nixRegion) {
@@ -208,7 +209,7 @@ function _NxProfileRegenerate {
     if ([IO.File]::Exists($nixBinStarship)) {
         $starshipRegion = [string[]]@(
             '#region nix:starship'
-            "if (Test-Path `"$nixBinStarship`" -PathType Leaf) { (& `"$nixBinStarship`" init powershell) | Out-String | Invoke-Expression }"
+            'if (Test-Path "$HOME/.nix-profile/bin/starship" -PathType Leaf) { (& "$HOME/.nix-profile/bin/starship" init powershell) | Out-String | Invoke-Expression }'
             '#endregion'
         )
         if (_NxUpdateProfileRegion -Lines $profileContent -RegionName 'nix:starship' -Content $starshipRegion) {
@@ -222,8 +223,8 @@ function _NxProfileRegenerate {
     if ([IO.File]::Exists($nixBinOmp) -and [IO.File]::Exists($ompTheme)) {
         $ompRegion = [string[]]@(
             '#region nix:oh-my-posh'
-            "if (Test-Path `"$nixBinOmp`" -PathType Leaf) {"
-            "    (& `"$nixBinOmp`" init pwsh --config `"$ompTheme`") | Out-String | Invoke-Expression"
+            'if (Test-Path "$HOME/.nix-profile/bin/oh-my-posh" -PathType Leaf) {'
+            '    (& "$HOME/.nix-profile/bin/oh-my-posh" init pwsh --config "$HOME/.config/nix-env/omp/theme.omp.json") | Out-String | Invoke-Expression'
             '    [Environment]::SetEnvironmentVariable(''VIRTUAL_ENV_DISABLE_PROMPT'', $true)'
             '}'
             '#endregion'
@@ -235,32 +236,20 @@ function _NxProfileRegenerate {
 
     # -- nix:uv - uv / uvx completion ---
     $nixBinUv = [IO.Path]::Combine($nixBin, 'uv')
+    $nixBinUvx = [IO.Path]::Combine($nixBin, 'uvx')
     if ([IO.File]::Exists($nixBinUv)) {
         $uvRegion = [string[]]@(
             '#region nix:uv'
-            "if (Test-Path `"$nixBinUv`" -PathType Leaf) {"
+            'if (Test-Path "$HOME/.nix-profile/bin/uv" -PathType Leaf) {'
             '    $env:UV_SYSTEM_CERTS = ''true'''
-            "    (& `"$nixBinUv`" generate-shell-completion powershell) | Out-String | Invoke-Expression"
-            '    (& uvx --generate-shell-completion powershell) | Out-String | Invoke-Expression'
+            '    (& "$HOME/.nix-profile/bin/uv" generate-shell-completion powershell) | Out-String | Invoke-Expression'
+            '    (& "$HOME/.nix-profile/bin/uvx" --generate-shell-completion powershell) | Out-String | Invoke-Expression'
             '}'
             '#endregion'
         )
         if (_NxUpdateProfileRegion -Lines $profileContent -RegionName 'nix:uv' -Content $uvRegion) {
             Write-Host "`e[32m  updated nix:uv`e[0m"
         }
-    }
-
-    # -- local-path - ~/.local/bin ---
-    $localPathRegion = [string[]]@(
-        '#region local-path'
-        '$localBin = [IO.Path]::Combine([Environment]::GetFolderPath(''UserProfile''), ''.local/bin'')'
-        'if ([IO.Directory]::Exists($localBin) -and $localBin -notin $env:PATH.Split([IO.Path]::PathSeparator)) {'
-        '    [Environment]::SetEnvironmentVariable(''PATH'', [string]::Join([IO.Path]::PathSeparator, $localBin, $env:PATH))'
-        '}'
-        '#endregion'
-    )
-    if (_NxUpdateProfileRegion -Lines $profileContent -RegionName 'local-path' -Content $localPathRegion) {
-        Write-Host "`e[32m  updated local-path`e[0m"
     }
 
     # Save CurrentUserAllHosts profile
@@ -331,7 +320,7 @@ function _NxProfileDoctor {
     }
 
     # Check for expected regions
-    foreach ($region in @('nix:base', 'nix:path', 'local-path')) {
+    foreach ($region in @('nix:base', 'nix:path')) {
         if ($content -notmatch "#region $([regex]::Escape($region))`r?`n") {
             Write-Host "`e[33m  [warn] expected region '$region' not found - run: nx profile regenerate`e[0m"
             $ok = $false
@@ -420,11 +409,15 @@ Register-ArgumentCompleter -CommandName nx -Native -ScriptBlock {
     if ($wordToComplete) { $pos-- }
 
     $completions = switch ($pos) {
-        1 { 'search', 'install', 'remove', 'upgrade', 'rollback', 'pin', 'list', 'scope', 'overlay', 'profile', 'doctor', 'prune', 'gc', 'version', 'help' }
+        1 { 'search', 'install', 'remove', 'upgrade', 'rollback', 'pin', 'list', 'scope', 'overlay', 'profile', 'setup', 'self', 'doctor', 'prune', 'gc', 'version', 'help' }
         2 {
             if ($tokens[1].Value -eq 'scope') { 'list', 'show', 'tree', 'add', 'edit', 'remove' }
             elseif ($tokens[1].Value -eq 'pin') { 'set', 'remove', 'show', 'help' }
             elseif ($tokens[1].Value -eq 'profile') { 'doctor', 'regenerate', 'uninstall', 'help' }
+            elseif ($tokens[1].Value -eq 'self') { 'update', 'path', 'help' }
+            elseif ($tokens[1].Value -eq 'setup') {
+                '--az', '--bun', '--conda', '--docker', '--gcloud', '--k8s-base', '--k8s-dev', '--k8s-ext', '--nodejs', '--pwsh', '--python', '--rice', '--shell', '--terraform', '--zsh', '--all', '--upgrade', '--allow-unfree', '--unattended', '--update-modules', '--omp-theme', '--starship-theme', '--remove', '--help'
+            }
             elseif ($tokens[1].Value -in 'remove', 'uninstall') {
                 $pkgFile = "$HOME/.config/nix-env/packages.nix"
                 if (Test-Path $pkgFile) {
@@ -433,7 +426,11 @@ Register-ArgumentCompleter -CommandName nx -Native -ScriptBlock {
             }
         }
         default {
-            if ($tokens[1].Value -eq 'scope' -and $tokens[2].Value -in 'show', 'edit', 'remove', 'rm') {
+            if ($tokens[1].Value -eq 'self' -and $tokens[2].Value -eq 'update') { '--force' }
+            elseif ($tokens[1].Value -eq 'setup') {
+                '--az', '--bun', '--conda', '--docker', '--gcloud', '--k8s-base', '--k8s-dev', '--k8s-ext', '--nodejs', '--pwsh', '--python', '--rice', '--shell', '--terraform', '--zsh', '--all', '--upgrade', '--allow-unfree', '--unattended', '--update-modules', '--omp-theme', '--starship-theme', '--remove', '--help'
+            }
+            elseif ($tokens[1].Value -eq 'scope' -and $tokens[2].Value -in 'show', 'edit', 'remove', 'rm') {
                 $envDir = "$HOME/.config/nix-env"
                 $cfgFile = "$envDir/config.nix"
                 $scopeNames = @()

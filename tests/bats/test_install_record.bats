@@ -4,7 +4,6 @@
 bats_require_minimum_version 1.5.0
 
 setup() {
-  export DEV_ENV_DIR="$(mktemp -d)"
   export _IR_ENTRY_POINT="nix"
   export _IR_SCRIPT_ROOT="$BATS_TEST_DIRNAME/../.."
   export _IR_SCOPES="shell python"
@@ -13,6 +12,8 @@ setup() {
   export _IR_ALLOW_UNFREE="false"
   # shellcheck source=../../.assets/lib/install_record.sh
   source "$BATS_TEST_DIRNAME/../../.assets/lib/install_record.sh"
+  # override DEV_ENV_DIR after sourcing (install_record.sh sets it to ~/.config/dev-env)
+  export DEV_ENV_DIR="$(mktemp -d)"
 }
 
 teardown() {
@@ -71,4 +72,46 @@ _make_nojq_path() {
   run ! grep -q '"scopes":' "$DEV_ENV_DIR/install.json"
   run ! grep -q '"nix_version"' "$DEV_ENV_DIR/install.json"
   run ! grep -q '"allow_unfree"' "$DEV_ENV_DIR/install.json"
+}
+
+# -- repo_path and repo_url fields -------------------------------------------
+
+@test "write_install_record with jq includes repo_path and repo_url" {
+  if ! command -v jq &>/dev/null; then
+    skip "jq not available"
+  fi
+  export _IR_REPO_PATH="/home/user/envy-nx"
+  export _IR_REPO_URL="https://github.com/szymonos/envy-nx.git"
+  write_install_record "success" "complete"
+  [[ -f "$DEV_ENV_DIR/install.json" ]]
+  jq -e '.repo_path == "/home/user/envy-nx"' "$DEV_ENV_DIR/install.json"
+  jq -e '.repo_url == "https://github.com/szymonos/envy-nx.git"' "$DEV_ENV_DIR/install.json"
+}
+
+@test "write_install_record without jq includes repo_path and repo_url" {
+  local bin_dir="$BATS_TEST_TMPDIR/bin_nojq3"
+  _make_nojq_path "$bin_dir"
+  local ORIG_PATH="$PATH"
+  export _IR_REPO_PATH="/tmp/my-repo"
+  export _IR_REPO_URL="https://github.com/example/repo.git"
+  PATH="$bin_dir"
+  hash -r
+  write_install_record "success" "bootstrap"
+  PATH="$ORIG_PATH"
+  hash -r
+  [[ -f "$DEV_ENV_DIR/install.json" ]]
+  grep -q '"repo_path": "/tmp/my-repo"' "$DEV_ENV_DIR/install.json"
+  grep -q '"repo_url": "https://github.com/example/repo.git"' "$DEV_ENV_DIR/install.json"
+}
+
+@test "write_install_record with empty repo fields writes empty strings" {
+  if ! command -v jq &>/dev/null; then
+    skip "jq not available"
+  fi
+  unset _IR_REPO_PATH
+  unset _IR_REPO_URL
+  write_install_record "success" "complete"
+  [[ -f "$DEV_ENV_DIR/install.json" ]]
+  jq -e '.repo_path == ""' "$DEV_ENV_DIR/install.json"
+  jq -e '.repo_url == ""' "$DEV_ENV_DIR/install.json"
 }
