@@ -42,14 +42,15 @@ Configured in `.pre-commit-config.yaml`, run via `prek`.
 
 ### Local hooks (`tests/hooks/`)
 
-| Hook              | Script               | What it checks                                                |
-| ----------------- | -------------------- | ------------------------------------------------------------- |
-| `gremlins-check`  | `gremlins.py`        | Unwanted Unicode characters (zero-width spaces, smart quotes) |
-| `align-tables`    | `align_tables.py`    | Auto-aligns markdown tables on save                           |
-| `validate-scopes` | `validate_scopes.py` | `scopes.json` and `nix/scopes/*.nix` are consistent           |
-| `check-bash32`    | `check_bash32.py`    | Nix-path `.sh` files avoid bash 4+ constructs                 |
-| `bats-tests`      | `run_bats.py`        | Runs bats unit tests when relevant files change               |
-| `pester-tests`    | `run_pester.py`      | Runs Pester unit tests when relevant files change             |
+| Hook               | Script                | What it checks                                                |
+| ------------------ | --------------------- | ------------------------------------------------------------- |
+| `gremlins-check`   | `gremlins.py`         | Unwanted Unicode characters (zero-width spaces, smart quotes) |
+| `align-tables`     | `align_tables.py`     | Auto-aligns markdown tables on save                           |
+| `validate-scopes`  | `validate_scopes.py`  | `scopes.json` and `nix/scopes/*.nix` are consistent           |
+| `check-bash32`     | `check_bash32.py`     | Nix-path `.sh` files avoid bash 4+ constructs                 |
+| `check-zsh-compat` | `check_zsh_compat.py` | `shell_cfg` functions use `function` keyword for zsh compat   |
+| `bats-tests`       | `run_bats.py`         | Runs bats unit tests when relevant files change               |
+| `pester-tests`     | `run_pester.py`       | Runs Pester unit tests when relevant files change             |
 
 ### External hooks
 
@@ -71,10 +72,10 @@ shebang on sourced files), `SC2155` (declare and assign separately), `SC2174` (m
 
 ### Which bash version?
 
-| Files matching                                                                                         | Bash version | `set` flags         |
-| ------------------------------------------------------------------------------------------------------ | ------------ | ------------------- |
-| `nix/**/*.sh`, `.assets/lib/{scopes,profile_block,nx_doctor,certs}.sh`, `.assets/config/bash_cfg/*.sh` | 3.2          | `set -eo pipefail`  |
-| `.assets/provision/*.sh`, `.assets/scripts/*.sh`, `.assets/check/*.sh`                                 | 5.x (Linux)  | `set -euo pipefail` |
+| Files matching                                                                                          | Bash version | `set` flags         |
+| ------------------------------------------------------------------------------------------------------- | ------------ | ------------------- |
+| `nix/**/*.sh`, `.assets/lib/{scopes,profile_block,nx_doctor,certs}.sh`, `.assets/config/shell_cfg/*.sh` | 3.2          | `set -eo pipefail`  |
+| `.assets/provision/*.sh`, `.assets/scripts/*.sh`, `.assets/check/*.sh`                                  | 5.x (Linux)  | `set -euo pipefail` |
 
 Nix-path files must avoid: `mapfile`, `declare -A`, `declare -n`, `${var,,}`, negative array indices, `sed -i ''`,
 `sed -r`, `grep -P`. Full list in `ARCHITECTURE.md` under "Bash 3.2 / BSD sed constraints". Enforced by the

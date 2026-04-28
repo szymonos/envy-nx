@@ -118,7 +118,7 @@ runs inside WSL.
 
 ### 5. kubectl aliases size (LOW)
 
-`.assets/config/bash_cfg/aliases_kubectl.sh` is 52 KB. Conditionally loaded only when
+`.assets/config/shell_cfg/aliases_kubectl.sh` is 52 KB. Conditionally loaded only when
 kubectl is in scope, so no runtime impact for non-k8s users. Signals "personal dotfiles
 taste" more than "company baseline," but functionally harmless.
 

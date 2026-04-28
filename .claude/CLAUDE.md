@@ -17,7 +17,7 @@ Universal, cross-platform system configuration and developer environment setup. 
 
 ## Bash Portability
 
-Scripts in the **Nix setup path** (`nix/setup.sh`, `.assets/lib/scopes.sh`, `.assets/config/bash_cfg/`) must be compatible with **bash 3.2** (macOS system default). This means:
+Scripts in the **Nix setup path** (`nix/setup.sh`, `.assets/lib/scopes.sh`, `.assets/config/shell_cfg/`) must be compatible with **bash 3.2** (macOS system default). This means:
 
 - **No `mapfile`/`readarray`** - use `while IFS= read -r line; do arr+=("$line"); done < <(...)` instead
 - **No `declare -A`** (associative arrays) - use space-delimited strings with helper functions (`scope_has`, `scope_add`, `scope_del` in `scopes.sh`)
@@ -88,9 +88,14 @@ make help          # List all available make targets
 
 **Tooling notes:**
 
+- When cspell fails on a new word, add it to `project-words.txt` (sorted alphabetically) - that's the project dictionary
 - Pre-commit runner is `prek` (not `pre-commit`)
 - Use `pwsh` for PowerShell 7.4+ (not `powershell`)
 - Use `gh` CLI for GitHub operations
+
+## Global Renames and Pattern Changes
+
+Before fixing a pattern globally, run `rg <pattern> .` or `git grep <pattern>` first to find **all** occurrences - don't start editing until the full scope is known. For bulk renames across multiple files, use `sed -i` instead of editing files one by one. Verify with another grep afterwards.
 
 ## Bash Style (`.sh`)
 
