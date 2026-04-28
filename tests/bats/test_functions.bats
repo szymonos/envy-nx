@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Unit tests for .assets/config/bash_cfg/functions.sh
+# Unit tests for .assets/config/shell_cfg/functions.sh
 # Tests PEM parsing, fixcertpy (explicit paths), cert_intercept deduplication.
 # Requires: openssl
 # shellcheck disable=SC2034,SC2154
@@ -31,8 +31,8 @@ teardown_file() {
 
 setup() {
   command -v openssl &>/dev/null || skip "openssl not available"
-  # shellcheck source=../../.assets/config/bash_cfg/functions.sh
-  source "$BATS_TEST_DIRNAME/../../.assets/config/bash_cfg/functions.sh"
+  # shellcheck source=../../.assets/config/shell_cfg/functions.sh
+  source "$BATS_TEST_DIRNAME/../../.assets/config/shell_cfg/functions.sh"
   # override HOME so cert functions use our test directory
   export REAL_HOME="$HOME"
   export HOME="$TEST_DIR"

@@ -566,6 +566,7 @@ process {
 
         #region setup git config
         $builder = [System.Text.StringBuilder]::new()
+        $builder.AppendLine('. /etc/profile.d/nix.sh 2>/dev/null') | Out-Null
         # set up git author identity
         if (-not $chk.git_user) {
             if (-not ($user = git config --global --get user.name)) {

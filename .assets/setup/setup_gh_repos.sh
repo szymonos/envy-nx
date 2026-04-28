@@ -5,9 +5,19 @@
 '
 set -euo pipefail
 
+# ensure nix-installed git is in PATH
+if ! command -v git &>/dev/null; then
+  for _nix_p in "$HOME/.nix-profile/etc/profile.d/nix.sh" \
+    /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh; do
+    if [ -f "$_nix_p" ]; then . "$_nix_p"; break; fi
+  done
+  unset _nix_p
+fi
+
 # parse named parameters
 repos=${repos:-}
 ws_suffix=${ws_suffix:-devops}
+cloned=
 while [ $# -gt 0 ]; do
   if [[ $1 == *"--"* ]]; then
     param="${1/--/}"

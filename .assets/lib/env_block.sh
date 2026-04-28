@@ -19,20 +19,20 @@ ENV_BLOCK_MARKER="managed env"
 render_env_block() {
   # :local path
   printf '# :local path\n'
-  printf 'if [ -d "$HOME/.local/bin" ]; then\n'
-  printf '  export PATH="$HOME/.local/bin:$PATH"\n'
-  printf 'fi\n'
+  printf 'case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *)\n'
+  printf '  [ -d "$HOME/.local/bin" ] && export PATH="$HOME/.local/bin:$PATH"\n'
+  printf 'esac\n'
 
   # :aliases (generic - nix-installed tools have their aliases in the nix block)
-  if [ -f "$HOME/.config/bash/functions.sh" ]; then
+  if [ -f "$HOME/.config/shell/functions.sh" ]; then
     printf '\n# :aliases\n'
-    printf '[ -f "$HOME/.config/bash/functions.sh" ] && . "$HOME/.config/bash/functions.sh"\n'
+    printf '[ -f "$HOME/.config/shell/functions.sh" ] && . "$HOME/.config/shell/functions.sh"\n'
   fi
-  if [ -f "$HOME/.config/bash/aliases_git.sh" ] && command -v git &>/dev/null && [ ! -x "$HOME/.nix-profile/bin/git" ]; then
-    printf '[ -f "$HOME/.config/bash/aliases_git.sh" ] && . "$HOME/.config/bash/aliases_git.sh"\n'
+  if [ -f "$HOME/.config/shell/aliases_git.sh" ] && command -v git &>/dev/null && [ ! -x "$HOME/.nix-profile/bin/git" ]; then
+    printf '[ -f "$HOME/.config/shell/aliases_git.sh" ] && . "$HOME/.config/shell/aliases_git.sh"\n'
   fi
-  if [ -f "$HOME/.config/bash/aliases_kubectl.sh" ] && command -v kubectl &>/dev/null && [ ! -x "$HOME/.nix-profile/bin/kubectl" ]; then
-    printf '[ -f "$HOME/.config/bash/aliases_kubectl.sh" ] && . "$HOME/.config/bash/aliases_kubectl.sh"\n'
+  if [ -f "$HOME/.config/shell/aliases_kubectl.sh" ] && command -v kubectl &>/dev/null && [ ! -x "$HOME/.nix-profile/bin/kubectl" ]; then
+    printf '[ -f "$HOME/.config/shell/aliases_kubectl.sh" ] && . "$HOME/.config/shell/aliases_kubectl.sh"\n'
   fi
 
   # :certs

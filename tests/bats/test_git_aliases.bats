@@ -1,13 +1,13 @@
 #!/usr/bin/env bats
-# Unit tests for .assets/config/bash_cfg/aliases_git.sh - git_resolve_branch
+# Unit tests for .assets/config/shell_cfg/aliases_git.sh - git_resolve_branch
 # shellcheck disable=SC2034,SC2154
 bats_require_minimum_version 1.5.0
 
 setup() {
   # source the git aliases file (it defines git_resolve_branch)
   BASH_VERSION="${BASH_VERSION:-5.0}" # guard requires this
-  # shellcheck source=../../.assets/config/bash_cfg/aliases_git.sh
-  source "$BATS_TEST_DIRNAME/../../.assets/config/bash_cfg/aliases_git.sh"
+  # shellcheck source=../../.assets/config/shell_cfg/aliases_git.sh
+  source "$BATS_TEST_DIRNAME/../../.assets/config/shell_cfg/aliases_git.sh"
 
   # create a temp git repo for integration tests
   TEST_REPO="$(mktemp -d)"
