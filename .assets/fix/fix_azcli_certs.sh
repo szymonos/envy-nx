@@ -7,7 +7,7 @@ set -euo pipefail
 
 # resolve repo root dir
 SCRIPT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-. "$SCRIPT_ROOT/.assets/config/bash_cfg/functions.sh"
+. "$SCRIPT_ROOT/.assets/config/shell_cfg/functions.sh"
 
 # *discover azure-cli certifi cacert.pem
 AZCLI_CERTIFI=""

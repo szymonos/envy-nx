@@ -8,7 +8,7 @@ setup() {
   _NX_PKG_FILE="$_NX_ENV_DIR/packages.nix"
 
   # source only the helper functions (stub out nix/curl/jq to avoid side effects)
-  # shellcheck source=../../.assets/config/bash_cfg/aliases_nix.sh
+  # shellcheck source=../../.assets/config/shell_cfg/aliases_nix.sh
   _nx_read_pkgs() {
     [ -f "$_NX_PKG_FILE" ] && sed -n 's/^[[:space:]]*"\([^"]*\)".*/\1/p' "$_NX_PKG_FILE"
   }

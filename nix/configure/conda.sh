@@ -7,7 +7,7 @@ nix/configure/conda.sh
 set -eo pipefail
 
 SCRIPT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-. "$SCRIPT_ROOT/.assets/config/bash_cfg/functions.sh"
+. "$SCRIPT_ROOT/.assets/config/shell_cfg/functions.sh"
 
 info()  { printf "\e[96m%s\e[0m\n" "$*"; }
 ok()    { printf "\e[32m%s\e[0m\n" "$*"; }

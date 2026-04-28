@@ -219,13 +219,13 @@ jobs:
           fi
 
           echo "--- Checking nix-specific aliases removed ---"
-          if [ -f "$HOME/.config/bash/aliases_nix.sh" ]; then
+          if [ -f "$HOME/.config/shell/aliases_nix.sh" ]; then
             echo "ERROR: aliases_nix.sh still exists"
             exit 1
           fi
 
           echo "--- Checking generic config preserved ---"
-          test -f "$HOME/.config/bash/functions.sh"
+          test -f "$HOME/.config/shell/functions.sh"
 
           echo "--- Checking Nix still installed ---"
           test -d /nix/store

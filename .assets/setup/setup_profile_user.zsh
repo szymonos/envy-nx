@@ -35,9 +35,9 @@ if ! grep -q '^bindkey .* autosuggest-accept' "$HOME/.zshrc"; then
 fi
 
 # -- deploy functions.sh to user-scope if system-wide not available ----------
-if [[ ! -f "$PROFILE_PATH/functions.sh" ]] && [[ -f .assets/config/bash_cfg/functions.sh ]]; then
-  mkdir -p "$HOME/.config/bash"
-  install -m 0644 .assets/config/bash_cfg/functions.sh "$HOME/.config/bash/"
+if [[ ! -f "$PROFILE_PATH/functions.sh" ]] && [[ -f .assets/config/shell_cfg/functions.sh ]]; then
+  mkdir -p "$HOME/.config/shell"
+  install -m 0644 .assets/config/shell_cfg/functions.sh "$HOME/.config/shell/"
 fi
 
 # -- custom functions --------------------------------------------------------
@@ -46,8 +46,8 @@ if ! grep -qw 'd/functions.sh' "$HOME/.zshrc" 2>/dev/null; then
 # custom functions
 if [ -f "$PROFILE_PATH/functions.sh" ]; then
   source "$PROFILE_PATH/functions.sh"
-elif [ -f "\$HOME/.config/bash/functions.sh" ]; then
-  source "\$HOME/.config/bash/functions.sh"
+elif [ -f "\$HOME/.config/shell/functions.sh" ]; then
+  source "\$HOME/.config/shell/functions.sh"
 fi
 EOF
 fi

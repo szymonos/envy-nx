@@ -30,9 +30,21 @@ nix/setup.sh --help
 '
 set -eo pipefail
 
+# When launched from a pwsh shell, clean up .NET side-effects:
+# 1. LD_LIBRARY_PATH: .NET injects nix store library paths that cause glibc
+#    conflicts when nix commands run as children.
+# 2. PATH: pwsh adds its share/powershell directory to PATH, which contains
+#    the unwrapped pwsh binary (no LD_LIBRARY_PATH setup for libicu/openssl).
+#    This shadows the nix bin/pwsh wrapper and causes startup aborts.
+unset LD_LIBRARY_PATH 2>/dev/null || true
+PATH="$(printf '%s' "$PATH" | tr ':' '\n' | grep -v '/share/powershell$' | tr '\n' ':')"
+PATH="${PATH%:}"
+export PATH
+
 # ---- resolve paths -----------------------------------------------------------
 SCRIPT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB_DIR="$SCRIPT_ROOT/nix/lib"
+pushd "$SCRIPT_ROOT" >/dev/null
 
 # ---- source libraries --------------------------------------------------------
 # shellcheck source=lib/io.sh
@@ -49,6 +61,17 @@ source "$SCRIPT_ROOT/.assets/lib/setup_log.sh"
 # ---- trap + provenance -------------------------------------------------------
 _IR_ENTRY_POINT="nix"
 _IR_SCRIPT_ROOT="$SCRIPT_ROOT"
+_IR_REPO_PATH="$SCRIPT_ROOT"
+_IR_REPO_URL=""
+if git -C "$SCRIPT_ROOT" rev-parse --is-inside-work-tree &>/dev/null; then
+  _ir_remote="$(git -C "$SCRIPT_ROOT" remote get-url origin 2>/dev/null)" || true
+  case "$_ir_remote" in
+  https://*) _IR_REPO_URL="$_ir_remote" ;;
+  git@*:*)   _IR_REPO_URL="https://$(printf '%s' "$_ir_remote" | sed 's|^git@||; s|:|/|')" ;;
+  esac
+  unset _ir_remote
+fi
+[ -z "$_IR_REPO_URL" ] && _IR_REPO_URL="https://github.com/szymonos/envy-nx.git"
 _ir_phase="bootstrap"
 _ir_skip=false
 _ir_error=""
@@ -75,6 +98,7 @@ _on_exit() {
   _IR_MODE="${_mode:-unknown}"
   _IR_PLATFORM="${platform:-unknown}"
   write_install_record "$status" "$_ir_phase" "$error"
+  popd >/dev/null 2>&1 || true
 }
 trap _on_exit EXIT
 

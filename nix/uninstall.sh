@@ -227,8 +227,8 @@ run_phase1() {
   # 1e. Remove durable state directories and nix-specific config files
   info "removing nix-env config and state files..."
   _rm "$ENV_DIR"
-  _rm "$HOME/.config/bash/aliases_nix.sh"
-  rmdir "$HOME/.config/bash" 2>/dev/null || true
+  _rm "$HOME/.config/shell/aliases_nix.sh"
+  rmdir "$HOME/.config/shell" 2>/dev/null || true
   _rm "$HOME/.config/powershell/Scripts/_aliases_nix.ps1"
   _rm "$HOME/.config/starship.toml"
 
