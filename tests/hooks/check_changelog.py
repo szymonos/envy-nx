@@ -31,12 +31,46 @@ RUNTIME_PATTERNS = (
 
 SEMVER_HEADING = re.compile(r"^## \[(\d+\.\d+\.\d+)\] - (\d{4}-\d{2}-\d{2})\s*$")
 
+SECTION_ORDER = ("Added", "Changed", "Fixed")
+
 
 def _parse_date(date_str: str) -> date | None:
     try:
         return date.fromisoformat(date_str)
     except ValueError:
         return None
+
+
+def _validate_section_order(
+    lines: list[str], h2_headings: list[tuple[int, str]]
+) -> list[str]:
+    """Check that ### sections within each release follow the required order."""
+    errors: list[str] = []
+    order_index = {name: i for i, name in enumerate(SECTION_ORDER)}
+
+    for idx, (h2_lineno, h2_line) in enumerate(h2_headings):
+        end = h2_headings[idx + 1][0] if idx + 1 < len(h2_headings) else len(lines) + 1
+        release = re.sub(r"^## \[(.+?)\].*", r"\1", h2_line)
+        last_order = -1
+        for lineno in range(h2_lineno + 1, end):
+            if lineno - 1 >= len(lines):
+                break
+            line = lines[lineno - 1]
+            m = re.match(r"^### (\w+)", line)
+            if not m:
+                continue
+            section = m.group(1)
+            if section not in order_index:
+                continue
+            cur = order_index[section]
+            if cur < last_order:
+                prev_name = SECTION_ORDER[last_order]
+                errors.append(
+                    f"  line {lineno}: [{release}] '### {section}' must come before '### {prev_name}'"
+                )
+            last_order = cur
+
+    return errors
 
 
 def validate_headings(changelog: Path) -> list[str]:
@@ -81,6 +115,9 @@ def validate_headings(changelog: Path) -> list[str]:
                 f"  line {lineno}: date {d} is later than previous release {prev_date}"
             )
         prev_date = d
+
+    # ### sections within each release must follow: Added, Changed, Fixed
+    errors.extend(_validate_section_order(lines, h2_headings))
 
     return errors
 

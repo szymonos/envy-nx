@@ -168,7 +168,17 @@ else
   _check "cert_bundle" "fail" "$_cert_detail"
 fi
 
-# -- 7. nix_profile -----------------------------------------------------------
+# -- 7. vscode_server_env -----------------------------------------------------
+if [ -d "$HOME/.nix-profile/bin" ]; then
+  if [ -f "$HOME/.vscode-server/server-env-setup" ] && \
+     grep -q 'nix-profile/bin' "$HOME/.vscode-server/server-env-setup" 2>/dev/null; then
+    _check "vscode_server_env" "pass"
+  else
+    _check "vscode_server_env" "warn" "nix PATH not in server-env-setup; run: nx upgrade"
+  fi
+fi
+
+# -- 8. nix_profile -----------------------------------------------------------
 if command -v nix >/dev/null 2>&1; then
   if nix profile list --json 2>/dev/null | grep -q 'nix-env'; then
     _check "nix_profile" "pass"
@@ -181,7 +191,7 @@ else
   _check "nix_profile" "fail" "nix not available"
 fi
 
-# -- 8. overlay_dir -----------------------------------------------------------
+# -- 9. overlay_dir -----------------------------------------------------------
 if [ -n "${NIX_ENV_OVERLAY_DIR:-}" ]; then
   if [ -d "$NIX_ENV_OVERLAY_DIR" ] && [ -r "$NIX_ENV_OVERLAY_DIR" ]; then
     _check "overlay_dir" "pass"
@@ -190,7 +200,7 @@ if [ -n "${NIX_ENV_OVERLAY_DIR:-}" ]; then
   fi
 fi
 
-# -- 9. version_skew ----------------------------------------------------------
+# -- 10. version_skew ---------------------------------------------------------
 if command -v gh >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
   _repo_slug=""
   for _git_dir in \
