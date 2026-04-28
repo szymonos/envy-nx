@@ -35,7 +35,6 @@ help: ## Show this help message
 install: ## Install pre-commit hooks
 	@printf "📦 Installing all dependencies...\n\n"
 	uv sync --all-extras --frozen
-	uv run prek install --overwrite
 upgrade: ## Upgrade prek and hooks versions
 	@printf "\n✅ All dependencies upgraded\n\n"
 	uv sync --all-extras --upgrade --compile-bytecode
@@ -63,20 +62,28 @@ test-nix: ## Run Docker smoke test for nix path
 mkdocs-serve: ## Serve mkdocs documentation with live reload
 	uv run --extra docs mkdocs serve --livereload
 
-.PHONY: lint lint-diff lint-all
-lint: ## Run pre-commit hooks for changed files
+.PHONY: hooks hooks-install hooks-remove
+hooks: ## List available pre-commit hook IDs
+	@awk '/- id:/ {print "  " $$3}' .pre-commit-config.yaml | sort -u
+hooks-install: ## Install pre-commit hooks
+	uv run prek install --overwrite
+hooks-remove: ## Remove pre-commit hooks
+	uv run prek uninstall
+
+.PHONY: hooks lint lint-diff lint-all
+lint: ## Run pre-commit hooks for changed files (HOOK=id to run one hook)
 	@printf "🧭 Running pre-commit hooks for changed files...\n\n"
-	git add --all && uv run prek run
-lint-diff: ## Run pre-commit hooks for files changed in this diff
+	git add --all && uv run prek run $(HOOK)
+lint-diff: ## Run pre-commit hooks for files changed in this diff (HOOK=id to run one hook)
 	@printf "🧭 Running pre-commit hooks for files changed in this diff...\n\n"
 	@if [ "$$(git branch --show-current)" = "main" ]; then \
 		printf "⚠️  You are on the main branch. Skipping lint-diff.\n"; \
 	else \
-		git add --all && uv run prek run --from-ref main --to-ref HEAD; \
+		git add --all && uv run prek run $(HOOK) --from-ref main --to-ref HEAD; \
 	fi
-lint-all: ## Run pre-commit hooks for all files
+lint-all: ## Run pre-commit hooks for all files (HOOK=id to run one hook)
 	@printf "🧭 Running pre-commit hooks for all files...\n\n"
-	uv run prek run --all-files
+	uv run prek run $(HOOK) --all-files
 
 .PHONY: egsave
 egsave: ## Regenerate runnable-example scripts (requires pwsh)
