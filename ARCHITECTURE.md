@@ -17,46 +17,48 @@ cross-cutting changes.
 
 Everything sourced or called by `nix/setup.sh`, plus shell config files that get sourced at login on macOS.
 
-| File                                         | Role                                                           |
-| -------------------------------------------- | -------------------------------------------------------------- |
-| `nix/setup.sh`                               | Main entry point (slim orchestrator, sources phase libraries)  |
-| `nix/lib/io.sh`                              | Structured logging + side-effect wrappers (tests override)     |
-| `.assets/lib/setup_log.sh`                   | Log file creation and rotation (sourced by `nix/setup.sh`)     |
-| `nix/lib/phases/bootstrap.sh`                | Root guard, path resolution, nix/jq detection, arg parsing     |
-| `nix/lib/phases/platform.sh`                 | OS detection, overlay discovery, hook runner                   |
-| `nix/lib/phases/scopes.sh`                   | Load/merge scopes, resolve deps, write config.nix              |
-| `nix/lib/phases/nix_profile.sh`              | Flake update, nix profile upgrade, MITM probe                  |
-| `nix/lib/phases/configure.sh`                | GitHub CLI auth, git config, per-scope configure dispatch      |
-| `nix/lib/phases/profiles.sh`                 | Bash/zsh/PowerShell shell profile setup                        |
-| `nix/lib/phases/post_install.sh`             | Common post-install setup and nix garbage collection           |
-| `nix/lib/phases/summary.sh`                  | Mode detection and final status output                         |
-| `.assets/lib/scopes.sh`                      | Scope helpers (sourced by `nix/setup.sh` and `linux_setup.sh`) |
-| `.assets/lib/scopes.json`                    | Scope definitions (read by `scopes.sh` via jq)                 |
-| `.assets/lib/install_record.sh`              | Install provenance writer (sourced by all entry points)        |
-| `nix/configure/az.sh`                        | Configure azure-cli                                            |
-| `nix/configure/conda.sh`                     | Configure conda                                                |
-| `nix/configure/docker.sh`                    | Configure docker                                               |
-| `nix/configure/gh.sh`                        | Configure GitHub CLI                                           |
-| `nix/configure/git.sh`                       | Configure git                                                  |
-| `nix/configure/omp.sh`                       | Configure oh-my-posh                                           |
-| `nix/configure/terraform.sh`                 | Install terraform binary via tfswitch to `~/.local/bin`        |
-| `nix/configure/profiles.sh`                  | Copy bash configs to `~/.config/bash/`                         |
-| `nix/configure/profiles.zsh`                 | Copy zsh configs (zsh, not bash, but runs on macOS)            |
-| `nix/configure/profiles.ps1`                 | Copy PowerShell configs to `~/.config/powershell/`             |
-| `nix/configure/starship.sh`                  | Configure starship prompt                                      |
-| `.assets/lib/profile_block.sh`               | Managed block library (sourced by profiles.sh/.zsh, nx)        |
-| `.assets/lib/env_block.sh`                   | Generic env block (sourced by setup_profile_user; legacy)      |
-| `.assets/lib/certs.sh`                       | CA bundle builder + VS Code Server cert setup                  |
-| `.assets/lib/nx.sh`                          | Standalone nx CLI + profile block rendering (bash/zsh)         |
-| `.assets/lib/nx_doctor.sh`                   | Health check script (`nx doctor`)                              |
-| `.assets/config/bash_cfg/aliases_nix.sh`     | Shell config - aliases + thin nx wrapper (sources `nx.sh`)     |
-| `.assets/config/bash_cfg/aliases_git.sh`     | Shell config - git aliases                                     |
-| `.assets/config/bash_cfg/aliases_kubectl.sh` | Shell config - kubectl aliases                                 |
-| `.assets/config/bash_cfg/functions.sh`       | Shell config - shared functions                                |
-| `.assets/setup/setup_common.sh`              | Post-install setup (called via `nix/setup.sh`)                 |
-| `.assets/setup/setup_profile_user.ps1`       | PowerShell user profile (certs, local-path, etc.)              |
-| `.assets/provision/install_copilot.sh`       | Post-install - GitHub Copilot CLI                              |
-| `nix/uninstall.sh`                           | Removes nix-env environment, optionally Nix itself             |
+| File                                          | Role                                                           |
+| --------------------------------------------- | -------------------------------------------------------------- |
+| `nix/setup.sh`                                | Main entry point (slim orchestrator, sources phase libraries)  |
+| `nix/lib/io.sh`                               | Structured logging + side-effect wrappers (tests override)     |
+| `.assets/lib/setup_log.sh`                    | Log file creation and rotation (sourced by `nix/setup.sh`)     |
+| `nix/lib/phases/bootstrap.sh`                 | Root guard, path resolution, nix/jq detection, arg parsing     |
+| `nix/lib/phases/platform.sh`                  | OS detection, overlay discovery, hook runner                   |
+| `nix/lib/phases/scopes.sh`                    | Load/merge scopes, resolve deps, write config.nix              |
+| `nix/lib/phases/nix_profile.sh`               | Flake update, nix profile upgrade, MITM probe                  |
+| `nix/lib/phases/configure.sh`                 | GitHub CLI auth, git config, per-scope configure dispatch      |
+| `nix/lib/phases/profiles.sh`                  | Bash/zsh/PowerShell shell profile setup                        |
+| `nix/lib/phases/post_install.sh`              | Common post-install setup and nix garbage collection           |
+| `nix/lib/phases/summary.sh`                   | Mode detection and final status output                         |
+| `.assets/lib/scopes.sh`                       | Scope helpers (sourced by `nix/setup.sh` and `linux_setup.sh`) |
+| `.assets/lib/scopes.json`                     | Scope definitions (read by `scopes.sh` via jq)                 |
+| `.assets/lib/install_record.sh`               | Install provenance writer (sourced by all entry points)        |
+| `nix/configure/az.sh`                         | Configure azure-cli                                            |
+| `nix/configure/conda.sh`                      | Configure conda                                                |
+| `nix/configure/docker.sh`                     | Configure docker                                               |
+| `nix/configure/gh.sh`                         | Configure GitHub CLI                                           |
+| `nix/configure/git.sh`                        | Configure git                                                  |
+| `nix/configure/omp.sh`                        | Configure oh-my-posh                                           |
+| `nix/configure/terraform.sh`                  | Install terraform binary via tfswitch to `~/.local/bin`        |
+| `nix/configure/profiles.sh`                   | Copy shell configs to `~/.config/shell/`                       |
+| `nix/configure/profiles.zsh`                  | Copy zsh configs (zsh, not bash, but runs on macOS)            |
+| `nix/configure/profiles.ps1`                  | Copy PowerShell configs to `~/.config/powershell/`             |
+| `nix/configure/starship.sh`                   | Configure starship prompt                                      |
+| `.assets/lib/profile_block.sh`                | Managed block library (sourced by profiles.sh/.zsh, nx)        |
+| `.assets/lib/env_block.sh`                    | Generic env block (sourced by setup_profile_user; legacy)      |
+| `.assets/lib/certs.sh`                        | CA bundle builder + VS Code Server cert setup                  |
+| `.assets/lib/nx.sh`                           | Standalone nx CLI + profile block rendering (bash/zsh)         |
+| `.assets/lib/nx_doctor.sh`                    | Health check script (`nx doctor`)                              |
+| `.assets/config/shell_cfg/aliases_nix.sh`     | Shell config - aliases + thin nx wrapper (sources `nx.sh`)     |
+| `.assets/config/shell_cfg/aliases_git.sh`     | Shell config - git aliases                                     |
+| `.assets/config/shell_cfg/aliases_kubectl.sh` | Shell config - kubectl aliases                                 |
+| `.assets/config/shell_cfg/functions.sh`       | Shell config - shared functions                                |
+| `.assets/config/shell_cfg/completions.bash`   | Shell config - bash tab completions for nx                     |
+| `.assets/config/shell_cfg/completions.zsh`    | Shell config - zsh tab completions for nx                      |
+| `.assets/setup/setup_common.sh`               | Post-install setup (called via `nix/setup.sh`)                 |
+| `.assets/setup/setup_profile_user.ps1`        | PowerShell user profile (certs, local-path, etc.)              |
+| `.assets/provision/install_copilot.sh`        | Post-install - GitHub Copilot CLI                              |
+| `nix/uninstall.sh`                            | Removes nix-env environment, optionally Nix itself             |
 
 ### linux-only (bash 4+ OK)
 
@@ -128,19 +130,19 @@ Entry point: `nix/setup.sh` (orchestrator, ~110 lines).
 
 **Configure scripts** (dispatched by `configure.sh` via [`_io_run`](nix/lib/io.sh)):
 
-| File                         | Condition         | Dependencies                                                          |
-| ---------------------------- | ----------------- | --------------------------------------------------------------------- |
-| `nix/configure/gh.sh`        | always            | -                                                                     |
-| `nix/configure/git.sh`       | always            | -                                                                     |
-| `nix/configure/docker.sh`    | scope: docker     | -                                                                     |
-| `nix/configure/conda.sh`     | scope: conda      | sources `functions.sh`                                                |
-| `nix/configure/az.sh`        | scope: az         | calls `install_azurecli_uv.sh`                                        |
-| `nix/configure/terraform.sh` | scope: terraform  | installs terraform binary via tfswitch to `~/.local/bin`              |
-| `nix/configure/omp.sh`       | scope: oh_my_posh | reads `.assets/config/omp_cfg/`                                       |
-| `nix/configure/starship.sh`  | scope: starship   | reads `.assets/config/starship_cfg/`                                  |
-| `nix/configure/profiles.sh`  | always            | copies `bash_cfg/`; sources `certs.sh`; delegates blocks to `nx.sh`   |
-| `nix/configure/profiles.zsh` | scope: zsh        | copies `bash_cfg/`; installs zsh plugins; delegates blocks to `nx.sh` |
-| `nix/configure/profiles.ps1` | scope: pwsh       | copies `pwsh_cfg/`; delegates profile regions to `_aliases_nix.ps1`   |
+| File                         | Condition         | Dependencies                                                           |
+| ---------------------------- | ----------------- | ---------------------------------------------------------------------- |
+| `nix/configure/gh.sh`        | always            | -                                                                      |
+| `nix/configure/git.sh`       | always            | -                                                                      |
+| `nix/configure/docker.sh`    | scope: docker     | -                                                                      |
+| `nix/configure/conda.sh`     | scope: conda      | sources `functions.sh`                                                 |
+| `nix/configure/az.sh`        | scope: az         | calls `install_azurecli_uv.sh`                                         |
+| `nix/configure/terraform.sh` | scope: terraform  | installs terraform binary via tfswitch to `~/.local/bin`               |
+| `nix/configure/omp.sh`       | scope: oh_my_posh | reads `.assets/config/omp_cfg/`                                        |
+| `nix/configure/starship.sh`  | scope: starship   | reads `.assets/config/starship_cfg/`                                   |
+| `nix/configure/profiles.sh`  | always            | copies `shell_cfg/`; sources `certs.sh`; delegates blocks to `nx.sh`   |
+| `nix/configure/profiles.zsh` | scope: zsh        | copies `shell_cfg/`; installs zsh plugins; delegates blocks to `nx.sh` |
+| `nix/configure/profiles.ps1` | scope: pwsh       | copies `pwsh_cfg/`; delegates profile regions to `_aliases_nix.ps1`    |
 
 **Post-install dispatch** (dispatched by `post_install.sh` via [`_io_run`](nix/lib/io.sh)):
 
@@ -186,10 +188,10 @@ sourced in lexical order.
 Local customization layer. Discovery order: `$NIX_ENV_OVERLAY_DIR` (if set and exists), then
 `~/.config/nix-env/local/`. Not created automatically.
 
-| Path            | Purpose                                          |
-| --------------- | ------------------------------------------------ |
-| `scopes/*.nix`  | Extra nix packages (copied as `local_*.nix`)     |
-| `bash_cfg/*.sh` | Extra shell config (copied to `~/.config/bash/`) |
+| Path           | Purpose                                           |
+| -------------- | ------------------------------------------------- |
+| `scopes/*.nix` | Extra nix packages (copied as `local_*.nix`)      |
+| `shell_cfg/*`  | Extra shell config (copied to `~/.config/shell/`) |
 
 Overlay scope files are prefixed with `local_` when copied to `~/.config/nix-env/scopes/` to avoid collisions with
 base scope names. The flake reads all `*.nix` from the scopes directory, so overlay packages are included
@@ -203,16 +205,19 @@ automatically.
 - `nx scope add <name>` -- create a stub `.nix` file in the overlay directory, copy it to
   `scopes/local_<name>.nix`, and register it in `config.nix`.
 
-### Shell config (`~/.config/bash/`)
+### Shell config (`~/.config/shell/`)
 
 Sourced by `~/.bashrc` and `~/.zshrc` on all platforms including macOS.
+Files use extension convention: `.sh` (shared), `.bash` (bash-only), `.zsh` (zsh-only).
 
-| Runtime file         | Source                                       |
-| -------------------- | -------------------------------------------- |
-| `aliases_nix.sh`     | `.assets/config/bash_cfg/aliases_nix.sh`     |
-| `aliases_git.sh`     | `.assets/config/bash_cfg/aliases_git.sh`     |
-| `aliases_kubectl.sh` | `.assets/config/bash_cfg/aliases_kubectl.sh` |
-| `functions.sh`       | `.assets/config/bash_cfg/functions.sh`       |
+| Runtime file         | Source                                        |
+| -------------------- | --------------------------------------------- |
+| `aliases_nix.sh`     | `.assets/config/shell_cfg/aliases_nix.sh`     |
+| `aliases_git.sh`     | `.assets/config/shell_cfg/aliases_git.sh`     |
+| `aliases_kubectl.sh` | `.assets/config/shell_cfg/aliases_kubectl.sh` |
+| `functions.sh`       | `.assets/config/shell_cfg/functions.sh`       |
+| `completions.bash`   | `.assets/config/shell_cfg/completions.bash`   |
+| `completions.zsh`    | `.assets/config/shell_cfg/completions.zsh`    |
 
 ### PowerShell config (`~/.config/powershell/`)
 
@@ -473,9 +478,10 @@ like `NODE_EXTRA_CA_CERTS` are invisible to extensions. This causes `SELF_SIGNED
 extensions that call HTTPS APIs (GitHub Actions, GitHub Pull Requests, etc.).
 
 The fix is `~/.vscode-server/server-env-setup` - a file VS Code Server sources before launching.
-`setup_vscode_certs` in `.assets/lib/certs.sh` writes `NODE_EXTRA_CA_CERTS` there, creating the directory and file
-if they don't exist. This handles the bootstrapping problem where setup runs before the first VS Code remote
-session creates `~/.vscode-server/`.
+`setup_vscode_certs` in `.assets/lib/vscode.sh` writes `NODE_EXTRA_CA_CERTS` there, and
+`setup_vscode_server_env` adds nix PATH entries so extensions (e.g. PowerShell) find nix-installed
+tools. Both create the directory and file if they don't exist, handling the bootstrapping problem
+where setup runs before the first VS Code remote session creates `~/.vscode-server/`.
 
 This is tool-specific but VS Code is the standard editor in corporate environments where MITM proxies are common.
 The same pattern applies to both WSL and remote-SSH connections.
@@ -585,7 +591,7 @@ Alias files are assigned to the correct block based on how the tool was installe
 export PATH="$HOME/.nix-profile/bin:$PATH"
 export NIX_SSL_CERT_FILE="$HOME/.config/certs/ca-bundle.crt"
 # :aliases
-. "$HOME/.config/bash/aliases_nix.sh"
+. "$HOME/.config/shell/aliases_nix.sh"
 # :oh-my-posh
 [ -x "$HOME/.nix-profile/bin/oh-my-posh" ] && eval "$(oh-my-posh init bash ...)"
 # <<< nix-env managed <<<

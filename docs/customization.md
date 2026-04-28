@@ -90,7 +90,7 @@ The overlay directory is where custom scopes, shell configs, and hooks live. It 
 overlay-dir/
 ├── scopes/                       # custom scope files (copied as local_*.nix)
 │   └── devtools.nix
-├── bash_cfg/                     # extra shell config (sourced on login)
+├── shell_cfg/                    # extra shell config (sourced on login)
 │   └── aliases_custom.sh
 └── hooks/
     ├── pre-setup.d/              # run before scope resolution
@@ -100,7 +100,7 @@ overlay-dir/
 ```
 
 - **Scopes** are copied with `local_` prefix during `nix/setup.sh` or `nx scope add`
-- **Shell configs** in `bash_cfg/` are sourced alongside standard configs at login
+- **Shell configs** in `shell_cfg/` are sourced alongside standard configs at login
 - **Hooks** run during `nix/setup.sh` at the indicated phase, with access to `NIX_ENV_PHASE`, `NIX_ENV_SCOPES`, and `NIX_ENV_PLATFORM`
 
 ### Sharing with a team
