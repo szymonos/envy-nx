@@ -1,9 +1,9 @@
 #region functions
-git_current_branch() {
+function git_current_branch() {
   git branch --show-current
 }
 
-git_resolve_branch() {
+function git_resolve_branch() {
   case "$1" in
   '')
     pattern='(^|/)dev(|el|elop|elopment)$|(^|/)ma(in|ster)$|(^|/)trunk$'
@@ -30,12 +30,12 @@ git_resolve_branch() {
   [ -n "$br" ] && echo "$br" || echo "$pattern"
 }
 
-gsw() {
+function gsw() {
   br=$(git_resolve_branch $1)
   git switch "$(git_resolve_branch "$br")"
 }
 
-grmb() {
+function grmb() {
   br=$(git_resolve_branch $1)
   git reset "$(git merge-base "$(grt)"/"$br" HEAD)"
 }

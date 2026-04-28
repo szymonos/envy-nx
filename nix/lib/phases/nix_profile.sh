@@ -75,8 +75,8 @@ phase_nix_profile_mitm_probe() {
     fi
     if [[ "$_probe_failed" == "true" ]] && command -v openssl &>/dev/null; then
       warn "SSL verification failed - MITM proxy detected, intercepting certificates..."
-      # shellcheck source=../../../.assets/config/bash_cfg/functions.sh
-      source "$SCRIPT_ROOT/.assets/config/bash_cfg/functions.sh"
+      # shellcheck source=../../../.assets/config/shell_cfg/functions.sh
+      source "$SCRIPT_ROOT/.assets/config/shell_cfg/functions.sh"
       cert_intercept
       build_ca_bundle
     fi

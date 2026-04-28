@@ -49,7 +49,7 @@ if ($IsLinux -and (Test-Path /etc/os-release -PathType Leaf)) {
     [IO.Path]::Combine($HOME, '.bun', 'bin')
     [IO.Path]::Combine($HOME, '.cargo', 'bin')
 ) | ForEach-Object {
-    if ((Test-Path $_ -PathType Container) -and $_ -notin $env:PATH.Split([IO.Path]::PathSeparator)) {
+    if ([IO.Directory]::Exists($_) -and $_ -notin $env:PATH.Split([IO.Path]::PathSeparator)) {
         [Environment]::SetEnvironmentVariable('PATH', [string]::Join([IO.Path]::PathSeparator, $_, $env:PATH))
     }
 }

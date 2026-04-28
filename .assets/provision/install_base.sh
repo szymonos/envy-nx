@@ -30,17 +30,17 @@ arch)
 fedora)
   dnf makecache -q 2>/dev/null || true
   rpm -q patch >/dev/null 2>&1 || dnf group install -y development-tools 2>/dev/null || true
-  dnf install -y -q curl iputils sudo tar vim
+  dnf install -y -q curl iputils openssh-clients sudo tar vim
   ;;
 debian | ubuntu)
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq
-  apt-get install -y -qq build-essential ca-certificates curl gnupg iputils-tracepath sudo tar vim
+  apt-get install -y -qq build-essential ca-certificates curl gnupg iputils-tracepath openssh-client sudo tar vim
   ;;
 opensuse)
   zypper refresh 2>/dev/null || true
   rpm -q patch >/dev/null 2>&1 || zypper --non-interactive --no-refresh in -yt pattern devel_basis 2>/dev/null || true
-  zypper --non-interactive --no-refresh in -y curl sudo tar vim
+  zypper --non-interactive --no-refresh in -y curl openssh sudo tar vim
   ;;
 *)
   printf '\e[33mUnsupported distro, skipping system base install.\e[0m\n' >&2

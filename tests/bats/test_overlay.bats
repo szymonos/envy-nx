@@ -59,8 +59,8 @@ teardown() {
 }
 
 @test "overlay shows shell config files" {
-  mkdir -p "$ENV_DIR/local/bash_cfg"
-  touch "$ENV_DIR/local/bash_cfg/custom.sh"
+  mkdir -p "$ENV_DIR/local/shell_cfg"
+  touch "$ENV_DIR/local/shell_cfg/custom.sh"
   run nx overlay
   [[ "$output" == *"Shell config:"* ]]
   [[ "$output" == *"custom.sh"* ]]
@@ -97,17 +97,17 @@ teardown() {
 }
 
 @test "overlay shows shell config sync status" {
-  mkdir -p "$ENV_DIR/local/bash_cfg" "$HOME/.config/bash"
-  printf 'echo hello\n' >"$ENV_DIR/local/bash_cfg/custom.sh"
-  cp "$ENV_DIR/local/bash_cfg/custom.sh" "$HOME/.config/bash/custom.sh"
+  mkdir -p "$ENV_DIR/local/shell_cfg" "$HOME/.config/shell"
+  printf 'echo hello\n' >"$ENV_DIR/local/shell_cfg/custom.sh"
+  cp "$ENV_DIR/local/shell_cfg/custom.sh" "$HOME/.config/shell/custom.sh"
   run nx overlay
   [[ "$output" == *"synced"* ]]
 }
 
 @test "overlay shows differs indicator for changed shell config" {
-  mkdir -p "$ENV_DIR/local/bash_cfg" "$HOME/.config/bash"
-  printf 'echo hello\n' >"$ENV_DIR/local/bash_cfg/custom.sh"
-  printf 'echo world\n' >"$HOME/.config/bash/custom.sh"
+  mkdir -p "$ENV_DIR/local/shell_cfg" "$HOME/.config/shell"
+  printf 'echo hello\n' >"$ENV_DIR/local/shell_cfg/custom.sh"
+  printf 'echo world\n' >"$HOME/.config/shell/custom.sh"
   run nx overlay
   [[ "$output" == *"differs"* ]]
 }

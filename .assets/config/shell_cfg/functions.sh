@@ -1,9 +1,9 @@
 : '
-. .assets/config/bash_cfg/functions.sh
+. .assets/config/shell_cfg/functions.sh
 '
 
 # *Function to display system information in a user-friendly format
-sysinfo() {
+function sysinfo() {
   # dot-source os-release file
   . /etc/os-release
   # get cpu info
@@ -14,10 +14,11 @@ sysinfo() {
     s//\1/;p;q
   }' /proc/cpuinfo)"
   # calculate memory usage
-  local mem_inf=()
-  while IFS= read -r _l; do mem_inf+=("$_l"); done < <(awk -F ':|kB' '/MemTotal:|MemAvailable:/ {print $2}' /proc/meminfo)
-  mem_total=${mem_inf[0]}
-  mem_used=$((mem_total - mem_inf[1]))
+  local mem_total mem_available
+  read -r mem_total mem_available < <(awk -F ':|kB' \
+    '/MemTotal:/ {t=$2} /MemAvailable:/ {a=$2} \
+    END {gsub(/[[:space:]]/, "", t); gsub(/[[:space:]]/, "", a); print t, a}' /proc/meminfo)
+  mem_used=$((mem_total - mem_available))
   mem_perc=$(awk '{printf "%.0f", $1 * $2 / $3}' <<<"$mem_used 100 $mem_total")
   mem_used=$(awk '{printf "%.2f", $1 / $2 / $3}' <<<"$mem_used 1024 1024")
   mem_total=$(awk '{printf "%.2f", $1 / $2 / $3}' <<<"$mem_total 1024 1024")
@@ -49,7 +50,7 @@ alias gsi='sysinfo'
 # Usage: fixcertpy [path ...]
 #   If paths are provided, patches only those cacert.pem files.
 #   If no paths are given, auto-discovers Python certifi bundles (venv, pip).
-fixcertpy() {
+function fixcertpy() {
   # openssl is always needed for serial/fingerprint extraction
   type openssl &>/dev/null || return 1
 
@@ -193,7 +194,7 @@ $(openssl x509 -outform PEM <<< "$pem")"
 alias fxcertpy='fixcertpy'
 
 # *Function for intercepting MITM proxy certificates from TLS chain and saving to user cert bundle
-cert_intercept() {
+function cert_intercept() {
   # check if openssl is available
   if ! type openssl &>/dev/null; then
     printf '\e[31mopenssl is required but not installed.\e[0m\n' >&2
