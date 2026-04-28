@@ -9,6 +9,7 @@ bootstrappers
 certifi
 chsh
 cloudsdk
+compdef
 coreutils
 desync
 devbox
@@ -26,6 +27,7 @@ kubecolor
 kubectx
 kubelogin
 kustomize
+libicu
 makefiles
 mapfile
 mgmt
@@ -58,6 +60,7 @@ sonoma
 sourceable
 stdlib
 subshells
+sysinfo
 szymonos
 tflint
 tfswitch

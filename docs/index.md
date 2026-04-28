@@ -89,7 +89,7 @@ graph TD
     B --> C["User packages (nx install)"]
     A -- "nix/scopes/*.nix" --> D["Curated scopes"]
     B -- "overlay/scopes/*.nix" --> E["Custom scopes"]
-    B -- "overlay/bash_cfg/*.sh" --> F["Shell config"]
+    B -- "overlay/shell_cfg/*" --> F["Shell config"]
     B -- "overlay/hooks/*.sh" --> G["Setup hooks"]
     C -- "packages.nix" --> H["Ad-hoc packages"]
 ```

@@ -109,7 +109,7 @@ Two blocks are written to each rc file (`~/.bashrc`, `~/.zshrc`):
 export PATH="$HOME/.nix-profile/bin:$PATH"
 export NIX_SSL_CERT_FILE="$HOME/.config/certs/ca-bundle.crt"
 # :aliases
-. "$HOME/.config/bash/aliases_nix.sh"
+. "$HOME/.config/shell/aliases_nix.sh"
 # :oh-my-posh
 [ -x "$HOME/.nix-profile/bin/oh-my-posh" ] && eval "$(oh-my-posh init bash ...)"
 # <<< nix-env managed <<<
@@ -200,7 +200,7 @@ flowchart LR
             P["packages.nix"]
             NX["nx.sh + nx_doctor.sh"]
         end
-        subgraph bash_cfg["~/.config/bash/"]
+        subgraph shell_cfg["~/.config/shell/"]
             A["aliases + functions"]
         end
         subgraph certs["~/.config/certs/"]

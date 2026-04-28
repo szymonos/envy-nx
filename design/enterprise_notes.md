@@ -20,11 +20,11 @@ distribution/signing infrastructure are enterprise-specific.
 
 ### Extension points (already working for base + user tiers)
 
-| Extension point | Base location              | Overlay location                |
-| --------------- | -------------------------- | ------------------------------- |
-| Nix scopes      | `nix/scopes/*.nix`         | `<overlay>/scopes/*.nix`        |
-| Shell aliases   | `.assets/config/bash_cfg/` | `<overlay>/bash_cfg/`           |
-| Post-install    | `nix/configure/*.sh`       | `<overlay>/hooks/post-setup.d/` |
+| Extension point | Base location               | Overlay location                |
+| --------------- | --------------------------- | ------------------------------- |
+| Nix scopes      | `nix/scopes/*.nix`          | `<overlay>/scopes/*.nix`        |
+| Shell aliases   | `.assets/config/shell_cfg/` | `<overlay>/shell_cfg/`          |
+| Post-install    | `nix/configure/*.sh`        | `<overlay>/hooks/post-setup.d/` |
 
 ### What the org tier adds (not implemented)
 
