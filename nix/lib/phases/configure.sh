@@ -47,6 +47,10 @@ phase_configure_per_scope() {
     terraform)
       _io_run "$CONFIGURE_DIR/terraform.sh" || warn "terraform configuration failed"
       ;;
+    pwsh)
+      mkdir -p "$HOME/.local/bin"
+      ln -sf "$HOME/.nix-profile/bin/pwsh" "$HOME/.local/bin/pwsh"
+      ;;
     esac
   done
 }

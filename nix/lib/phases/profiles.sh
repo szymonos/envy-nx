@@ -18,6 +18,6 @@ phase_profiles_zsh() {
 phase_profiles_pwsh() {
   if command -v pwsh &>/dev/null; then
     info "setting up PowerShell profile..."
-    _io_run pwsh -nop "$CONFIGURE_DIR/profiles.ps1" || warn "PowerShell profile setup failed"
+    _io_run _io_pwsh_nop "$CONFIGURE_DIR/profiles.ps1" || warn "PowerShell profile setup failed"
   fi
 }

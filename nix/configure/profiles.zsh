@@ -10,13 +10,15 @@ set -euo pipefail
 SCRIPT_ROOT="${0:A:h}"
 REPO_ROOT="${SCRIPT_ROOT:h:h}"
 LIB="$REPO_ROOT/.assets/lib"
-BASH_CFG="$REPO_ROOT/.assets/config/bash_cfg"
+SHELL_CFG="$REPO_ROOT/.assets/config/shell_cfg"
 
 info() { printf "\e[96m%s\e[0m\n" "$*"; }
 ok()   { printf "\e[32m%s\e[0m\n" "$*"; }
 
 # shellcheck source=../../.assets/lib/certs.sh
 source "$LIB/certs.sh"
+# shellcheck source=../../.assets/lib/vscode.sh
+source "$LIB/vscode.sh"
 
 info "configuring zsh profile..."
 
@@ -35,18 +37,19 @@ _install_cfg_file() {
   fi
 }
 
-_install_cfg_file "$BASH_CFG/aliases_nix.sh"     "$HOME/.config/bash/aliases_nix.sh"
-_install_cfg_file "$BASH_CFG/aliases_git.sh"     "$HOME/.config/bash/aliases_git.sh"
-_install_cfg_file "$BASH_CFG/aliases_kubectl.sh" "$HOME/.config/bash/aliases_kubectl.sh"
-_install_cfg_file "$BASH_CFG/functions.sh"       "$HOME/.config/bash/functions.sh"
+_install_cfg_file "$SHELL_CFG/aliases_nix.sh"      "$HOME/.config/shell/aliases_nix.sh"
+_install_cfg_file "$SHELL_CFG/aliases_git.sh"      "$HOME/.config/shell/aliases_git.sh"
+_install_cfg_file "$SHELL_CFG/aliases_kubectl.sh"  "$HOME/.config/shell/aliases_kubectl.sh"
+_install_cfg_file "$SHELL_CFG/functions.sh"        "$HOME/.config/shell/functions.sh"
+_install_cfg_file "$SHELL_CFG/completions.zsh"     "$HOME/.config/shell/completions.zsh"
 
 # ---------------------------------------------------------------------------
 # Copy overlay shell config files (if overlay directory is active)
 # ---------------------------------------------------------------------------
-if [[ -n "${OVERLAY_DIR:-}" ]] && [[ -d "$OVERLAY_DIR/bash_cfg" ]]; then
-  for _overlay_cfg in "$OVERLAY_DIR/bash_cfg"/*.sh; do
+if [[ -n "${OVERLAY_DIR:-}" ]] && [[ -d "$OVERLAY_DIR/shell_cfg" ]]; then
+  for _overlay_cfg in "$OVERLAY_DIR/shell_cfg"/*; do
     [[ -f "$_overlay_cfg" ]] || continue
-    _install_cfg_file "$_overlay_cfg" "$HOME/.config/bash/${_overlay_cfg:t}"
+    _install_cfg_file "$_overlay_cfg" "$HOME/.config/shell/${_overlay_cfg:t}"
   done
 fi
 
@@ -77,10 +80,11 @@ for plugin in "${ZSH_PLUGIN_ORDER[@]}"; do
 done
 
 # ---------------------------------------------------------------------------
-# Build the CA bundle and configure VS Code Server certs
+# Build the CA bundle and configure VS Code Server
 # ---------------------------------------------------------------------------
 build_ca_bundle
 setup_vscode_certs
+setup_vscode_server_env
 
 # ---------------------------------------------------------------------------
 # Delegate managed block rendering to nx

@@ -112,7 +112,16 @@ def main(argv: list[str] | None = None) -> int:
         "Invoke-Pester -Configuration $cfg"
     )
 
-    result = subprocess.run(["pwsh", "-c", pester_cmd])
+    pwsh = Path.home() / ".nix-profile" / "bin" / "pwsh"
+    if not pwsh.exists():
+        pwsh_path = shutil.which("pwsh") or "pwsh"
+    else:
+        pwsh_path = str(pwsh)
+
+    env = {**__import__("os").environ}
+    env.pop("LD_LIBRARY_PATH", None)
+
+    result = subprocess.run([pwsh_path, "-nop", "-c", pester_cmd], env=env)
     return result.returncode
 
 

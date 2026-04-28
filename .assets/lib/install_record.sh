@@ -9,6 +9,8 @@
 #   _IR_ENTRY_POINT="nix"      # nix, linux, wsl/nix
 #   _IR_VERSION="v1.2.0"       # optional: skip git detection, use this version
 #   _IR_SCRIPT_ROOT="/path"    # repo root, for git version detection (unused when _IR_VERSION set)
+#   _IR_REPO_PATH="/path"      # absolute path to repo root
+#   _IR_REPO_URL="https://..."  # HTTPS clone URL for the repo
 #   _IR_SCOPES="az shell"      # space-separated scope list
 #   _IR_MODE="install"         # install, upgrade, reconfigure, remove
 #   _IR_PLATFORM="Linux"       # macOS, Linux
@@ -76,6 +78,8 @@ write_install_record() {
       --arg version "$version" \
       --arg source "$source" \
       --arg source_ref "${source_ref:-}" \
+      --arg repo_path "${_IR_REPO_PATH:-}" \
+      --arg repo_url "${_IR_REPO_URL:-}" \
       --argjson scopes "$scopes_json" \
       --argjson allow_unfree "${_IR_ALLOW_UNFREE:-false}" \
       --arg installed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -93,6 +97,8 @@ write_install_record() {
         version: $version,
         source: $source,
         source_ref: $source_ref,
+        repo_path: $repo_path,
+        repo_url: $repo_url,
         scopes: $scopes,
         allow_unfree: $allow_unfree,
         installed_at: $installed_at,
@@ -113,6 +119,8 @@ write_install_record() {
   "entry_point": "$entry_point",
   "version": "$version",
   "source": "$source",
+  "repo_path": "${_IR_REPO_PATH:-}",
+  "repo_url": "${_IR_REPO_URL:-}",
   "installed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "installed_by": "$(id -un)",
   "platform": "${_IR_PLATFORM:-unknown}",
