@@ -67,7 +67,7 @@ if git -C "$SCRIPT_ROOT" rev-parse --is-inside-work-tree &>/dev/null; then
   _ir_remote="$(git -C "$SCRIPT_ROOT" remote get-url origin 2>/dev/null)" || true
   case "$_ir_remote" in
   https://*) _IR_REPO_URL="$_ir_remote" ;;
-  git@*:*)   _IR_REPO_URL="https://$(printf '%s' "$_ir_remote" | sed 's|^git@||; s|:|/|')" ;;
+  git@*:*) _IR_REPO_URL="https://$(printf '%s' "$_ir_remote" | sed 's|^git@||; s|:|/|')" ;;
   esac
   unset _ir_remote
 fi

@@ -18,11 +18,11 @@ setup_file() {
     -days 1 -nodes -subj "/CN=Test Cert Two" 2>/dev/null
 
   # create a multi-cert bundle
-  cat "$TEST_DIR/cert1.pem" "$TEST_DIR/cert2.pem" > "$TEST_DIR/ca-custom.crt"
+  cat "$TEST_DIR/cert1.pem" "$TEST_DIR/cert2.pem" >"$TEST_DIR/ca-custom.crt"
 
   # extract serials for verification
-  export SERIAL1="$(openssl x509 -noout -serial < "$TEST_DIR/cert1.pem" | cut -d= -f2)"
-  export SERIAL2="$(openssl x509 -noout -serial < "$TEST_DIR/cert2.pem" | cut -d= -f2)"
+  export SERIAL1="$(openssl x509 -noout -serial <"$TEST_DIR/cert1.pem" | cut -d= -f2)"
+  export SERIAL2="$(openssl x509 -noout -serial <"$TEST_DIR/cert2.pem" | cut -d= -f2)"
 }
 
 teardown_file() {
@@ -59,7 +59,7 @@ teardown() {
     elif [[ -n "$current_pem" ]]; then
       current_pem+=$'\n'"$line"
     fi
-  done < "$TEST_DIR/ca-custom.crt"
+  done <"$TEST_DIR/ca-custom.crt"
 
   [[ ${#cert_pems[@]} -eq 2 ]]
 }
@@ -77,11 +77,11 @@ teardown() {
     elif [[ -n "$current_pem" ]]; then
       current_pem+=$'\n'"$line"
     fi
-  done < "$TEST_DIR/ca-custom.crt"
+  done <"$TEST_DIR/ca-custom.crt"
 
   # each parsed cert should be readable by openssl
   for pem in "${cert_pems[@]}"; do
-    run openssl x509 -noout -subject <<< "$pem"
+    run openssl x509 -noout -subject <<<"$pem"
     [[ "$status" -eq 0 ]]
   done
 }
@@ -99,7 +99,7 @@ teardown() {
     elif [[ -n "$current_pem" ]]; then
       current_pem+=$'\n'"$line"
     fi
-  done < "$TEST_DIR/cert1.pem"
+  done <"$TEST_DIR/cert1.pem"
 
   [[ ${#cert_pems[@]} -eq 1 ]]
 }
@@ -118,7 +118,7 @@ teardown() {
     elif [[ -n "$current_pem" ]]; then
       current_pem+=$'\n'"$line"
     fi
-  done < "$TEST_DIR/empty.crt"
+  done <"$TEST_DIR/empty.crt"
 
   [[ ${#cert_pems[@]} -eq 0 ]]
 }
@@ -132,7 +132,7 @@ teardown() {
   mkdir -p "$TEST_DIR/.config/certs"
   cp "$TEST_DIR/ca-custom.crt" "$TEST_DIR/.config/certs/ca-custom.crt"
   # create a minimal target cacert.pem
-  echo "# existing bundle" > "$TEST_DIR/cacert.pem"
+  echo "# existing bundle" >"$TEST_DIR/cacert.pem"
 
   run fixcertpy "$TEST_DIR/cacert.pem"
 
@@ -144,16 +144,16 @@ teardown() {
 @test "fixcertpy does not duplicate certs on re-run" {
   mkdir -p "$TEST_DIR/.config/certs"
   cp "$TEST_DIR/ca-custom.crt" "$TEST_DIR/.config/certs/ca-custom.crt"
-  echo "# existing bundle" > "$TEST_DIR/cacert2.pem"
+  echo "# existing bundle" >"$TEST_DIR/cacert2.pem"
 
   # run twice
   fixcertpy "$TEST_DIR/cacert2.pem" 2>/dev/null
   local size_after_first
-  size_after_first=$(wc -c < "$TEST_DIR/cacert2.pem")
+  size_after_first=$(wc -c <"$TEST_DIR/cacert2.pem")
 
   fixcertpy "$TEST_DIR/cacert2.pem" 2>/dev/null
   local size_after_second
-  size_after_second=$(wc -c < "$TEST_DIR/cacert2.pem")
+  size_after_second=$(wc -c <"$TEST_DIR/cacert2.pem")
 
   # file should not grow on second run
   [[ "$size_after_first" -eq "$size_after_second" ]]

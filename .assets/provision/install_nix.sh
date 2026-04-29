@@ -23,7 +23,10 @@ no_daemon=false
 while [[ $# -gt 0 ]]; do
   case "$1" in
   --no-daemon) no_daemon=true ;;
-  *) printf '\e[31;1mUnknown option: %s\e[0m\n' "$1" >&2; exit 2 ;;
+  *)
+    printf '\e[31;1mUnknown option: %s\e[0m\n' "$1" >&2
+    exit 2
+    ;;
   esac
   shift
 done

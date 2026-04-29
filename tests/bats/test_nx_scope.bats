@@ -44,7 +44,10 @@ setup() {
 
   _nx_is_init() {
     local config_nix="$_NX_ENV_DIR/config.nix"
-    [ -f "$config_nix" ] || { echo "false"; return; }
+    [ -f "$config_nix" ] || {
+      echo "false"
+      return
+    }
     sed -n -E 's/^[[:space:]]*isInit[[:space:]]*=[[:space:]]*(true|false).*/\1/p' "$config_nix"
   }
 

@@ -17,10 +17,10 @@ phase_bootstrap_check_root() {
 
 phase_bootstrap_resolve_paths() {
   SCRIPT_ROOT="${1:?phase_bootstrap_resolve_paths requires repo root}"
-  NIX_ENV_VERSION="$(git -C "$SCRIPT_ROOT" describe --tags --dirty 2>/dev/null \
-    || cat "$SCRIPT_ROOT/VERSION" 2>/dev/null \
-    || git -C "$SCRIPT_ROOT" rev-parse --short HEAD 2>/dev/null \
-    || echo "unknown")"
+  NIX_ENV_VERSION="$(git -C "$SCRIPT_ROOT" describe --tags --dirty 2>/dev/null ||
+    cat "$SCRIPT_ROOT/VERSION" 2>/dev/null ||
+    git -C "$SCRIPT_ROOT" rev-parse --short HEAD 2>/dev/null ||
+    echo "unknown")"
   export NIX_ENV_VERSION
   NIX_SRC="$SCRIPT_ROOT/nix"
   CONFIGURE_DIR="$SCRIPT_ROOT/nix/configure"
@@ -45,10 +45,10 @@ _source_nix_profile() {
 _darwin_id_range_free() {
   local base=$1
   local end=$((base + 31))
-  dscl . -list /Groups PrimaryGroupID 2>/dev/null \
-    | awk -v id="$base" '$NF == id {exit 1}' || return 1
-  dscl . -list /Users UniqueID 2>/dev/null \
-    | awk -v lo="$base" -v hi="$end" '$NF >= lo && $NF <= hi {exit 1}' || return 1
+  dscl . -list /Groups PrimaryGroupID 2>/dev/null |
+    awk -v id="$base" '$NF == id {exit 1}' || return 1
+  dscl . -list /Users UniqueID 2>/dev/null |
+    awk -v lo="$base" -v hi="$end" '$NF >= lo && $NF <= hi {exit 1}' || return 1
   return 0
 }
 
@@ -82,8 +82,8 @@ _install_nix_darwin() {
     info "using custom GID $id_base and UID base $id_base"
   fi
 
-  _io_run curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix \
-    | sh -s -- "${install_args[@]}"
+  _io_run curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix |
+    sh -s -- "${install_args[@]}"
 
   _source_nix_profile
   if ! command -v nix &>/dev/null && [ -x "$HOME/.nix-profile/bin/nix" ]; then
@@ -154,7 +154,11 @@ BOOTSTRAP
       warn "nix profile add failed (may already exist) - continuing with upgrade"
     fi
     _io_nix profile upgrade nix-env ||
-      { _ir_error="nix bootstrap failed"; err "$_ir_error"; exit 1; }
+      {
+        _ir_error="nix bootstrap failed"
+        err "$_ir_error"
+        exit 1
+      }
   fi
 }
 

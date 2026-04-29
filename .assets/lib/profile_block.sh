@@ -23,7 +23,7 @@
 #   - Works with BSD sed (no -i ''; uses tmp file instead).
 
 _pb_begin_tag() { printf '# >>> %s >>>' "$1"; }
-_pb_end_tag()   { printf '# <<< %s <<<' "$1"; }
+_pb_end_tag() { printf '# <<< %s <<<' "$1"; }
 
 # _pb_count_occurrences <rc-file> <marker>
 # prints the number of begin-tag lines found
@@ -50,7 +50,7 @@ manage_block() {
   inspect)
     local start_line end_line
     start_line="$(grep -nF "$begin_tag" "$rc" 2>/dev/null | head -1 | cut -d: -f1)"
-    end_line="$(grep -nF "$end_tag"   "$rc" 2>/dev/null | head -1 | cut -d: -f1)"
+    end_line="$(grep -nF "$end_tag" "$rc" 2>/dev/null | head -1 | cut -d: -f1)"
     if [ -z "$start_line" ] || [ -z "$end_line" ]; then
       return 1
     fi
@@ -100,7 +100,11 @@ manage_block() {
     tmp="$(mktemp)"
 
     # Build the block string we will insert
-    new_block="$(printf '%s\n' "$begin_tag"; cat "$content_file"; printf '%s\n' "$end_tag")"
+    new_block="$(
+      printf '%s\n' "$begin_tag"
+      cat "$content_file"
+      printf '%s\n' "$end_tag"
+    )"
 
     if [ "$count" -eq 0 ] 2>/dev/null; then
       # First insertion - backup before modifying

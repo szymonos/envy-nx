@@ -9,7 +9,10 @@ set -euo pipefail
 if ! command -v git &>/dev/null; then
   for _nix_p in "$HOME/.nix-profile/etc/profile.d/nix.sh" \
     /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh; do
-    if [ -f "$_nix_p" ]; then . "$_nix_p"; break; fi
+    if [ -f "$_nix_p" ]; then
+      . "$_nix_p"
+      break
+    fi
   done
   unset _nix_p
 fi
@@ -27,7 +30,7 @@ while [ $# -gt 0 ]; do
 done
 
 # *calculate variables
-read -ra gh_repos <<< "$repos"
+read -ra gh_repos <<<"$repos"
 # calculate workspace name
 if [ -n "$WSL_DISTRO_NAME" ]; then
   ID="$WSL_DISTRO_NAME"

@@ -156,8 +156,8 @@ if [ -f "$_cert_dir/ca-custom.crt" ]; then
     _cert_detail="ca-bundle.crt missing"
     _cert_ok=false
   fi
-  if [ ! -f "$HOME/.vscode-server/server-env-setup" ] || \
-     ! grep -q 'NODE_EXTRA_CA_CERTS' "$HOME/.vscode-server/server-env-setup" 2>/dev/null; then
+  if [ ! -f "$HOME/.vscode-server/server-env-setup" ] ||
+    ! grep -q 'NODE_EXTRA_CA_CERTS' "$HOME/.vscode-server/server-env-setup" 2>/dev/null; then
     _cert_detail="${_cert_detail:+$_cert_detail; }NODE_EXTRA_CA_CERTS not in server-env-setup"
     _cert_ok=false
   fi
@@ -170,8 +170,8 @@ fi
 
 # -- 7. vscode_server_env -----------------------------------------------------
 if [ -d "$HOME/.nix-profile/bin" ]; then
-  if [ -f "$HOME/.vscode-server/server-env-setup" ] && \
-     grep -q 'nix-profile/bin' "$HOME/.vscode-server/server-env-setup" 2>/dev/null; then
+  if [ -f "$HOME/.vscode-server/server-env-setup" ] &&
+    grep -q 'nix-profile/bin' "$HOME/.vscode-server/server-env-setup" 2>/dev/null; then
     _check "vscode_server_env" "pass"
   else
     _check "vscode_server_env" "warn" "nix PATH not in server-env-setup; run: nx upgrade"
@@ -207,8 +207,8 @@ if command -v gh >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
     "$(cd "$(dirname "$0")/../.." 2>/dev/null && pwd)" \
     "$ENV_DIR"; do
     if [ -d "$_git_dir/.git" ] 2>/dev/null; then
-      _repo_slug="$(git -C "$_git_dir" remote get-url origin 2>/dev/null \
-        | sed -n 's|.*github\.com[:/]\(.*\)\.git$|\1|p')" || true
+      _repo_slug="$(git -C "$_git_dir" remote get-url origin 2>/dev/null |
+        sed -n 's|.*github\.com[:/]\(.*\)\.git$|\1|p')" || true
       [ -n "$_repo_slug" ] && break
     fi
   done

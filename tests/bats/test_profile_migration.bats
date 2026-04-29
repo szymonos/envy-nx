@@ -126,7 +126,7 @@ RC
   # .local/bin should not appear inside the managed env block
   local inside
   inside="$(awk '/^# >>> managed env >>>$/{s=1;next} s&&/^# <<< managed env <<<$/{s=0;next} s{print}' "$HOME/.bashrc")"
-  run grep -cF '.local/bin' <<< "$inside"
+  run grep -cF '.local/bin' <<<"$inside"
   [ "$output" -eq 0 ]
   # original content preserved
   grep -q 'export PATH' "$HOME/.bashrc"
@@ -137,7 +137,7 @@ RC
   nx profile regenerate
   local inside
   inside="$(awk '/^# >>> managed env >>>$/{s=1;next} s&&/^# <<< managed env <<<$/{s=0;next} s{print}' "$HOME/.bashrc")"
-  run grep -cF '.local/bin' <<< "$inside"
+  run grep -cF '.local/bin' <<<"$inside"
   [ "$output" -ge 1 ]
 }
 

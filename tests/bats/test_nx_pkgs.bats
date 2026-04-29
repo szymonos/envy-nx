@@ -121,7 +121,10 @@ EOF
 @test "round-trip: add to existing list" {
   printf 'fd\nripgrep\n' | _nx_write_pkgs
   current="$(_nx_read_pkgs)"
-  { printf '%s\n' "$current"; printf 'jq\n'; } | _nx_write_pkgs
+  {
+    printf '%s\n' "$current"
+    printf 'jq\n'
+  } | _nx_write_pkgs
   run _nx_read_pkgs
   [ "${#lines[@]}" -eq 3 ]
   [ "${lines[0]}" = "fd" ]

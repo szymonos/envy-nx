@@ -21,10 +21,10 @@ if [[ $EUID -eq 0 ]]; then
 fi
 
 # -- Helpers -------------------------------------------------------------------
-info()    { printf "\e[96m%s\e[0m\n" "$*"; }
-ok()      { printf "\e[32m%s\e[0m\n" "$*"; }
-warn()    { printf "\e[33m%s\e[0m\n" "$*" >&2; }
-err()     { printf "\e[31;1m%s\e[0m\n" "$*" >&2; }
+info() { printf "\e[96m%s\e[0m\n" "$*"; }
+ok() { printf "\e[32m%s\e[0m\n" "$*"; }
+warn() { printf "\e[33m%s\e[0m\n" "$*" >&2; }
+err() { printf "\e[31;1m%s\e[0m\n" "$*" >&2; }
 removed() { printf "\e[90m  removed %s\e[0m\n" "$*"; }
 skipped() { printf "\e[90m  skipped %s (not found)\e[0m\n" "$*"; }
 
@@ -92,8 +92,8 @@ DRY_RUN="false"
 while [[ $# -gt 0 ]]; do
   case "$1" in
   --env-only) MODE="env-only" ;;
-  --all)      MODE="all" ;;
-  --dry-run)  DRY_RUN="true" ;;
+  --all) MODE="all" ;;
+  --dry-run) DRY_RUN="true" ;;
   -h | --help)
     cat <<'EOF'
 Usage: nix/uninstall.sh [options]
@@ -250,8 +250,8 @@ run_phase1() {
   # 1h. Remove nix profile entry (after all _rm calls - removing the profile
   #     earlier would break tools resolved through ~/.nix-profile/bin).
   if command -v nix &>/dev/null; then
-    if nix profile list --json 2>/dev/null | grep -q 'nix-env' \
-       || nix profile list 2>/dev/null | grep -q 'nix-env'; then
+    if nix profile list --json 2>/dev/null | grep -q 'nix-env' ||
+      nix profile list 2>/dev/null | grep -q 'nix-env'; then
       if [[ "$DRY_RUN" == "true" ]]; then
         printf "\e[90m  would remove nix profile entry 'nix-env'\e[0m\n"
       else

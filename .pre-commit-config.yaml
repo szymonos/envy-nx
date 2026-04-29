@@ -28,7 +28,7 @@ repos:
         name: Check nix-path scripts for bash 3.2 / BSD compatibility
         entry: python3 -m tests.hooks.check_bash32
         language: system
-        files: (nix/.*\.sh$|\.assets/lib/(scopes|profile_block|nx_doctor)\.sh$|\.assets/config/shell_cfg/(aliases_nix|aliases_git|aliases_kubectl|functions)\.sh$|\.assets/setup/setup_common\.sh$|\.assets/provision/install_copilot\.sh$)
+        files: (nix/.*\.sh$|\.assets/lib/(scopes|profile_block|nx_doctor|helpers)\.sh$|\.assets/config/shell_cfg/(aliases_nix|aliases_git|aliases_kubectl|functions)\.sh$|\.assets/setup/setup_common\.sh$|\.assets/provision/install_copilot\.sh$)
         types: [file]
       - id: check-zsh-compat
         name: Check shell_cfg scripts for zsh compatibility
@@ -91,6 +91,11 @@ repos:
           - --no-progress
           - --no-summary
         stages: [commit-msg]
+  - repo: https://github.com/scop/pre-commit-shfmt
+    rev: v3.13.1-1
+    hooks:
+      - id: shfmt
+        exclude: \.zsh$
   - repo: https://github.com/koalaman/shellcheck-precommit
     rev: v0.11.0
     hooks:

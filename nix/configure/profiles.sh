@@ -13,7 +13,7 @@ LIB="$REPO_ROOT/.assets/lib"
 SHELL_CFG="$REPO_ROOT/.assets/config/shell_cfg"
 
 info() { printf "\e[96m%s\e[0m\n" "$*"; }
-ok()   { printf "\e[32m%s\e[0m\n" "$*"; }
+ok() { printf "\e[32m%s\e[0m\n" "$*"; }
 
 # shellcheck source=../../.assets/lib/certs.sh
 source "$LIB/certs.sh"
@@ -37,11 +37,11 @@ _install_cfg_file() {
   fi
 }
 
-_install_cfg_file "$SHELL_CFG/aliases_nix.sh"      "$HOME/.config/shell/aliases_nix.sh"
-_install_cfg_file "$SHELL_CFG/aliases_git.sh"      "$HOME/.config/shell/aliases_git.sh"
-_install_cfg_file "$SHELL_CFG/aliases_kubectl.sh"  "$HOME/.config/shell/aliases_kubectl.sh"
-_install_cfg_file "$SHELL_CFG/functions.sh"        "$HOME/.config/shell/functions.sh"
-_install_cfg_file "$SHELL_CFG/completions.bash"    "$HOME/.config/shell/completions.bash"
+_install_cfg_file "$SHELL_CFG/aliases_nix.sh" "$HOME/.config/shell/aliases_nix.sh"
+_install_cfg_file "$SHELL_CFG/aliases_git.sh" "$HOME/.config/shell/aliases_git.sh"
+_install_cfg_file "$SHELL_CFG/aliases_kubectl.sh" "$HOME/.config/shell/aliases_kubectl.sh"
+_install_cfg_file "$SHELL_CFG/functions.sh" "$HOME/.config/shell/functions.sh"
+_install_cfg_file "$SHELL_CFG/completions.bash" "$HOME/.config/shell/completions.bash"
 
 # ---------------------------------------------------------------------------
 # Copy overlay shell config files (if overlay directory is active)
