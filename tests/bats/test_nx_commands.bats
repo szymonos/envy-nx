@@ -684,6 +684,50 @@ STUB
   grep -q 'store gc' "$HOME/.nix_calls"
 }
 
+@test "gc clears stale pwsh module-analysis cache files" {
+  cat >"$TEST_DIR/bin/nix" <<'STUB'
+#!/bin/sh
+exit 0
+STUB
+  chmod +x "$TEST_DIR/bin/nix"
+  mkdir -p "$HOME/.cache/powershell"
+  : >"$HOME/.cache/powershell/ModuleAnalysisCache-DEAD"
+  : >"$HOME/.cache/powershell/StartupProfileData-Interactive"
+  : >"$HOME/.cache/powershell/PowerShellGet" # unrelated, must be kept
+  run nx gc
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Cleared"*"PowerShell cache"* ]]
+  [ ! -e "$HOME/.cache/powershell/ModuleAnalysisCache-DEAD" ]
+  [ ! -e "$HOME/.cache/powershell/StartupProfileData-Interactive" ]
+  [ -e "$HOME/.cache/powershell/PowerShellGet" ]
+}
+
+@test "gc is silent when pwsh cache dir is absent" {
+  cat >"$TEST_DIR/bin/nix" <<'STUB'
+#!/bin/sh
+exit 0
+STUB
+  chmod +x "$TEST_DIR/bin/nix"
+  [ ! -d "$HOME/.cache/powershell" ]
+  run nx gc
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"Cleared"* ]]
+}
+
+@test "upgrade clears stale pwsh module-analysis cache files" {
+  cat >"$TEST_DIR/bin/nix" <<'STUB'
+#!/bin/sh
+exit 0
+STUB
+  chmod +x "$TEST_DIR/bin/nix"
+  mkdir -p "$HOME/.cache/powershell"
+  : >"$HOME/.cache/powershell/ModuleAnalysisCache-CAFE"
+  run nx upgrade
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Cleared"*"PowerShell cache"* ]]
+  [ ! -e "$HOME/.cache/powershell/ModuleAnalysisCache-CAFE" ]
+}
+
 # -- prune --------------------------------------------------------------------
 
 @test "prune removes stale entries" {
@@ -1059,7 +1103,6 @@ EOF
   [[ "$output" == *"Repo not found"* ]]
 }
 
-
 @test "self update git pull succeeds on clean repo" {
   # clone from bare so tracking is set up automatically
   local bare_repo="$TEST_DIR/bare.git"
@@ -1118,7 +1161,7 @@ EOF
 
 # -- nx setup -----------------------------------------------------------------
 
-@test "setup runs setup.sh when repo exists" {
+@test "setup runs setup.sh from install.json:repo_path when valid" {
   local fake_repo="$TEST_DIR/setup-repo"
   mkdir -p "$fake_repo/nix"
   printf '#!/bin/sh\necho "SETUP_RAN $*"\n' >"$fake_repo/nix/setup.sh"
@@ -1129,8 +1172,35 @@ EOF
   run nx setup --shell --python
   [ "$status" -eq 0 ]
   [[ "$output" == *"SETUP_RAN --shell --python"* ]]
+  [[ "$output" == *"$fake_repo"* ]]
 }
 
+@test "setup falls back to canonical clone when install.json:repo_path is unset" {
+  local canonical="$HOME/source/repos/szymonos/envy-nx"
+  mkdir -p "$canonical/nix"
+  printf '#!/bin/sh\necho "SETUP_RAN_CANONICAL"\n' >"$canonical/nix/setup.sh"
+  chmod +x "$canonical/nix/setup.sh"
+
+  run nx setup
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"SETUP_RAN_CANONICAL"* ]]
+  [[ "$output" == *"$canonical"* ]]
+}
+
+@test "setup falls back to canonical with notice when install.json:repo_path is stale" {
+  local canonical="$HOME/source/repos/szymonos/envy-nx"
+  mkdir -p "$canonical/nix"
+  printf '#!/bin/sh\necho "SETUP_RAN"\n' >"$canonical/nix/setup.sh"
+  chmod +x "$canonical/nix/setup.sh"
+  mkdir -p "$HOME/.config/dev-env"
+  printf '{"repo_path": "/nonexistent/stale/path"}\n' >"$HOME/.config/dev-env/install.json"
+
+  run nx setup
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"falling back"* ]]
+  [[ "$output" == *"/nonexistent/stale/path"* ]]
+  [[ "$output" == *"$canonical"* ]]
+}
 
 # -- nx version with repo_path -----------------------------------------------
 

@@ -176,11 +176,23 @@ function _NxProfileRegenerate {
     }
 
     # -- nix:path - nix PATH ---
+    # nix-installed pwsh has no /etc/profile.d/ integration (system pwsh does),
+    # so two PowerShell user dirs never land on PATH on their own. Append both:
+    #   - Scripts: where Install-PSResource -Type Script lands .ps1 files; needed
+    #     for them to be invokable as commands.
+    #   - Modules: PSResourceGet's "ScriptPATHWarning" check (incorrectly) probes
+    #     this path on Linux. Adding it silences a noisy WARNING on every install.
     $nixRegion = [string[]]@(
         '#region nix:path'
         'foreach ($nixPath in @(''/nix/var/nix/profiles/default/bin'', [IO.Path]::Combine([Environment]::GetFolderPath(''UserProfile''), ''.nix-profile/bin''))) {'
         '    if ([IO.Directory]::Exists($nixPath) -and $nixPath -notin $env:PATH.Split([IO.Path]::PathSeparator)) {'
         '        [Environment]::SetEnvironmentVariable(''PATH'', [string]::Join([IO.Path]::PathSeparator, $nixPath, $env:PATH))'
+        '    }'
+        '}'
+        'foreach ($psUserDir in @(''.local/share/powershell/Scripts'', ''.local/share/powershell/Modules'')) {'
+        '    $abs = [IO.Path]::Combine([Environment]::GetFolderPath(''UserProfile''), $psUserDir)'
+        '    if ([IO.Directory]::Exists($abs) -and $abs -notin $env:PATH.Split([IO.Path]::PathSeparator)) {'
+        '        [Environment]::SetEnvironmentVariable(''PATH'', [string]::Join([IO.Path]::PathSeparator, $env:PATH, $abs))'
         '    }'
         '}'
         'if ($env:LD_LIBRARY_PATH) { $env:LD_LIBRARY_PATH = $null }'

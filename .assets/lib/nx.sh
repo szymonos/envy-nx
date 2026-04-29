@@ -42,6 +42,25 @@ _nx_apply() {
   printf "\e[32mdone.\e[0m\n"
 }
 
+# Clear pwsh module-analysis cache + startup profile data. Both are pure
+# caches (regenerate on next pwsh launch) but reference module paths that
+# go stale after `nix store gc` (old pwsh GC'd) or `nix profile upgrade`
+# (bundled module versions/paths shift). Without this, `Install-PSResource`
+# and other PSResourceGet operations crash with "Could not find a part of
+# the path .../Modules/PSReadLine/<ver>/PSReadLine.format.ps1xml".
+_nx_clear_pwsh_cache() {
+  local _cache_dir="$HOME/.cache/powershell"
+  [ -d "$_cache_dir" ] || return 0
+  local _cleared=0 _f
+  for _f in "$_cache_dir"/ModuleAnalysisCache-* "$_cache_dir"/StartupProfileData-*; do
+    [ -e "$_f" ] || continue
+    rm -f "$_f" && _cleared=$((_cleared + 1))
+  done
+  [ "$_cleared" -gt 0 ] &&
+    printf "\e[90mCleared %d stale PowerShell cache file(s) (regenerates on next pwsh launch).\e[0m\n" "$_cleared"
+  return 0
+}
+
 _nx_validate_pkg() {
   nix eval "nixpkgs#${1}.name" &>/dev/null
 }
@@ -97,7 +116,10 @@ _nx_scopes() {
 
 _nx_is_init() {
   local config_nix="$_NX_ENV_DIR/config.nix"
-  [ -f "$config_nix" ] || { echo "false"; return; }
+  [ -f "$config_nix" ] || {
+    echo "false"
+    return
+  }
   sed -n -E 's/^[[:space:]]*isInit[[:space:]]*=[[:space:]]*(true|false).*/\1/p' "$config_nix"
 }
 
@@ -400,7 +422,7 @@ _nx_profile_regenerate() {
   for _rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
     case "$_rc" in
     *.bashrc) _shell="bash" ;;
-    *.zshrc)  _shell="zsh" ;;
+    *.zshrc) _shell="zsh" ;;
     esac
     command -v "$_shell" &>/dev/null || continue
     [ -f "$_rc" ] || continue
@@ -542,6 +564,7 @@ nx_main() {
       printf "\e[31mnix profile upgrade failed\e[0m\n" >&2
       return 1
     }
+    _nx_clear_pwsh_cache
     printf "\e[32mdone.\e[0m\n"
     ;;
   list | ls)
@@ -1021,6 +1044,7 @@ PROFILE_HELP
   gc | clean)
     nix profile wipe-history
     nix store gc
+    _nx_clear_pwsh_cache
     ;;
   rollback)
     nix profile rollback || {
@@ -1084,44 +1108,41 @@ PIN_HELP
     ;;
   setup)
     shift
-    local _setup_repo_path
-    _setup_repo_path="$(_nx_read_install_field repo_path)"
+    # primary: install.json:repo_path if it points to a valid envy-nx checkout.
+    # fallback: canonical szymonos location (cloned on demand, no prompt).
+    local _setup_target _setup_recorded
+    _setup_recorded="$(_nx_read_install_field repo_path)"
 
-    if [ -n "$_setup_repo_path" ] && [ -f "$_setup_repo_path/nix/setup.sh" ]; then
-      local _setup_branch
-      _setup_branch="$(git -C "$_setup_repo_path" rev-parse --abbrev-ref HEAD 2>/dev/null)" || _setup_branch=""
-      printf "\n\e[95;1m>> Running setup from %s" "$_setup_repo_path"
-      [ -n "$_setup_branch" ] && printf " (%s)" "$_setup_branch"
-      printf "\e[0m\n\n"
-      bash "$_setup_repo_path/nix/setup.sh" "$@"
-      return $?
+    if [ -n "$_setup_recorded" ] && [ -f "$_setup_recorded/nix/setup.sh" ]; then
+      _setup_target="$_setup_recorded"
+    else
+      _setup_target="$HOME/source/repos/szymonos/envy-nx"
+      if [ -n "$_setup_recorded" ] && [ "$_setup_recorded" != "$_setup_target" ]; then
+        printf "\e[33mRecorded repo_path %s is missing - falling back to %s\e[0m\n" \
+          "$_setup_recorded" "$_setup_target"
+      fi
+      if [ -e "$_setup_target" ] && [ ! -f "$_setup_target/nix/setup.sh" ]; then
+        printf "\e[31mPath exists but is not an envy-nx repo: %s\e[0m\n" "$_setup_target" >&2
+        return 1
+      fi
+      if [ ! -d "$_setup_target" ]; then
+        local _setup_repo_url
+        _setup_repo_url="$(_nx_read_install_field repo_url)"
+        [ -z "$_setup_repo_url" ] && _setup_repo_url="$_NX_DEFAULT_REPO_URL"
+        printf "\e[96mCloning %s -> %s\e[0m\n" "$_setup_repo_url" "$_setup_target"
+        mkdir -p "$(dirname "$_setup_target")"
+        git clone "$_setup_repo_url" "$_setup_target" || {
+          printf "\e[31mClone failed.\e[0m\n" >&2
+          return 1
+        }
+      fi
     fi
 
-    local _setup_repo_url
-    _setup_repo_url="$(_nx_read_install_field repo_url)"
-    [ -z "$_setup_repo_url" ] && _setup_repo_url="$_NX_DEFAULT_REPO_URL"
-
-    if [ -z "$_setup_repo_path" ]; then
-      _setup_repo_path="$HOME/envy-nx"
-    fi
-
-    printf "\e[33mRepo not found at %s\e[0m\n" "$_setup_repo_path"
-    printf "Clone to [%s]: " "$_setup_repo_path"
-    local _setup_reply
-    read -r _setup_reply </dev/tty
-    local _setup_target="${_setup_reply:-$_setup_repo_path}"
-
-    if [ -e "$_setup_target" ] && [ ! -f "$_setup_target/nix/setup.sh" ]; then
-      printf "\e[31mPath exists but is not an envy-nx repo: %s\e[0m\n" "$_setup_target" >&2
-      return 1
-    fi
-
-    mkdir -p "$(dirname "$_setup_target")"
-    git clone "$_setup_repo_url" "$_setup_target" || {
-      printf "\e[31mClone failed.\e[0m\n" >&2
-      return 1
-    }
-    printf "\e[32mCloned to %s\e[0m\n" "$_setup_target"
+    local _setup_branch
+    _setup_branch="$(git -C "$_setup_target" rev-parse --abbrev-ref HEAD 2>/dev/null)" || _setup_branch=""
+    printf "\n\e[95;1m>> Running setup from %s" "$_setup_target"
+    [ -n "$_setup_branch" ] && printf " (%s)" "$_setup_branch"
+    printf "\e[0m\n\n"
     bash "$_setup_target/nix/setup.sh" "$@"
     ;;
   self)
@@ -1130,7 +1151,10 @@ PIN_HELP
     update)
       shift
       local _self_force=false
-      [ "${1:-}" = "--force" ] && { _self_force=true; shift; }
+      [ "${1:-}" = "--force" ] && {
+        _self_force=true
+        shift
+      }
 
       local _self_repo_path
       _self_repo_path="$(_nx_read_install_field repo_path)"
