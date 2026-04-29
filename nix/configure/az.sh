@@ -4,7 +4,6 @@
 : '
 nix/configure/az.sh
 '
-# macOS uses native TLS (system keychain) - no certifi patching needed.
 set -eo pipefail
 
 SCRIPT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -13,10 +12,7 @@ REPO_ROOT="$(cd "$SCRIPT_ROOT/../.." && pwd)"
 info() { printf "\e[96m%s\e[0m\n" "$*"; }
 
 info "installing azure-cli via uv..."
-install_args=()
-# on Linux/WSL, patch the certifi bundle with system CA certificates so az
-# commands work behind a MITM proxy; macOS keychain integration is not supported
-if [ "$(uname -s)" = "Linux" ]; then
-  install_args+=(--fix_certify true)
-fi
-"$REPO_ROOT/.assets/provision/install_azurecli_uv.sh" "${install_args[@]}"
+# patch the certifi bundle with custom CA certificates so az works behind a MITM proxy;
+# no-op when ~/.config/certs/ca-custom.crt is absent (cross-platform: Linux distro stores
+# and macOS keychain interception both land in the same custom bundle path)
+"$REPO_ROOT/.assets/provision/install_azurecli_uv.sh" --fix_certify true

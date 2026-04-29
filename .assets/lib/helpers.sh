@@ -2,18 +2,24 @@
 # Sourced by install_gh.sh and setup_gh_https.sh.
 #
 # Functions:
-#   gh_download_file   -- download a file with retry logic
+#   download_file      -- download a file with retry logic
 #   gh_login_user      -- log in to GitHub as the specified user using gh CLI
 
 # *Function to download file from specified uri
-gh_download_file() {
+download_file() {
   local uri=''
   local target_dir=''
   # parse named parameters
   while [ $# -gt 0 ]; do
     case "$1" in
-    --uri) uri="${2:-}"; shift ;;
-    --target_dir) target_dir="${2:-}"; shift ;;
+    --uri)
+      uri="${2:-}"
+      shift
+      ;;
+    --target_dir)
+      target_dir="${2:-}"
+      shift
+      ;;
     esac
     shift
   done

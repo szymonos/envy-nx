@@ -61,7 +61,7 @@ See `ARCHITECTURE.md` for file classification (nix-path vs linux-only), call tre
 **Key shared files:**
 
 - `.assets/lib/scopes.sh` - scope parsing, dependency resolution, `resolve_scope_deps` / `sort_scopes`
-- `.assets/provision/gh_helpers.sh` - GitHub helpers (`gh_download_file`, `gh_login_user`)
+- `.assets/lib/helpers.sh` - shared helpers (`download_file`, `gh_login_user`)
 - `.assets/setup/setup_common.sh` - post-install setup (copilot, zsh plugins, PS modules)
 
 **Testing**: Unit tests in `tests/bats/` (bats-core) and `tests/pester/` (Pester) cover phase functions and WSL orchestration logic. Docker-based smoke tests in `.assets/docker/` run a full provisioning pass and verify key binaries exist in `$PATH`.
