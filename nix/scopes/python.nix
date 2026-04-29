@@ -3,4 +3,5 @@
 { pkgs }: with pkgs; [
   uv
   prek
+  python3
 ]

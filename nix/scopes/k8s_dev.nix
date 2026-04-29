@@ -3,10 +3,12 @@
 { pkgs }: with pkgs; [
   argo-rollouts
   cilium-cli
+  crane
   fluxcd
+  hubble
   humioctl
   kubernetes-helm
-  hubble
   kustomize
+  kyverno
   trivy
 ]
