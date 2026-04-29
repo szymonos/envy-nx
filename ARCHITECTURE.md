@@ -44,6 +44,7 @@ Everything sourced or called by `nix/setup.sh`, plus shell config files that get
 | `nix/configure/profiles.zsh`                  | Copy zsh configs (zsh, not bash, but runs on macOS)            |
 | `nix/configure/profiles.ps1`                  | Copy PowerShell configs to `~/.config/powershell/`             |
 | `nix/configure/starship.sh`                   | Configure starship prompt                                      |
+| `.assets/lib/helpers.sh`                      | Shared helpers (`download_file`, `gh_login_user`)              |
 | `.assets/lib/profile_block.sh`                | Managed block library (sourced by profiles.sh/.zsh, nx)        |
 | `.assets/lib/env_block.sh`                    | Generic env block (sourced by setup_profile_user; legacy)      |
 | `.assets/lib/certs.sh`                        | CA bundle builder + VS Code Server cert setup                  |
@@ -67,7 +68,6 @@ Scripts that only run on Linux where bash 5.x is the standard.
 | File / Pattern                         | Role                                                                                          |
 | -------------------------------------- | --------------------------------------------------------------------------------------------- |
 | `.assets/scripts/linux_setup.sh`       | Linux system prep + nix delegation                                                            |
-| `.assets/provision/gh_helpers.sh`      | Shared GitHub helpers for provision and setup scripts (gh_download_file, gh_login_user)       |
 | `.assets/provision/install_*.sh`       | System-scope installers (base, nix, docker, podman, distrobox, zsh, gh, azurecli_uv, copilot) |
 | `.assets/provision/upgrade_system.sh`  | System upgrade                                                                                |
 | `.assets/setup/setup_profile_user.zsh` | User zsh profile setup                                                                        |
@@ -94,10 +94,10 @@ Scripts that only run on Linux where bash 5.x is the standard.
 
 ### nix declarations (not bash)
 
-| File / Pattern     | Role                   |
-| ------------------ | ---------------------- |
-| `nix/flake.nix`    | buildEnv flake         |
-| `nix/scopes/*.nix` | 19 scope package lists |
+| File / Pattern     | Role                                                                 |
+| ------------------ | -------------------------------------------------------------------- |
+| `nix/flake.nix`    | buildEnv flake (reads `config.nix`, merges base + scopes + packages) |
+| `nix/scopes/*.nix` | 20 package list files (18 user-selectable scopes + base + base_init) |
 
 ### tests
 
@@ -152,6 +152,156 @@ Entry point: `nix/setup.sh` (orchestrator, ~110 lines).
 | `.assets/provision/install_copilot.sh` | called by above | GitHub Copilot CLI               |
 | `.assets/setup/setup_profile_user.zsh` | scope: zsh      | Zsh profile setup                |
 | `.assets/setup/setup_profile_user.ps1` | pwsh available  | certs + local-path               |
+
+## Scopes
+
+Scopes are the unit of user selection. A scope is a name (e.g. `python`, `k8s_dev`) declared in
+`.assets/lib/scopes.json` and backed by a `nix/scopes/<name>.nix` package list and an optional
+`nix/configure/<name>.sh` post-install script. Users opt in via `setup.sh --<scope>` flags; the resolved set is
+persisted in `~/.config/nix-env/config.nix` and re-read on every run.
+
+`scopes.json` is the single source of truth for scope metadata (valid names, install order, dependency rules) and
+is consumed by three runtimes natively: bash via `jq`, PowerShell via `ConvertFrom-Json`, Python via `json`. See
+*Bootstrap dependency (base_init.nix)* for why JSON.
+
+### Scope catalog
+
+| Scope        | Nix packages                                              | Configure hook | Notes                                                         |
+| ------------ | --------------------------------------------------------- | -------------- | ------------------------------------------------------------- |
+| `shell`      | bats, fd, fzf, eza, bat, nmap, ripgrep, shellcheck, ...   | -              | Common CLI utilities                                          |
+| `zsh`        | zsh-autosuggestions, zsh-syntax-highlighting, completions | `profiles.zsh` | Linux: dropped if zsh missing/system-installed (plugins only) |
+| `pwsh`       | powershell                                                | `profiles.ps1` | Triggers `.NET`-shadow PATH cleanup at the top of `setup.sh`  |
+| `python`     | uv, prek, python3                                         | -              | python interpreters managed by uv, not nix                    |
+| `nodejs`     | nodejs                                                    | -              | -                                                             |
+| `bun`        | bun                                                       | -              | Alternative JS runtime                                        |
+| `az`         | azure-storage-azcopy                                      | `az.sh`        | azure-cli installed via uv (calls `install_azurecli_uv.sh`)   |
+| `gcloud`     | google-cloud-sdk                                          | -              | -                                                             |
+| `k8s_base`   | kubectl, kubelogin, k9s, kubecolor, kubectx               | -              | -                                                             |
+| `k8s_dev`    | helm, flux, argo-rollouts, kustomize, trivy, kyverno, ... | -              | -                                                             |
+| `k8s_ext`    | minikube, k3d, kind                                       | -              | Local cluster tools                                           |
+| `terraform`  | tfswitch, tflint                                          | `terraform.sh` | terraform binary installed via tfswitch to `~/.local/bin`     |
+| `docker`     | (empty)                                                   | `docker.sh`    | Empty scope - root install via system `install_docker.sh`     |
+| `distrobox`  | (empty)                                                   | -              | Empty scope - installed traditionally                         |
+| `conda`      | (empty)                                                   | `conda.sh`     | Empty scope - miniforge installer                             |
+| `oh_my_posh` | oh-my-posh                                                | `omp.sh`       | Mutually exclusive with `starship`                            |
+| `starship`   | starship                                                  | `starship.sh`  | Mutually exclusive with `oh_my_posh`                          |
+| `rice`       | btop, cmatrix, cowsay, fastfetch                          | -              | Eye-candy / fun tools                                         |
+
+Two implicit scope files are merged outside the user-selectable set:
+
+- `base.nix` - always installed (cacert, coreutils, git, gh, openssl, vim, etc.). Not user-selectable.
+- `base_init.nix` - bootstrap-only (jq). Included only when `cfg.isInit = true` (no system jq/curl). See
+  *Bootstrap dependency* under Design decisions.
+
+### Scope file format
+
+Each `nix/scopes/<name>.nix` is a function returning a package list:
+
+```nix
+# Short description
+# bins: <space-separated binary names>
+{ pkgs }: with pkgs; [
+  <package1>
+  <package2>
+]
+```
+
+The `# bins:` comment is the **single source of truth** for `nx doctor`'s `scope_binaries` check. Every scope file
+must have one (enforced by `validate_scopes.py`); empty-scope files still need it because the binary may be
+provided by an installer script rather than nix.
+
+### Empty-scope pattern
+
+Three scopes (`docker`, `conda`, `distrobox`) are intentionally `{ pkgs }: [ ]` - they install nothing via nix
+because the underlying tool either requires root (`docker`), bundles its own installer (`conda` -> miniforge), or
+is best installed via the system package manager (`distrobox`). The scope still exists so users can opt in via
+`--docker` etc. - it triggers the matching `configure/<name>.sh`, is recorded in `config.nix`, and counts toward
+`nx scope` and `nx doctor` reporting.
+
+**Removal hooks.** Empty scopes have no nix package state to drop, but they may have on-disk state from their
+installer. `phase_scopes_apply_removes` dispatches a per-scope cleanup script when the scope is removed via
+`--remove`. Currently only `conda` has one: `nix/configure/conda_remove.sh` lists user environments under
+`~/miniforge3/envs/`, prompts for confirmation (skipped under `--unattended`), runs `conda init --reverse` to
+clean shell rc files, then deletes `~/miniforge3`. `docker` and `distrobox` are intentionally not auto-removed -
+they live in system locations and may serve other users.
+
+### Dependency resolution
+
+`scopes.json:dependency_rules` declares implicit scopes added when a trigger scope is present:
+
+| Trigger      | Adds                            |
+| ------------ | ------------------------------- |
+| `az`         | `python` (azure-cli via uv)     |
+| `k8s_dev`    | `k8s_base`                      |
+| `k8s_ext`    | `docker`, `k8s_base`, `k8s_dev` |
+| `pwsh`       | `shell`                         |
+| `zsh`        | `shell`                         |
+| `oh_my_posh` | `shell`                         |
+| `starship`   | `shell`                         |
+
+Resolution is single-pass (no fixpoint) - chains like `k8s_ext -> k8s_dev -> k8s_base` work because each trigger
+lists all transitive dependencies explicitly. Implemented in `resolve_scope_deps` (`.assets/lib/scopes.sh`).
+
+`--omp-theme <theme>` and `--starship-theme <theme>` also add their respective scope implicitly.
+
+### Install order
+
+`scopes.json:install_order` defines the order configure hooks and shell-block rendering see scopes. Order matters:
+
+- `docker` precedes `k8s_*` consumers (container runtime before its clients).
+- `python` precedes `az` (azure-cli is a uv-installed Python package).
+- Prompt engines (`oh_my_posh`, `starship`) precede shells (`zsh`, `pwsh`) so prompt init can be wired into the
+  shell profile in one pass.
+
+Overlay/local scopes not in `install_order` are appended last (see `sort_scopes` in `.assets/lib/scopes.sh`).
+
+### Mutual exclusivity (prompt engines)
+
+`oh_my_posh` and `starship` cannot both be active. `phase_scopes_enforce_prompt_exclusivity`:
+
+- Both `--omp-theme` and `--starship-theme` -> exit with error.
+- `--omp-theme` provided -> remove `starship` from the scope set.
+- `--starship-theme` provided -> remove `oh_my_posh` from the scope set.
+
+This makes prompt switching a single command (`setup.sh --starship-theme nerd` flips from omp to starship).
+
+### Auto-detection (no flags, no config.nix)
+
+When `setup.sh` runs with no scope flags **and** no existing `config.nix`, it probes the system for installed
+tools and adds matching scopes:
+
+| Detection                                    | Adds         |
+| -------------------------------------------- | ------------ |
+| `oh-my-posh` in PATH                         | `oh_my_posh` |
+| `docker` in PATH                             | `docker`     |
+| `~/.local/bin/uv` or `~/.nix-profile/bin/uv` | `python`     |
+| `conda` in PATH                              | `conda`      |
+
+This makes upgrade-only re-runs non-destructive: existing tooling stays configured even if the user forgets the
+original flags.
+
+### System-prefer (Linux zsh)
+
+On Linux, the `zsh` nix scope only ships *plugins* (`zsh-autosuggestions` etc.), not the `zsh` binary itself,
+which is expected from the system package manager (`apt install zsh`). `phase_scopes_skip_system_prefer`:
+
+- System zsh found -> nix scope dropped (plugins still installed at profile setup time).
+- zsh missing entirely -> scope dropped with a warning to install via system pkg manager.
+
+macOS keeps the `zsh` scope as-is because there is no system package manager.
+
+### `flake.nix` integration
+
+The flake reads `config.nix` (`{ isInit, allowUnfree, scopes }`) and concatenates package lists from:
+
+1. `base.nix` - always.
+2. `base_init.nix` - only when `cfg.isInit`.
+3. Each `scopes/${scope}.nix` for `scope` in `cfg.scopes` (silently skipped if the file is missing - supports
+   overlays).
+4. `packages.nix` - ad-hoc packages managed by `nx install` / `nx remove`.
+
+All four lists feed `pkgs.buildEnv { name = "dev-env"; paths = ...; }`. Supported systems: `x86_64-linux`,
+`aarch64-linux`, `x86_64-darwin`, `aarch64-darwin`.
 
 ## Runtime file locations
 

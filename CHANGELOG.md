@@ -5,6 +5,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-04-30
+
+### Added
+
+- `scop/pre-commit-shfmt` hook for formatting bash scripts with `shfmt`.
+- `docs/nx.md`: comprehensive user guide for the `nx` CLI - command surface table, tab-completion coverage (bash/zsh/PowerShell), per-functionality chapters (package management, scopes, lifecycle, maintenance). Wired into `mkdocs.yml` nav.
+
+### Changed
+
+- extended `k8s_dev` scope with crane and kyverno cli.
+- moved `.assets/provision/gh_helpers.sh` to `.assets/lib/helpers.sh` so it can be sourced from the nix path (used by `nix/configure/conda.sh` for `download_file`); added `helpers` to the `check-bash32` hook regex.
+- `nix/configure/az.sh`: pass `--fix_certify true` on macOS too (was Linux-only) - keychain-intercepted certs now land in `~/.config/certs/ca-custom.crt`, so the same patch path applies cross-platform; safe no-op when no custom bundle exists.
+- `nx setup`: removed the interactive clone-path prompt. Primary path is `install.json:repo_path` when it points to a valid envy-nx checkout (respects forks / non-canonical clones); falls back to canonical `~/source/repos/szymonos/envy-nx` when the recorded path is unset or stale, cloning on demand. Stale-fallback case prints a one-line notice.
+
+### Fixed
+
+- `validate_docs_words` hook: tokenize raw content first for cspell.
+- added `python3` to the `python` scope to offer a common Python interpreter for VSCode and other tools.
+- formatted all bash scripts with `shfmt` pre-commit hook.
+- `nix/configure/conda.sh`: wrap `fixcertpy` in `conda activate base` / `conda deactivate` so the cert patch lands on conda's own certifi (was previously running against whichever pip was on PATH and silently no-op for conda).
+- pwsh `nix:path` region: append both `~/.local/share/powershell/Scripts` and `~/.local/share/powershell/Modules` to `$env:PATH`. Scripts is needed so `Install-PSResource -Type Script` outputs are invocable as commands. Modules is needed to silence PSResourceGet's `ScriptPATHWarning` - a noisy WARNING that fires on every install on Linux because the check (incorrectly) probes the Modules dir, not Scripts. System pwsh provides both via `/etc/profile.d/`, nix-installed pwsh does not. Verified end-to-end with `Install-PSResource pester -Reinstall`.
+- `nx gc` and `nx upgrade`: clear stale pwsh module-analysis cache (`~/.cache/powershell/ModuleAnalysisCache-*`, `StartupProfileData-*`) - both reference module paths that go stale after a nix store GC or pwsh upgrade, causing `Install-PSResource` to fail with `Could not find a part of the path .../Modules/PSReadLine/<version>/PSReadLine.format.ps1xml`. Cache regenerates on next pwsh launch.
+- `nix/setup.sh --remove conda`: now also cleans up the on-disk miniforge install via the new `nix/configure/conda_remove.sh` hook (lists user envs first, prompts for confirmation, runs `conda init --reverse` to clean shell rc, then deletes `~/miniforge3`). Skips the prompt under `--unattended`. Previously `--remove conda` only updated `config.nix` and left the install on disk - asymmetric with the install path.
+
 ## [1.2.0] - 2026-04-28
 
 ### Added
