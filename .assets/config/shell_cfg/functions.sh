@@ -70,7 +70,7 @@ function fixcertpy() {
       elif [[ -n "$current_pem" ]]; then
         current_pem+=$'\n'"$line"
       fi
-    done < "$CERT_BUNDLE"
+    done <"$CERT_BUNDLE"
   else
     # fall back to distro-specific cert paths
     local SYS_ID
@@ -163,13 +163,13 @@ function fixcertpy() {
   for certifi in "${certifi_paths[@]}"; do
     echo "${certifi//$HOME/\~}" >&2
     for pem in "${cert_pems[@]}"; do
-      serial=$(openssl x509 -noout -serial -nameopt RFC2253 <<< "$pem" 2>/dev/null | cut -d= -f2)
+      serial=$(openssl x509 -noout -serial -nameopt RFC2253 <<<"$pem" 2>/dev/null | cut -d= -f2)
       [ -n "$serial" ] || continue
       if ! grep -qw "$serial" "$certifi"; then
-        echo " - $(openssl x509 -noout -subject -nameopt RFC2253 <<< "$pem" | sed 's/\\//g')" >&2
+        echo " - $(openssl x509 -noout -subject -nameopt RFC2253 <<<"$pem" | sed 's/\\//g')" >&2
         CERT="
-$(openssl x509 -noout -issuer -subject -serial -fingerprint -nameopt RFC2253 <<< "$pem" | sed 's/\\//g' | xargs -I {} echo "# {}")
-$(openssl x509 -outform PEM <<< "$pem")"
+$(openssl x509 -noout -issuer -subject -serial -fingerprint -nameopt RFC2253 <<<"$pem" | sed 's/\\//g' | xargs -I {} echo "# {}")
+$(openssl x509 -outform PEM <<<"$pem")"
         if [ -w "$certifi" ]; then
           echo "$CERT" >>"$certifi"
         else
@@ -227,13 +227,13 @@ function cert_intercept() {
         elif [[ "$line" == "-----END CERTIFICATE-----" ]]; then
           current_pem+=$'\n'"$line"
           local ser
-          ser=$(openssl x509 -noout -serial <<< "$current_pem" 2>/dev/null | cut -d= -f2)
+          ser=$(openssl x509 -noout -serial <<<"$current_pem" 2>/dev/null | cut -d= -f2)
           [ -n "$ser" ] && _existing_serials+="$ser "
           current_pem=""
         elif [[ -n "$current_pem" ]]; then
           current_pem+=$'\n'"$line"
         fi
-      done < "$cert_bundle"
+      done <"$cert_bundle"
     fi
   fi
 
@@ -265,12 +265,12 @@ function cert_intercept() {
       elif [[ -n "$current_pem" ]]; then
         current_pem+=$'\n'"$line"
       fi
-    done <<< "$chain_pem"
+    done <<<"$chain_pem"
 
     # process each intermediate/root cert
     for pem in "${pem_blocks[@]}"; do
       local serial
-      serial=$(openssl x509 -noout -serial -nameopt RFC2253 <<< "$pem" 2>/dev/null | cut -d= -f2)
+      serial=$(openssl x509 -noout -serial -nameopt RFC2253 <<<"$pem" 2>/dev/null | cut -d= -f2)
       [ -n "$serial" ] || continue
 
       # check for duplicate
@@ -281,14 +281,14 @@ function cert_intercept() {
 
       # format cert with header comments and append to bundle
       local header
-      header=$(openssl x509 -noout -issuer -subject -serial -fingerprint -nameopt RFC2253 <<< "$pem" 2>/dev/null | sed 's/\\//g' | xargs -I {} echo "# {}")
+      header=$(openssl x509 -noout -issuer -subject -serial -fingerprint -nameopt RFC2253 <<<"$pem" 2>/dev/null | sed 's/\\//g' | xargs -I {} echo "# {}")
       local cert_pem
-      cert_pem=$(openssl x509 -outform PEM <<< "$pem" 2>/dev/null)
+      cert_pem=$(openssl x509 -outform PEM <<<"$pem" 2>/dev/null)
 
-      printf '%s\n%s\n' "$header" "$cert_pem" >> "$cert_bundle"
+      printf '%s\n%s\n' "$header" "$cert_pem" >>"$cert_bundle"
       _existing_serials+="$serial "
       cert_count=$((cert_count + 1))
-      printf ' \e[32m+ %s\e[0m\n' "$(openssl x509 -noout -subject -nameopt RFC2253 <<< "$pem" 2>/dev/null | sed 's/\\//g')" >&2
+      printf ' \e[32m+ %s\e[0m\n' "$(openssl x509 -noout -subject -nameopt RFC2253 <<<"$pem" 2>/dev/null | sed 's/\\//g')" >&2
     done
   done
 

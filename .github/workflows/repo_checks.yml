@@ -3,6 +3,13 @@ name: Preflight Checks
 on:
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   preflight_checks:
     name: "pre-commit hooks"

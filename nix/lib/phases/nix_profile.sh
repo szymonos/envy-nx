@@ -48,10 +48,18 @@ phase_nix_profile_update_flake() {
 phase_nix_profile_apply() {
   if ! _io_nix profile list --json 2>/dev/null | grep -q 'nix-env'; then
     _io_nix profile add "path:$ENV_DIR" 2>&1 ||
-      { _ir_error="nix profile add failed"; err "$_ir_error"; exit 1; }
+      {
+        _ir_error="nix profile add failed"
+        err "$_ir_error"
+        exit 1
+      }
   fi
   _io_nix profile upgrade nix-env ||
-    { _ir_error="nix profile upgrade failed"; err "$_ir_error"; exit 1; }
+    {
+      _ir_error="nix profile upgrade failed"
+      err "$_ir_error"
+      exit 1
+    }
   ok "nix profile updated in ${SECONDS}s"
 }
 

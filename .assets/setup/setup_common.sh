@@ -14,9 +14,9 @@ fi
 
 SCRIPT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-info()  { printf "\e[96m%s\e[0m\n" "$*"; }
-ok()    { printf "\e[32m%s\e[0m\n" "$*"; }
-warn()  { printf "\e[33m%s\e[0m\n" "$*" >&2; }
+info() { printf "\e[96m%s\e[0m\n" "$*"; }
+ok() { printf "\e[32m%s\e[0m\n" "$*"; }
+warn() { printf "\e[33m%s\e[0m\n" "$*" >&2; }
 
 # Invoke pwsh -nop via the nix wrapper, clearing LD_LIBRARY_PATH inside pwsh.
 # Must use the nix bin/pwsh wrapper (not share/powershell/pwsh) because the

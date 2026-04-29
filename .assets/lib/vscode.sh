@@ -102,9 +102,9 @@ setup_vscode_server_env() {
 
   local settings='{}'
   [ -f "$settings_file" ] && settings="$(cat "$settings_file")"
-  printf '%s\n' "$settings" \
-    | jq --arg path "$pwsh_bin" '.["powershell.powerShellAdditionalExePaths"].nix = $path' \
-    > "$settings_file.tmp"
+  printf '%s\n' "$settings" |
+    jq --arg path "$pwsh_bin" '.["powershell.powerShellAdditionalExePaths"].nix = $path' \
+      >"$settings_file.tmp"
   mv -f "$settings_file.tmp" "$settings_file"
   ok "  added pwsh path to VS Code Machine settings"
 }

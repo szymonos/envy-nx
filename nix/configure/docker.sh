@@ -5,9 +5,9 @@ nix/configure/docker.sh
 '
 set -eo pipefail
 
-info()  { printf "\e[96m%s\e[0m\n" "$*"; }
-ok()    { printf "\e[32m%s\e[0m\n" "$*"; }
-warn()  { printf "\e[33m%s\e[0m\n" "$*" >&2; }
+info() { printf "\e[96m%s\e[0m\n" "$*"; }
+ok() { printf "\e[32m%s\e[0m\n" "$*"; }
+warn() { printf "\e[33m%s\e[0m\n" "$*" >&2; }
 
 if [[ "$(uname -s)" == "Darwin" ]]; then
   ok "Docker Desktop should be installed separately on macOS."

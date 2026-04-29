@@ -55,10 +55,13 @@ def main() -> None:
         parts.append(f.read_text())
     content = "\n".join(parts)
 
+    # tokenize raw content first (cspell matches whole words before splitting)
+    tokens = set(re.findall(r"[a-z][a-z0-9]*", content.lower()))
+
     # split camelCase/PascalCase and letter/digit boundaries (like cspell does)
     content = re.sub(r"(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])", " ", content)
     content = re.sub(r"(?<=[a-zA-Z])(?=[0-9])|(?<=[0-9])(?=[a-zA-Z])", " ", content)
-    tokens = set(re.findall(r"[a-z]+", content.lower()))
+    tokens |= set(re.findall(r"[a-z]+", content.lower()))
 
     # keep only words that appear in the content
     valid_words = sorted(w for w in words if w in tokens)

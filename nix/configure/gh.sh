@@ -9,9 +9,9 @@ set -eo pipefail
 
 unattended="${1:-false}"
 
-info()  { printf "\e[96m%s\e[0m\n" "$*"; }
-ok()    { printf "\e[32m%s\e[0m\n" "$*"; }
-warn()  { printf "\e[33m%s\e[0m\n" "$*" >&2; }
+info() { printf "\e[96m%s\e[0m\n" "$*"; }
+ok() { printf "\e[32m%s\e[0m\n" "$*"; }
+warn() { printf "\e[33m%s\e[0m\n" "$*" >&2; }
 
 if ! command -v gh &>/dev/null; then
   warn "gh CLI not found - skipping GitHub authentication setup."

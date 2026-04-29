@@ -135,7 +135,7 @@ nix_args=(--unattended --quiet-summary)
 [ "$update_modules" = true ] && nix_args+=(--update-modules)
 for sc in "${scope_arr[@]}"; do
   case $sc in
-  distrobox|docker) continue ;;
+  distrobox | docker) continue ;;
   esac
   nix_args+=("--${sc//_/-}")
 done

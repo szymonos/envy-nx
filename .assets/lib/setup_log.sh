@@ -17,7 +17,7 @@ setup_log_start() {
   mkdir -p "$log_dir"
   # rotate: keep one previous run
   [ -f "$_SETUP_LOG_FILE" ] && mv -f "$_SETUP_LOG_FILE" "${_SETUP_LOG_FILE}.1"
-  : > "$_SETUP_LOG_FILE"
+  : >"$_SETUP_LOG_FILE"
 }
 
 setup_log_close() {

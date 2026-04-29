@@ -29,7 +29,10 @@ if ! command -v jq &>/dev/null; then
     "$HOME/.nix-profile/etc/profile.d/nix.sh" \
     /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh; do
     # shellcheck source=/dev/null
-    if [ -f "$_ir_nix_profile" ]; then . "$_ir_nix_profile"; break; fi
+    if [ -f "$_ir_nix_profile" ]; then
+      . "$_ir_nix_profile"
+      break
+    fi
   done
   unset _ir_nix_profile
 fi
@@ -50,8 +53,8 @@ write_install_record() {
   else
     local script_root="${_IR_SCRIPT_ROOT:-}"
     if [ -n "$script_root" ] && git -C "$script_root" rev-parse --is-inside-work-tree &>/dev/null; then
-      version="$(git -C "$script_root" describe --tags --dirty 2>/dev/null \
-        || git -C "$script_root" rev-parse --short HEAD 2>/dev/null)" || true
+      version="$(git -C "$script_root" describe --tags --dirty 2>/dev/null ||
+        git -C "$script_root" rev-parse --short HEAD 2>/dev/null)" || true
       source="git"
       source_ref="$(git -C "$script_root" rev-parse HEAD 2>/dev/null)" || true
     elif [ -n "$script_root" ] && [ -f "$script_root/VERSION" ]; then

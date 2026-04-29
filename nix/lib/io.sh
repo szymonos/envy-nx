@@ -22,14 +22,14 @@ _log_msg() {
     printf '%s\n' "$_line"
   fi
   if [[ -n "${_SETUP_LOG_FILE:-}" ]]; then
-    printf '%s|%s|%s|%s: %s\n' "$_ts" "$level" "$_src" "$_ctx" "$*" >> "$_SETUP_LOG_FILE"
+    printf '%s|%s|%s|%s: %s\n' "$_ts" "$level" "$_src" "$_ctx" "$*" >>"$_SETUP_LOG_FILE"
   fi
 }
 
 info() { _log_msg "INFO" "94" "0" "$@"; }
-ok()   { _log_msg "OK" "32" "0" "$@"; }
+ok() { _log_msg "OK" "32" "0" "$@"; }
 warn() { _log_msg "WARNING" "93" "1" "$@"; }
-err()  { _log_msg "ERROR" "91" "1" "$@"; }
+err() { _log_msg "ERROR" "91" "1" "$@"; }
 
 # -- Thin shims for external commands ------------------------------------------
 # Phases call these instead of the raw commands. Tests redefine them to assert
@@ -74,7 +74,7 @@ _io_run() {
       printf '%s|ERROR|%s:%s|<%s>%s: %s\n' \
         "$_ts" "${BASH_SOURCE[1]##*/}" "${BASH_LINENO[0]}" \
         "${_ir_phase:-main}" "${FUNCNAME[1]:-main}" \
-        "$(tr '\n' ' ' < "$_err_file")" >> "$_SETUP_LOG_FILE"
+        "$(tr '\n' ' ' <"$_err_file")" >>"$_SETUP_LOG_FILE"
     fi
   fi
   rm -f "$_err_file"

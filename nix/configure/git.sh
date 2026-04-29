@@ -5,8 +5,8 @@ nix/configure/git.sh
 '
 set -eo pipefail
 
-info()  { printf "\e[96m%s\e[0m\n" "$*"; }
-ok()    { printf "\e[32m%s\e[0m\n" "$*"; }
+info() { printf "\e[96m%s\e[0m\n" "$*"; }
+ok() { printf "\e[32m%s\e[0m\n" "$*"; }
 
 info "configuring git..."
 

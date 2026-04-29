@@ -301,7 +301,10 @@ _scope_pkgs() {
     fi
     local pkg_count
     pkg_count="$(_scope_pkgs "$nix_file" | wc -l)"
-    [[ $pkg_count -gt 0 ]] || { echo "empty scope file: $nix_file" >&2; false; }
+    [[ $pkg_count -gt 0 ]] || {
+      echo "empty scope file: $nix_file" >&2
+      false
+    }
   done
 }
 
@@ -822,7 +825,10 @@ STUB
   SCRIPT_ROOT="$fake_root"
 
   # probe should be skipped (ca-bundle exists), so curl stub should not matter
-  _io_curl_probe() { touch "$TEST_HOME/probe_called"; return 1; }
+  _io_curl_probe() {
+    touch "$TEST_HOME/probe_called"
+    return 1
+  }
 
   phase_nix_profile_mitm_probe
   [[ ! -f "$TEST_HOME/cert_intercept_called" ]]
