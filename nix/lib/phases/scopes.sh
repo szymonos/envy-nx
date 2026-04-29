@@ -61,6 +61,15 @@ phase_scopes_apply_removes() {
       if scope_has "$sc"; then
         scope_del "$sc"
         ok "removed scope: $sc"
+        # per-scope cleanup hooks for empty-scope state on disk.
+        # docker/distrobox are system installs (need root) - left to the user.
+        case "$sc" in
+        conda)
+          # shellcheck disable=SC2154  # unattended set by phase_bootstrap_parse_args
+          _io_run "$SCRIPT_ROOT/nix/configure/conda_remove.sh" "${unattended:-false}" ||
+            warn "conda removal cleanup failed"
+          ;;
+        esac
       else
         warn "scope '$sc' is not currently configured - skipping"
       fi
