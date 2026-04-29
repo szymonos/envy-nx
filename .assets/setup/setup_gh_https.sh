@@ -19,7 +19,7 @@ elif ! [ -x /usr/bin/gh ]; then
   exit 1
 fi
 
-. .assets/provision/gh_helpers.sh
+. .assets/lib/helpers.sh
 
 # initialize local variables
 user="$(id -un 1000 2>/dev/null || echo "unknown")"

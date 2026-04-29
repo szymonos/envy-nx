@@ -1,29 +1,29 @@
 #!/usr/bin/env bats
-# Unit tests for .assets/provision/gh_helpers.sh
+# Unit tests for .assets/lib/helpers.sh
 # shellcheck disable=SC2034,SC2154
 bats_require_minimum_version 1.5.0
 
 setup() {
-  # shellcheck source=../../.assets/provision/gh_helpers.sh
-  source "$BATS_TEST_DIRNAME/../../.assets/provision/gh_helpers.sh"
+  # shellcheck source=../../.assets/lib/helpers.sh
+  source "$BATS_TEST_DIRNAME/../../.assets/lib/helpers.sh"
 }
 
 # =============================================================================
-# gh_download_file - parameter validation (no network)
+# download_file - parameter validation (no network)
 # =============================================================================
 
-@test "gh_download_file fails when uri is missing" {
-  run ! gh_download_file --target_dir /tmp
+@test "download_file fails when uri is missing" {
+  run ! download_file --target_dir /tmp
   [[ "$output" == *"uri"*"required"* ]]
 }
 
-@test "gh_download_file fails when curl is not available" {
+@test "download_file fails when curl is not available" {
   # shadow curl with a function that doesn't exist
   type() {
     [[ "$1" != "curl" ]] && command type "$@"
     return 1
   }
-  run ! gh_download_file --uri "https://example.com/file.tar.gz"
+  run ! download_file --uri "https://example.com/file.tar.gz"
   [[ "$output" == *"curl"*"required"* ]]
 }
 
