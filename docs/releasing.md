@@ -152,8 +152,8 @@ The release tarball is an alternative to `git clone` for environments where git 
 
 ```bash
 # download and extract
-curl -sL https://github.com/szymonos/envy-nx/releases/download/v1.2.0/envy-nx-1.2.0.tar.gz | tar xz
-cd envy-nx-1.2.0
+curl -sL https://github.com/szymonos/envy-nx/releases/latest/download/envy-nx.tar.gz | tar xz
+cd envy-nx
 
 # run setup (same as git clone)
 nix/setup.sh --shell --python --pwsh
