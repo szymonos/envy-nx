@@ -18,11 +18,11 @@ _NX_DEFAULT_REPO_URL="https://github.com/szymonos/envy-nx.git"
 
 # --- Helpers ---
 
-_nx_read_pkgs() {
+function _nx_read_pkgs() {
   [ -f "$_NX_PKG_FILE" ] && sed -n 's/^[[:space:]]*"\([^"]*\)".*/\1/p' "$_NX_PKG_FILE"
 }
 
-_nx_write_pkgs() {
+function _nx_write_pkgs() {
   local tmp
   tmp="$(mktemp)"
   printf '[\n' >"$tmp"
@@ -33,7 +33,7 @@ _nx_write_pkgs() {
   mv "$tmp" "$_NX_PKG_FILE"
 }
 
-_nx_apply() {
+function _nx_apply() {
   printf "\e[96mapplying changes...\e[0m\n"
   nix profile upgrade nix-env || {
     printf "\e[31mnix profile upgrade failed\e[0m\n" >&2
@@ -48,24 +48,24 @@ _nx_apply() {
 # (bundled module versions/paths shift). Without this, `Install-PSResource`
 # and other PSResourceGet operations crash with "Could not find a part of
 # the path .../Modules/PSReadLine/<ver>/PSReadLine.format.ps1xml".
-_nx_clear_pwsh_cache() {
+function _nx_clear_pwsh_cache() {
   local _cache_dir="$HOME/.cache/powershell"
   [ -d "$_cache_dir" ] || return 0
   local _cleared=0 _f
-  for _f in "$_cache_dir"/ModuleAnalysisCache-* "$_cache_dir"/StartupProfileData-*; do
-    [ -e "$_f" ] || continue
+  while IFS= read -r _f; do
+    [ -n "$_f" ] || continue
     rm -f "$_f" && _cleared=$((_cleared + 1))
-  done
+  done < <(find "$_cache_dir" -maxdepth 1 -type f \( -name 'ModuleAnalysisCache-*' -o -name 'StartupProfileData-*' \) 2>/dev/null)
   [ "$_cleared" -gt 0 ] &&
     printf "\e[90mCleared %d stale PowerShell cache file(s) (regenerates on next pwsh launch).\e[0m\n" "$_cleared"
   return 0
 }
 
-_nx_validate_pkg() {
+function _nx_validate_pkg() {
   nix eval "nixpkgs#${1}.name" &>/dev/null
 }
 
-_nx_scope_file_add() {
+function _nx_scope_file_add() {
   local file="$1"
   shift
   local existing
@@ -98,7 +98,7 @@ _nx_scope_file_add() {
   return 0
 }
 
-_nx_scope_pkgs() {
+function _nx_scope_pkgs() {
   local file="$1"
   [ -f "$file" ] || return 0
   sed -n '/\[/,/\]/{
@@ -106,7 +106,7 @@ _nx_scope_pkgs() {
   }' "$file"
 }
 
-_nx_scopes() {
+function _nx_scopes() {
   local config_nix="$_NX_ENV_DIR/config.nix"
   [ -f "$config_nix" ] || return 0
   sed -n '/scopes[[:space:]]*=[[:space:]]*\[/,/\]/{
@@ -114,7 +114,7 @@ _nx_scopes() {
   }' "$config_nix"
 }
 
-_nx_is_init() {
+function _nx_is_init() {
   local config_nix="$_NX_ENV_DIR/config.nix"
   [ -f "$config_nix" ] || {
     echo "false"
@@ -123,7 +123,7 @@ _nx_is_init() {
   sed -n -E 's/^[[:space:]]*isInit[[:space:]]*=[[:space:]]*(true|false).*/\1/p' "$config_nix"
 }
 
-_nx_all_scope_pkgs() {
+function _nx_all_scope_pkgs() {
   local scopes_dir="$_NX_ENV_DIR/scopes"
   [ -d "$scopes_dir" ] || return 0
   local pkg
@@ -146,11 +146,13 @@ _nx_all_scope_pkgs() {
   fi
 }
 
-_nx_find_lib() {
+function _nx_find_lib() {
   local name="$1"
   local script_dir
-  if [ -n "${BASH_SOURCE[0]:-}" ]; then
-    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  # BASH_SOURCE-based self-location with a zsh fallback: in zsh BASH_SOURCE[0]
+  # is empty, the else branch falls through to the durable config dir.
+  if [ -n "${BASH_SOURCE[0]:-}" ]; then                        # zsh-ok: guarded by [-n]; falls through in zsh
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" # zsh-ok: only reached in bash
   else
     script_dir="$HOME/.config/nix-env"
   fi
@@ -167,7 +169,7 @@ _nx_find_lib() {
   return 1
 }
 
-_nx_read_install_field() {
+function _nx_read_install_field() {
   local field="$1"
   [ -f "$_NX_INSTALL_JSON" ] || return 0
   if type jq &>/dev/null; then
@@ -177,7 +179,7 @@ _nx_read_install_field() {
   fi
 }
 
-_nx_self_sync() {
+function _nx_self_sync() {
   local repo_path="$1"
   local f
   for f in nx.sh nx_doctor.sh profile_block.sh; do
@@ -194,7 +196,7 @@ _nx_self_sync() {
   printf "\e[32msynced nx files to %s\e[0m\n" "${_NX_ENV_DIR/#$HOME/\~}"
 }
 
-_nx_version() {
+function _nx_version() {
   local install_json="$HOME/.config/dev-env/install.json"
   if [ ! -f "$install_json" ]; then
     printf "\e[33mNo install record found.\e[0m\n"
@@ -263,7 +265,7 @@ _nx_version() {
 
 # --- Profile block rendering ---
 
-_nx_render_env_block() {
+function _nx_render_env_block() {
   local skip_local_bin="${1:-false}"
   if [ "$skip_local_bin" != "true" ]; then
     printf '# :local path\n'
@@ -305,7 +307,7 @@ _nx_render_env_block() {
   fi
 }
 
-_nx_render_nix_block() {
+function _nx_render_nix_block() {
   local shell="${1:-bash}"
   printf '# :path\n'
 
@@ -386,9 +388,14 @@ _nx_render_nix_block() {
 
   if [ "$shell" = "bash" ]; then
     printf '\n# :make\n'
-    printf 'complete -W "$(if [ -f Makefile ]; then grep -oE '\''^[a-zA-Z0-9_-]+:([^=]|$)'\'' Makefile | sed '\''s/[^a-zA-Z0-9_-]*$//'\''
+    # `complete -W` is emitted text for the user's bashrc, not a runtime
+    # invocation; split into three printfs so the suppression marker can
+    # sit on the same source line as the `complete -W` literal.
+    printf 'complete -W "' # zsh-ok: emitted text, not a runtime call
+    printf '$(if [ -f Makefile ]; then grep -oE '\''^[a-zA-Z0-9_-]+:([^=]|$)'\'' Makefile | sed '\''s/[^a-zA-Z0-9_-]*$//'\''
 elif [ -f makefile ]; then grep -oE '\''^[a-zA-Z0-9_-]+:([^=]|$)'\'' makefile | sed '\''s/[^a-zA-Z0-9_-]*$//'\''
-fi)" make\n'
+fi)'
+    printf '" make\n'
   fi
 
   if [ -x "$HOME/.nix-profile/bin/oh-my-posh" ] && [ -f "$HOME/.config/nix-env/omp/theme.omp.json" ]; then
@@ -407,7 +414,7 @@ fi)" make\n'
   fi
 }
 
-_nx_profile_regenerate() {
+function _nx_profile_regenerate() {
   local _pb_lib_path
   _pb_lib_path="$(_nx_find_lib profile_block.sh)" || {
     printf "\e[31mprofile_block.sh not found\e[0m\n" >&2
@@ -453,7 +460,7 @@ _nx_profile_regenerate() {
 
 # --- Main dispatch ---
 
-nx_main() {
+function nx_main() {
   case "${1:-help}" in
   search)
     shift
@@ -617,16 +624,17 @@ nx_main() {
     list | ls)
       local scopes
       scopes="$(_nx_scopes)"
-      # discover orphaned local scopes (files exist but not in config.nix)
+      # discover orphaned local scopes (files exist but not in config.nix);
+      # `find` instead of glob so zsh callers don't trip NOMATCH when the dir is empty
       local f lname
-      for f in "$scopes_dir"/local_*.nix; do
-        [ -f "$f" ] || continue
+      while IFS= read -r f; do
+        [ -n "$f" ] || continue
         lname="$(basename "$f" .nix)"
         if ! printf '%s\n' "$scopes" | grep -qx "$lname" 2>/dev/null; then
           scopes="${scopes:+$scopes
 }$lname"
         fi
-      done
+      done < <(find "$scopes_dir" -maxdepth 1 -type f -name 'local_*.nix' 2>/dev/null)
       scopes="$(printf '%s\n' "$scopes" | sort)"
       if [ -n "$scopes" ]; then
         printf "\e[96mInstalled scopes:\e[0m\n"
@@ -670,14 +678,14 @@ nx_main() {
       fi
       scopes="$(_nx_scopes)"
       local f lname
-      for f in "$scopes_dir"/local_*.nix; do
-        [ -f "$f" ] || continue
+      while IFS= read -r f; do
+        [ -n "$f" ] || continue
         lname="$(basename "$f" .nix)"
         if ! printf '%s\n' "$scopes" | grep -qx "$lname" 2>/dev/null; then
           scopes="${scopes:+$scopes
 }$lname"
         fi
-      done
+      done < <(find "$scopes_dir" -maxdepth 1 -type f -name 'local_*.nix' 2>/dev/null)
       scopes="$(printf '%s\n' "$scopes" | sort)"
       if [ -n "$scopes" ]; then
         while IFS= read -r s; do
@@ -895,7 +903,7 @@ EOF
     local _pb_lib_path
     _pb_lib_path="$(_nx_find_lib profile_block.sh)" && source "$_pb_lib_path"
 
-    _pb_short() { printf '%s' "${1/#$HOME/\~}"; }
+    function _pb_short() { printf '%s' "${1/#$HOME/\~}"; }
 
     case "${1:-help}" in
     doctor)
@@ -973,8 +981,8 @@ PROFILE_HELP
     local scopes_dir="$env_dir/scopes"
     local f hdr name indicator
     hdr=false
-    for f in "$scopes_dir"/local_*.nix; do
-      [ -f "$f" ] || continue
+    while IFS= read -r f; do
+      [ -n "$f" ] || continue
       [ "$hdr" = false ] && printf "\e[96mScopes:\e[0m\n" && hdr=true
       name="$(basename "$f" .nix)"
       name="${name#local_}"
@@ -987,12 +995,12 @@ PROFILE_HELP
         indicator=" \e[33m(source missing)\e[0m"
       fi
       printf "  \e[1m*\e[0m %s%b\n" "$name" "$indicator"
-    done
+    done < <(find "$scopes_dir" -maxdepth 1 -type f -name 'local_*.nix' 2>/dev/null)
     [ "$hdr" = false ] && printf "\e[90mNo overlay scopes.\e[0m\n"
     if [ -d "$ov_dir/shell_cfg" ]; then
       hdr=false
-      for f in "$ov_dir/shell_cfg"/*.sh "$ov_dir/shell_cfg"/*.bash "$ov_dir/shell_cfg"/*.zsh; do
-        [ -f "$f" ] || continue
+      while IFS= read -r f; do
+        [ -n "$f" ] || continue
         [ "$hdr" = false ] && printf "\e[96mShell config:\e[0m\n" && hdr=true
         local bname installed
         bname="$(basename "$f")"
@@ -1008,16 +1016,16 @@ PROFILE_HELP
           indicator=" \e[33m(not installed)\e[0m"
         fi
         printf "  \e[1m*\e[0m %s%b\n" "$bname" "$indicator"
-      done
+      done < <(find "$ov_dir/shell_cfg" -maxdepth 1 -type f \( -name '*.sh' -o -name '*.bash' -o -name '*.zsh' \) 2>/dev/null)
     fi
     local hook_dir
     for hook_dir in pre-setup.d post-setup.d; do
       hdr=false
-      for f in "$ov_dir/hooks/$hook_dir"/*.sh; do
-        [ -f "$f" ] || continue
+      while IFS= read -r f; do
+        [ -n "$f" ] || continue
         [ "$hdr" = false ] && printf "\e[96mHooks (%s):\e[0m\n" "$hook_dir" && hdr=true
         printf "  \e[1m*\e[0m %s\n" "$(basename "$f")"
-      done
+      done < <(find "$ov_dir/hooks/$hook_dir" -maxdepth 1 -type f -name '*.sh' 2>/dev/null)
     done
     ;;
   prune)
@@ -1286,6 +1294,8 @@ EOF
 }
 
 # --- Execution guard ---
-if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+# In bash: fires when nx.sh is run as a script (not sourced).
+# In zsh: BASH_SOURCE[0] is empty, comparison is false, nx_main is not auto-invoked.
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then # zsh-ok: false in zsh; nx_main only runs under bash standalone
   nx_main "$@"
 fi

@@ -133,10 +133,16 @@ phase_bootstrap_sync_env_dir() {
   mkdir -p "$ENV_DIR"
   cp "$NIX_SRC/flake.nix" "$ENV_DIR/"
   cp -r "$NIX_SRC/scopes" "$ENV_DIR/"
-  cp "$SCRIPT_ROOT/.assets/lib/nx_doctor.sh" "$ENV_DIR/"
-  cp "$SCRIPT_ROOT/.assets/lib/nx.sh" "$ENV_DIR/"
+  # Atomic install for files that user shells may source/exec concurrently:
+  # nx.sh is read on every `nx` invocation; profile_block.sh is sourced by
+  # nx.sh at runtime; nx_doctor.sh is exec'd by `nx doctor`. Plain `cp`
+  # opens the dest with O_TRUNC and writes in chunks - a shell that reads
+  # mid-write sees a half-written file (e.g. heredoc body without its
+  # opening line, body lines then interpreted as commands).
+  install_atomic "$SCRIPT_ROOT/.assets/lib/nx.sh" "$ENV_DIR/nx.sh"
+  install_atomic "$SCRIPT_ROOT/.assets/lib/nx_doctor.sh" "$ENV_DIR/nx_doctor.sh"
+  install_atomic "$SCRIPT_ROOT/.assets/lib/profile_block.sh" "$ENV_DIR/profile_block.sh"
   chmod +x "$ENV_DIR/nx.sh"
-  cp "$SCRIPT_ROOT/.assets/lib/profile_block.sh" "$ENV_DIR/"
   ok "synced nix declarations to $ENV_DIR"
 }
 

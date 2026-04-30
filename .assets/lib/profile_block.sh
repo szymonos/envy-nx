@@ -22,12 +22,12 @@
 #   - File mode is preserved via cp + mv pattern.
 #   - Works with BSD sed (no -i ''; uses tmp file instead).
 
-_pb_begin_tag() { printf '# >>> %s >>>' "$1"; }
-_pb_end_tag() { printf '# <<< %s <<<' "$1"; }
+function _pb_begin_tag() { printf '# >>> %s >>>' "$1"; }
+function _pb_end_tag() { printf '# <<< %s <<<' "$1"; }
 
 # _pb_count_occurrences <rc-file> <marker>
 # prints the number of begin-tag lines found
-_pb_count_occurrences() {
+function _pb_count_occurrences() {
   local rc="$1" marker="$2"
   local tag
   tag="$(_pb_begin_tag "$marker")"
@@ -36,7 +36,7 @@ _pb_count_occurrences() {
 }
 
 # manage_block <rc-file> <marker> <action> [<content-file>]
-manage_block() {
+function manage_block() {
   local rc="$1" marker="$2" action="$3" content_file="${4:-}"
 
   # ensure rc exists
@@ -143,7 +143,7 @@ manage_block() {
 
 # _pb_normalize_trailing (stdin filter)
 # Strips consecutive trailing blank lines, ensures exactly one trailing newline.
-_pb_normalize_trailing() {
+function _pb_normalize_trailing() {
   awk '
     /^[[:space:]]*$/ { blank++; next }
     { for (i=0; i<blank; i++) print ""; blank=0; print }

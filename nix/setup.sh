@@ -49,6 +49,8 @@ pushd "$SCRIPT_ROOT" >/dev/null
 # ---- source libraries --------------------------------------------------------
 # shellcheck source=lib/io.sh
 source "$LIB_DIR/io.sh"
+# shellcheck source=../.assets/lib/helpers.sh
+source "$SCRIPT_ROOT/.assets/lib/helpers.sh"
 for _p in bootstrap platform scopes nix_profile configure profiles post_install summary; do
   # shellcheck source=/dev/null
   source "$LIB_DIR/phases/$_p.sh"

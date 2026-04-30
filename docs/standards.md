@@ -6,19 +6,19 @@ This tool provisions developer environments - if it breaks, developers cannot wo
 
 | Metric                       | Value                                                                       |
 | ---------------------------- | --------------------------------------------------------------------------- |
-| Unit test files              | 22 (15 bats + 7 Pester)                                                     |
-| Individual test cases        | 394 (328 bats + 66 Pester)                                                  |
-| Test code                    | 5,100+ lines                                                                |
-| Custom pre-commit hooks      | 8 Python scripts                                                            |
+| Unit test files              | 25 (17 bats + 8 Pester)                                                     |
+| Individual test cases        | 442 (354 bats + 88 Pester)                                                  |
+| Test code                    | 6,000+ lines                                                                |
+| Custom pre-commit hooks      | 9 Python scripts                                                            |
 | CI matrix axes               | 5 (Linux daemon, Linux rootless, Linux tarball, macOS Sequoia, macOS Tahoe) |
 | Platforms validated per PR   | macOS (bash 3.2 + BSD), Ubuntu (bash 5 + GNU)                               |
-| Pre-commit checks per commit | 19 hooks                                                                    |
+| Pre-commit checks per commit | 21 hooks                                                                    |
 
 ## Test infrastructure
 
 ### Unit tests - bash (bats)
 
-15 bats test files cover the core logic: scope dependency resolution, `nx` CLI commands (pin, rollback, scope, install, remove), managed block injection and removal, profile migration, overlay system, health checks, and certificate handling.
+17 bats test files cover the core logic: scope dependency resolution, `nx` CLI commands (pin, rollback, scope, install, remove), managed block injection and removal, profile migration, overlay system, health checks, and certificate handling.
 
 Phase functions from `nix/lib/phases/` are tested by sourcing them directly and overriding side-effect wrappers:
 
@@ -40,7 +40,7 @@ No mocking framework, no external dependencies. Functions call `_io_nix`, `_io_r
 
 ### Unit tests - PowerShell (Pester)
 
-7 Pester test files mirror the bash coverage for PowerShell components: WSL orchestration, scope parsing, certificate conversion, configuration helpers, and `nx` CLI PowerShell equivalents.
+8 Pester test files mirror the bash coverage for PowerShell components: WSL orchestration, scope parsing, certificate conversion, configuration helpers, and `nx` CLI PowerShell equivalents.
 
 ### Integration tests - CI
 
@@ -89,17 +89,18 @@ Each CI run validates:
 
 ## Pre-commit hooks
 
-Every commit passes through 19 hooks. 8 are custom Python scripts purpose-built for this codebase:
+Every commit passes through 21 hooks. 9 are custom Python scripts purpose-built for this codebase:
 
-| Hook                          | What it enforces                                                                                                                     |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `gremlins-check`              | No unwanted Unicode characters (zero-width spaces, smart quotes, en-dashes) - auto-fixes common substitutions                        |
-| `validate-docs-words`         | Custom dictionary (`project-words.txt`) contains only words that appear in docs - removes stale entries automatically                |
-| `align-tables`                | Markdown tables are column-aligned (auto-fixes on save)                                                                              |
-| `validate-scopes`             | `scopes.json` and `nix/scopes/*.nix` are consistent - every scope has a matching `.nix` file with a `# bins:` declaration            |
-| `check-bash32`                | Nix-path scripts contain no bash 4+ constructs - 14 rules covering mapfile, associative arrays, namerefs, GNU sed/grep extensions    |
-| `check-changelog`             | Runtime file changes (`nix/`, `.assets/`, `wsl/`) require a CHANGELOG entry under `[Unreleased]` - bypass via `skip-changelog` label |
-| `bats-tests` / `pester-tests` | Smart test runners that parse `source` directives to map changed files to their tests - only runs relevant tests, not the full suite |
+| Hook                          | What it enforces                                                                                                                                                                                                                                        |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gremlins-check`              | No unwanted Unicode characters (zero-width spaces, smart quotes, en-dashes) - auto-fixes common substitutions                                                                                                                                           |
+| `validate-docs-words`         | Custom dictionary (`project-words.txt`) contains only words that appear in docs - removes stale entries automatically                                                                                                                                   |
+| `align-tables`                | Markdown tables are column-aligned (auto-fixes on save)                                                                                                                                                                                                 |
+| `validate-scopes`             | `scopes.json` and `nix/scopes/*.nix` are consistent - every scope has a matching `.nix` file with a `# bins:` declaration                                                                                                                               |
+| `check-bash32`                | Nix-path scripts contain no bash 4+ constructs - 15 rules covering mapfile, associative arrays, namerefs, GNU sed/grep extensions                                                                                                                       |
+| `check-zsh-compat`            | Files sourced into the user's interactive shell (`shell_cfg/*.sh`, `lib/{nx,profile_block}.sh`) work under zsh - flags bare `name() {` defs, for-loops over unquoted globs (zsh `nomatch` aborts), and unguarded `BASH_SOURCE` / `compgen` / `complete` |
+| `check-changelog`             | Runtime file changes (`nix/`, `.assets/`, `wsl/`) require a CHANGELOG entry under `[Unreleased]` - bypass via `skip-changelog` label                                                                                                                    |
+| `bats-tests` / `pester-tests` | Smart test runners that parse `source` directives to map changed files to their tests - only runs relevant tests, not the full suite                                                                                                                    |
 
 Documentation build validation (`mkdocs build --strict`) runs in the CI pipeline rather than as a pre-commit hook, since it requires the full docs dependency set.
 
@@ -126,12 +127,14 @@ Every setup run (success or failure) writes `install.json` with version, scopes,
 ## Development workflow
 
 ```bash
-make install     # install pre-commit hooks (one-time)
-make lint        # run hooks on changed files (before every commit)
-make test-unit   # bats + Pester unit tests (fast, no Docker)
-make test        # all tests including Docker smoke tests
-make lint-diff   # hooks on files changed since main
-make mkdocs-serve # live-reload documentation preview
+make install                      # install pre-commit hooks (one-time)
+make lint                         # run hooks on changed files (before every commit)
+make test-unit                    # bats + Pester unit tests (fast, no Docker)
+make test                         # all tests including Docker smoke tests
+make lint-diff                    # hooks on files changed since main
+make hooks                        # list available hook IDs
+make lint-all HOOK=<hook_id>      # run a single hook on all files (fast iteration)
+make mkdocs-serve                 # live-reload documentation preview
 ```
 
 The `Makefile` handles MITM proxy support automatically: it sets `PREK_NATIVE_TLS` for the pre-commit runner and `NODE_EXTRA_CA_CERTS` for Node.js-based hooks (markdownlint, cspell) when a custom CA certificate is present. Developers behind corporate proxies don't need special configuration - the build system handles it.

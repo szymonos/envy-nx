@@ -13,8 +13,11 @@ cloudsdk
 cmatrix
 compdef
 compgen
+compinit
+compreply
 coreutils
 cowsay
+cword
 desync
 devbox
 distrobox
@@ -47,6 +50,7 @@ namerefs
 nixos
 nixpkgs
 nmap
+nomatch
 nounset
 otbs
 pasteable

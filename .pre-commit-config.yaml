@@ -31,10 +31,10 @@ repos:
         files: (nix/.*\.sh$|\.assets/lib/(scopes|profile_block|nx_doctor|helpers)\.sh$|\.assets/config/shell_cfg/(aliases_nix|aliases_git|aliases_kubectl|functions)\.sh$|\.assets/setup/setup_common\.sh$|\.assets/provision/install_copilot\.sh$)
         types: [file]
       - id: check-zsh-compat
-        name: Check shell_cfg scripts for zsh compatibility
+        name: Check shell-sourced scripts for zsh compatibility
         entry: python3 -m tests.hooks.check_zsh_compat
         language: system
-        files: \.assets/config/shell_cfg/.*\.sh$
+        files: (\.assets/config/shell_cfg/.*\.sh$|\.assets/lib/(nx|profile_block)\.sh$)
         types: [file]
       - id: bats-tests
         name: Run bats unit tests
