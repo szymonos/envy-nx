@@ -168,7 +168,7 @@ Slower but catches integration issues that unit tests miss.
 | `repo_checks.yml` | Pre-commit hooks (same as `make lint-diff`)              |
 | `release.yml`     | Full test matrix + build tarball + SBOM + sign + publish |
 
-Trigger CI via PR labels `test:linux` / `test:macos`, or `workflow_dispatch` for manual runs.
+Trigger CI via PR labels `test:integration` or `workflow_dispatch` for manual runs.
 Release workflow triggers automatically on `v*` tags.
 
 ## Release process

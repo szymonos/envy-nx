@@ -2,8 +2,8 @@ name: Linux Integration Test
 
 # Triggers:
 #   1. Manual: Actions tab -> "Run workflow" button (pick mode + scopes)
-#   2. PR label: add "test:linux" label to a PR (runs with --shell only)
-#   3. Push to PR: runs on push if the PR already has the "test:linux" label
+#   2. PR label: add "test:integration" label to a PR (runs with --shell only)
+#   3. Push to PR: runs on push if the PR already has the "test:integration" label
 # Use manual dispatch for full scope coverage; label triggers are fast smoke tests.
 
 on:
@@ -28,8 +28,8 @@ jobs:
   test-linux:
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'pull_request' && github.event.label.name == 'test:linux') ||
-      (github.event_name == 'pull_request' && github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'test:linux'))
+      (github.event_name == 'pull_request' && github.event.label.name == 'test:integration') ||
+      (github.event_name == 'pull_request' && github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'test:integration'))
 
     # Matrix covers the two Nix install modes that map to real deployment targets:
     #   - daemon    : multi-user install. Scenario: WSL, bare-metal Linux,

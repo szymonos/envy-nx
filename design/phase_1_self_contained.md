@@ -98,7 +98,7 @@ Deeper look revealed:
 - **`install_record.sh:30-42`** already supports both `git describe` and `VERSION` file fallback, plus a `source: "git" | "tarball"` field - the mechanism is ready; the producer workflow isn't.
 - **`design/implementation_plan.md`** already describes a release tarball builder (Phase 1, ~1.5 days). My proposal extends rather than replaces that plan.
 - **No `.github/workflows/release.yml`** exists.
-- **Integration tests gate on labels** (`test:linux`, `test:macos`) - this is reasonable for PRs, but releases should run the full matrix unconditionally.
+- **Integration tests gate on labels** (`test:integration`) - this is reasonable for PRs, but releases should run the full matrix unconditionally.
 - **mkdocs docs** are published via `docs-gh-pages.yml`; release version currently isn't threaded into the site.
 
 ### 2.2 Design
