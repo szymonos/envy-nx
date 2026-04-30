@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-04-30
+
 ### Added
 
 - `check-zsh-compat` hook: new rule flagging for-loops over unquoted globs (the pattern that bit `nx scope tree` on macOS), and broader file scope - now also lints `.assets/lib/nx.sh` and `.assets/lib/profile_block.sh`, both sourced into the user's interactive shell via the `nx()` wrapper. The hook is now scope-agnostic; file selection lives entirely in `.pre-commit-config.yaml`.
@@ -13,12 +15,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ### Changed
 
 - `.assets/lib/nx.sh` and `.assets/lib/profile_block.sh`: convert all bare `name() {` function definitions to `function name() {` to match zsh-safe style enforced for shell-sourced scripts. The few legitimate bash-isms (`BASH_SOURCE`-with-fallback in `_nx_find_lib`, the file-end exec guard, and the `complete -W` literal that's emitted text rather than a runtime call) are marked with inline `# zsh-ok` suppressions.
+- CI workflows: consolidated the `test:linux` and `test:macos` PR labels into a single `test:integration` label that triggers both Linux and macOS integration runs (`test_linux.yml`, `test_macos.yml`, plus the docs that referenced the old labels).
 
 ### Fixed
 
 - `completions.zsh`: guard `compdef` with `autoload -Uz compinit; compinit -i` when the completion system has not been initialized yet. macOS' default zsh setup does not run `compinit`, which caused `command not found: compdef` on first source. The guard is a no-op when `compinit` has already run elsewhere (e.g. via Oh My Zsh).
 - `nx.sh`, `functions.sh`: replace bash-idiomatic `for f in "$dir"/*.ext` loops with `find` piped into `while read`. zsh's default `nomatch` option aborts the command on unmatched globs (`nx_main:217: no matches found: .../local_*.nix`) instead of leaving the literal pattern for the `[ -f "$f" ]` guard to filter; `find` sidesteps both shells' glob behavior with no shell-option side effects on the user's interactive shell. Affects `nx scope list`, `nx scope tree`, `nx overlay`, the pwsh cache cleanup in `_nx_clear_pwsh_cache`, and the cert-bundle helper in `functions.sh` whenever the target dir contains no matching files (typical on a fresh macOS setup with no overlay scopes).
 - Race condition during `nix/setup.sh` rerun where the first invocation after a finished setup printed `~/.config/nix-env/nx.sh: line N: Garbage: command not found` (or similar text from inside the `cat <<'EOF' ... EOF` help heredoc), `EOF: command not found`, then a syntax error near `;;`. Cause: `cp` used in `phase_bootstrap_sync_env_dir` and `_install_cfg_file` truncates the destination and writes in chunks; if the user's shell sources the file mid-write (e.g. via the `nx()` wrapper in another terminal, bash completion, or the post-setup "Restart your terminal" call-out itself), it reads a half-written file - heredoc body without its opening `<<'EOF'` line, so the body lines get parsed as shell commands. Replaced with `install_atomic` (temp-file + same-filesystem rename, atomic on POSIX). Empirically verified: 5 partial-read failures in 200 concurrent `cp` writes vs. 0 failures with `install_atomic`.
+- `docs/releasing.md`: tarball download example now points at GitHub's `releases/latest/download/envy-nx.tar.gz` redirect instead of a hard-coded `v1.2.0` URL that drifted with every release.
 
 ## [1.3.0] - 2026-04-30
 
