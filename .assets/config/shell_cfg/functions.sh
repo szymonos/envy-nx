@@ -95,10 +95,11 @@ function fixcertpy() {
       return 0
       ;;
     esac
-    # read each .crt file into the PEM array
-    for f in "$CERT_PATH"/*.crt; do
-      [ -f "$f" ] && cert_pems+=("$(cat "$f")") || true
-    done
+    # read each .crt file into the PEM array; `find` instead of glob
+    # so zsh doesn't abort with NOMATCH when the dir is empty
+    while IFS= read -r f; do
+      [ -n "$f" ] && cert_pems+=("$(cat "$f")")
+    done < <(find "$CERT_PATH" -maxdepth 1 -type f -name '*.crt' 2>/dev/null)
   fi
 
   if [ "${#cert_pems[@]}" -eq 0 ]; then

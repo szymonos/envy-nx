@@ -1,4 +1,14 @@
 # zsh tab completions for the nx command
+
+# Ensure the completion system is initialized so `compdef` is defined.
+# macOS' default zsh setup does not run compinit, which causes
+# `command not found: compdef` when this file is sourced from .zshrc.
+# The guard makes the call a no-op when compinit has already run elsewhere.
+if (( ! ${+functions[compdef]} )); then
+  autoload -Uz compinit
+  compinit -i
+fi
+
 function _nx() {
   local -a subcmds
   subcmds=(

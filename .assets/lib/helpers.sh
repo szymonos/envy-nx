@@ -1,9 +1,38 @@
-# Shared GitHub helpers for provision and setup scripts.
-# Sourced by install_gh.sh and setup_gh_https.sh.
+# Shared helpers for provision, setup, and lifecycle scripts.
 #
 # Functions:
 #   download_file      -- download a file with retry logic
 #   gh_login_user      -- log in to GitHub as the specified user using gh CLI
+#   install_atomic     -- copy a file via temp-file + same-filesystem rename
+#                         so concurrent readers never see a partial file
+
+# *Function to install a file atomically: write to temp + rename.
+# Same-filesystem rename(2) is atomic on POSIX, so any process that
+# happens to read the destination during the swap sees either the old
+# file in full or the new file in full - never a half-written one.
+# Mode bits are preserved from the source.
+# Usage: install_atomic <src> <dst>
+install_atomic() {
+  local src="$1" dst="$2"
+  if [ -z "$src" ] || [ -z "$dst" ]; then
+    printf "\e[31mError: install_atomic requires <src> <dst>.\e[0m\n" >&2
+    return 1
+  fi
+  if [ ! -f "$src" ]; then
+    printf "\e[31mError: install_atomic source not found: %s\e[0m\n" "$src" >&2
+    return 1
+  fi
+  local dst_dir
+  dst_dir="$(dirname "$dst")"
+  mkdir -p "$dst_dir"
+  local tmp
+  tmp="$(mktemp "${dst}.XXXXXX")" || return 1
+  if ! cp -p "$src" "$tmp"; then
+    rm -f "$tmp"
+    return 1
+  fi
+  mv -f "$tmp" "$dst"
+}
 
 # *Function to download file from specified uri
 download_file() {

@@ -79,12 +79,15 @@ See `ARCHITECTURE.md` for file classification (nix-path vs linux-only), call tre
 **IMPORTANT**: Always run `make lint` before every commit and fix any failures.
 
 ```bash
-make lint          # Run pre-commit hooks on changed files (use before committing)
-make lint-all      # Run pre-commit hooks on all files
-make test          # Run all tests (unit + Docker smoke)
-make test-nix      # Test nix/setup.sh in Docker
-make help          # List all available make targets
+make lint                  # Run pre-commit hooks on changed files (use before committing)
+make lint-all              # Run all pre-commit hooks on all files (slow)
+make test                  # Run all tests (unit + Docker smoke)
+make test-nix              # Test nix/setup.sh in Docker
+make hooks                 # List available hook IDs (use with HOOK=<id>)
+make help                  # List all available make targets
 ```
+
+All `lint*` targets accept `HOOK=<id>` to run a single hook (e.g. `make lint-all HOOK=check-zsh-compat`) - seconds instead of minutes when verifying one hook's scope or rule changes across the whole tree. Run `make hooks` first to discover the available IDs.
 
 **Tooling notes:**
 

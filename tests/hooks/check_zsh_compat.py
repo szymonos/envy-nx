@@ -1,13 +1,18 @@
 """
-Check shell_cfg shell scripts for zsh compatibility.
+Check shell scripts for zsh compatibility.
 
-shell_cfg files (.assets/config/shell_cfg/*.sh) are sourced in both .bashrc
-and .zshrc.  This hook catches patterns that break or behave incorrectly
-in zsh:
+This hook is rule-driven and scope-agnostic: pre-commit-config.yaml decides
+which files to feed in (`files:` regex), the hook applies all rules to
+whatever it receives. Inline suppression: append `# zsh-ok` to a line.
+
+Rules catch patterns that break or behave incorrectly under zsh:
 
 - Bare function definitions (`name() {`) - zsh expands aliases during
   parsing, so `function name() {` is required to suppress expansion.
 - Numeric array subscripts - zsh arrays are 1-based (bash is 0-based).
+- For-loops over unquoted globs - zsh's `nomatch` option aborts the
+  command on no-match instead of leaving the literal pattern; use
+  `find ... | while IFS= read -r f` instead.
 - Bash-only variables/builtins (BASH_SOURCE, compgen, COMP_WORDS, etc.)
   that must be inside a `[ -n "$BASH_VERSION" ]` guard.
 
@@ -15,7 +20,7 @@ Optionally runs `zsh -n` (syntax check) when zsh is available.
 
 # :example
 python3 -m tests.hooks.check_zsh_compat .assets/config/shell_cfg/aliases_git.sh
-python3 -m tests.hooks.check_zsh_compat
+python3 -m tests.hooks.check_zsh_compat .assets/lib/nx.sh
 """
 
 import re
@@ -24,11 +29,6 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import NamedTuple
-
-# ---------------------------------------------------------------------------
-# Checked file patterns (shell_cfg files sourced in both bash and zsh)
-# ---------------------------------------------------------------------------
-SHELL_CFG_PATTERNS: tuple[str, ...] = (".assets/config/shell_cfg/*.sh",)
 
 # ---------------------------------------------------------------------------
 # Rules: each is (compiled regex, human description, guarded)
@@ -55,6 +55,13 @@ RULES: tuple[Rule, ...] = (
         "numeric array subscript - zsh arrays are 1-based; "
         "avoid indexed arrays or guard with BASH_VERSION",
         guarded=True,
+    ),
+    Rule(
+        re.compile(r"^\s*for\s+\w+\s+in\s+[^#\n]*\*"),
+        "for-loop with unquoted glob - zsh's `nomatch` option aborts "
+        "the command on no-match (`no matches found: ...`) instead of "
+        'leaving the literal pattern for a `[ -f "$f" ]` guard. '
+        "Use `find ... | while IFS= read -r f` instead",
     ),
     # -- guarded (need BASH_VERSION check) ----------------------------------
     Rule(
@@ -92,16 +99,6 @@ RULES: tuple[Rule, ...] = (
 _RE_IF = re.compile(r"^\s*(if|elif)\b")
 _RE_IF_BASH = re.compile(r"BASH_VERSION")
 _RE_FI = re.compile(r"^\s*fi\b")
-
-
-def _resolve_shell_cfg_files(repo_root: Path) -> set[Path]:
-    """Resolve glob patterns to actual files under repo_root."""
-    files: set[Path] = set()
-    for pattern in SHELL_CFG_PATTERNS:
-        for match in repo_root.glob(pattern):
-            if match.is_file():
-                files.add(match)
-    return files
 
 
 def check_file(filepath: Path) -> list[str]:
@@ -173,18 +170,11 @@ def _zsh_syntax_check(filepath: Path) -> list[str]:
 
 
 def main(argv: list[str]) -> int:
-    repo_root = Path(__file__).resolve().parents[2]
-    cfg_files = _resolve_shell_cfg_files(repo_root)
-
-    if not cfg_files:
+    if not argv:
         return 0
 
-    # if filenames passed, filter to shell_cfg only; otherwise check all
-    if argv:
-        targets = [Path(f).resolve() for f in argv if Path(f).resolve() in cfg_files]
-    else:
-        targets = sorted(cfg_files)
-
+    repo_root = Path(__file__).resolve().parents[2]
+    targets = [Path(f).resolve() for f in argv if Path(f).is_file()]
     if not targets:
         return 0
 
@@ -208,7 +198,7 @@ def main(argv: list[str]) -> int:
             print(f"  {p}", file=sys.stderr)
         print(
             f"\n{len(problems)} violation(s) found. "
-            "See CONTRIBUTING.md for shell_cfg zsh compatibility rules.",
+            "See CONTRIBUTING.md for shell zsh compatibility rules.",
             file=sys.stderr,
         )
         return 1

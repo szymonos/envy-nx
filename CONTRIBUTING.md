@@ -36,21 +36,25 @@ make help        # list all targets
 `make lint` runs `git add --all && prek run`, so it always checks the current working tree. Use `make lint-all` to
 check every file in the repo, or `make lint-diff` to check only files changed since `main`.
 
+All `lint*` targets accept `HOOK=<id>` to run a single hook (e.g. `make lint-all HOOK=check-zsh-compat`) - seconds
+instead of minutes when verifying one hook's scope or rule changes across the whole tree. Run `make hooks` to list
+the available IDs.
+
 ## Pre-commit hooks
 
 Configured in `.pre-commit-config.yaml`, run via `prek`.
 
 ### Local hooks (`tests/hooks/`)
 
-| Hook               | Script                | What it checks                                                |
-| ------------------ | --------------------- | ------------------------------------------------------------- |
-| `gremlins-check`   | `gremlins.py`         | Unwanted Unicode characters (zero-width spaces, smart quotes) |
-| `align-tables`     | `align_tables.py`     | Auto-aligns markdown tables on save                           |
-| `validate-scopes`  | `validate_scopes.py`  | `scopes.json` and `nix/scopes/*.nix` are consistent           |
-| `check-bash32`     | `check_bash32.py`     | Nix-path `.sh` files avoid bash 4+ constructs                 |
-| `check-zsh-compat` | `check_zsh_compat.py` | `shell_cfg` functions use `function` keyword for zsh compat   |
-| `bats-tests`       | `run_bats.py`         | Runs bats unit tests when relevant files change               |
-| `pester-tests`     | `run_pester.py`       | Runs Pester unit tests when relevant files change             |
+| Hook               | Script                | What it checks                                                                                                                                                                          |
+| ------------------ | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gremlins-check`   | `gremlins.py`         | Unwanted Unicode characters (zero-width spaces, smart quotes)                                                                                                                           |
+| `align-tables`     | `align_tables.py`     | Auto-aligns markdown tables on save                                                                                                                                                     |
+| `validate-scopes`  | `validate_scopes.py`  | `scopes.json` and `nix/scopes/*.nix` are consistent                                                                                                                                     |
+| `check-bash32`     | `check_bash32.py`     | Nix-path `.sh` files avoid bash 4+ constructs                                                                                                                                           |
+| `check-zsh-compat` | `check_zsh_compat.py` | Shell-sourced files (`shell_cfg/*.sh`, `lib/{nx,profile_block}.sh`) work under zsh: `function` keyword for defs, no for-loops over unquoted globs, no unguarded bash-only builtins/vars |
+| `bats-tests`       | `run_bats.py`         | Runs bats unit tests when relevant files change                                                                                                                                         |
+| `pester-tests`     | `run_pester.py`       | Runs Pester unit tests when relevant files change                                                                                                                                       |
 
 ### External hooks
 
@@ -72,14 +76,23 @@ shebang on sourced files), `SC2155` (declare and assign separately), `SC2174` (m
 
 ### Which bash version?
 
-| Files matching                                                                                          | Bash version | `set` flags         |
-| ------------------------------------------------------------------------------------------------------- | ------------ | ------------------- |
-| `nix/**/*.sh`, `.assets/lib/{scopes,profile_block,nx_doctor,certs}.sh`, `.assets/config/shell_cfg/*.sh` | 3.2          | `set -eo pipefail`  |
-| `.assets/provision/*.sh`, `.assets/scripts/*.sh`, `.assets/check/*.sh`                                  | 5.x (Linux)  | `set -euo pipefail` |
+| Files matching                                                                                                                                                                                                                       | Bash version | `set` flags         |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------ | ------------------- |
+| `nix/**/*.sh`, `.assets/lib/{scopes,profile_block,nx_doctor,helpers}.sh`, `.assets/config/shell_cfg/{aliases_nix,aliases_git,aliases_kubectl,functions}.sh`, `.assets/setup/setup_common.sh`, `.assets/provision/install_copilot.sh` | 3.2          | `set -eo pipefail`  |
+| `.assets/provision/*.sh` (except `install_copilot.sh`), `.assets/scripts/*.sh`, `.assets/check/*.sh`                                                                                                                                 | 5.x (Linux)  | `set -euo pipefail` |
 
 Nix-path files must avoid: `mapfile`, `declare -A`, `declare -n`, `${var,,}`, negative array indices, `sed -i ''`,
 `sed -r`, `grep -P`. Full list in `ARCHITECTURE.md` under "Bash 3.2 / BSD sed constraints". Enforced by the
-`check-bash32` pre-commit hook.
+`check-bash32` pre-commit hook (file scope is the regex in `.pre-commit-config.yaml`, not a shell glob).
+
+### Zsh sourcing constraints
+
+`.assets/config/shell_cfg/*.sh`, `.assets/lib/nx.sh`, and `.assets/lib/profile_block.sh` get sourced into the user's
+interactive shell. They must work under both bash and zsh: use `function name() {` for definitions, avoid for-loops
+over unquoted globs (zsh's `nomatch` aborts on no-match), and guard bash-only builtins/vars (`BASH_SOURCE`,
+`compgen`, `complete -F`/`-W`, `COMP_*`) with `[ -n "$BASH_VERSION" ]`. Append `# zsh-ok` to any line that's
+defensible despite tripping a regex. Enforced by `check-zsh-compat`; full rules in `ARCHITECTURE.md` under "Zsh
+compatibility constraints".
 
 ### Sourced libraries vs executable scripts
 

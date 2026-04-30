@@ -17,49 +17,49 @@ cross-cutting changes.
 
 Everything sourced or called by `nix/setup.sh`, plus shell config files that get sourced at login on macOS.
 
-| File                                          | Role                                                           |
-| --------------------------------------------- | -------------------------------------------------------------- |
-| `nix/setup.sh`                                | Main entry point (slim orchestrator, sources phase libraries)  |
-| `nix/lib/io.sh`                               | Structured logging + side-effect wrappers (tests override)     |
-| `.assets/lib/setup_log.sh`                    | Log file creation and rotation (sourced by `nix/setup.sh`)     |
-| `nix/lib/phases/bootstrap.sh`                 | Root guard, path resolution, nix/jq detection, arg parsing     |
-| `nix/lib/phases/platform.sh`                  | OS detection, overlay discovery, hook runner                   |
-| `nix/lib/phases/scopes.sh`                    | Load/merge scopes, resolve deps, write config.nix              |
-| `nix/lib/phases/nix_profile.sh`               | Flake update, nix profile upgrade, MITM probe                  |
-| `nix/lib/phases/configure.sh`                 | GitHub CLI auth, git config, per-scope configure dispatch      |
-| `nix/lib/phases/profiles.sh`                  | Bash/zsh/PowerShell shell profile setup                        |
-| `nix/lib/phases/post_install.sh`              | Common post-install setup and nix garbage collection           |
-| `nix/lib/phases/summary.sh`                   | Mode detection and final status output                         |
-| `.assets/lib/scopes.sh`                       | Scope helpers (sourced by `nix/setup.sh` and `linux_setup.sh`) |
-| `.assets/lib/scopes.json`                     | Scope definitions (read by `scopes.sh` via jq)                 |
-| `.assets/lib/install_record.sh`               | Install provenance writer (sourced by all entry points)        |
-| `nix/configure/az.sh`                         | Configure azure-cli                                            |
-| `nix/configure/conda.sh`                      | Configure conda                                                |
-| `nix/configure/docker.sh`                     | Configure docker                                               |
-| `nix/configure/gh.sh`                         | Configure GitHub CLI                                           |
-| `nix/configure/git.sh`                        | Configure git                                                  |
-| `nix/configure/omp.sh`                        | Configure oh-my-posh                                           |
-| `nix/configure/terraform.sh`                  | Install terraform binary via tfswitch to `~/.local/bin`        |
-| `nix/configure/profiles.sh`                   | Copy shell configs to `~/.config/shell/`                       |
-| `nix/configure/profiles.zsh`                  | Copy zsh configs (zsh, not bash, but runs on macOS)            |
-| `nix/configure/profiles.ps1`                  | Copy PowerShell configs to `~/.config/powershell/`             |
-| `nix/configure/starship.sh`                   | Configure starship prompt                                      |
-| `.assets/lib/helpers.sh`                      | Shared helpers (`download_file`, `gh_login_user`)              |
-| `.assets/lib/profile_block.sh`                | Managed block library (sourced by profiles.sh/.zsh, nx)        |
-| `.assets/lib/env_block.sh`                    | Generic env block (sourced by setup_profile_user; legacy)      |
-| `.assets/lib/certs.sh`                        | CA bundle builder + VS Code Server cert setup                  |
-| `.assets/lib/nx.sh`                           | Standalone nx CLI + profile block rendering (bash/zsh)         |
-| `.assets/lib/nx_doctor.sh`                    | Health check script (`nx doctor`)                              |
-| `.assets/config/shell_cfg/aliases_nix.sh`     | Shell config - aliases + thin nx wrapper (sources `nx.sh`)     |
-| `.assets/config/shell_cfg/aliases_git.sh`     | Shell config - git aliases                                     |
-| `.assets/config/shell_cfg/aliases_kubectl.sh` | Shell config - kubectl aliases                                 |
-| `.assets/config/shell_cfg/functions.sh`       | Shell config - shared functions                                |
-| `.assets/config/shell_cfg/completions.bash`   | Shell config - bash tab completions for nx                     |
-| `.assets/config/shell_cfg/completions.zsh`    | Shell config - zsh tab completions for nx                      |
-| `.assets/setup/setup_common.sh`               | Post-install setup (called via `nix/setup.sh`)                 |
-| `.assets/setup/setup_profile_user.ps1`        | PowerShell user profile (certs, local-path, etc.)              |
-| `.assets/provision/install_copilot.sh`        | Post-install - GitHub Copilot CLI                              |
-| `nix/uninstall.sh`                            | Removes nix-env environment, optionally Nix itself             |
+| File                                          | Role                                                                |
+| --------------------------------------------- | ------------------------------------------------------------------- |
+| `nix/setup.sh`                                | Main entry point (slim orchestrator, sources phase libraries)       |
+| `nix/lib/io.sh`                               | Structured logging + side-effect wrappers (tests override)          |
+| `.assets/lib/setup_log.sh`                    | Log file creation and rotation (sourced by `nix/setup.sh`)          |
+| `nix/lib/phases/bootstrap.sh`                 | Root guard, path resolution, nix/jq detection, arg parsing          |
+| `nix/lib/phases/platform.sh`                  | OS detection, overlay discovery, hook runner                        |
+| `nix/lib/phases/scopes.sh`                    | Load/merge scopes, resolve deps, write config.nix                   |
+| `nix/lib/phases/nix_profile.sh`               | Flake update, nix profile upgrade, MITM probe                       |
+| `nix/lib/phases/configure.sh`                 | GitHub CLI auth, git config, per-scope configure dispatch           |
+| `nix/lib/phases/profiles.sh`                  | Bash/zsh/PowerShell shell profile setup                             |
+| `nix/lib/phases/post_install.sh`              | Common post-install setup and nix garbage collection                |
+| `nix/lib/phases/summary.sh`                   | Mode detection and final status output                              |
+| `.assets/lib/scopes.sh`                       | Scope helpers (sourced by `nix/setup.sh` and `linux_setup.sh`)      |
+| `.assets/lib/scopes.json`                     | Scope definitions (read by `scopes.sh` via jq)                      |
+| `.assets/lib/install_record.sh`               | Install provenance writer (sourced by all entry points)             |
+| `nix/configure/az.sh`                         | Configure azure-cli                                                 |
+| `nix/configure/conda.sh`                      | Configure conda                                                     |
+| `nix/configure/docker.sh`                     | Configure docker                                                    |
+| `nix/configure/gh.sh`                         | Configure GitHub CLI                                                |
+| `nix/configure/git.sh`                        | Configure git                                                       |
+| `nix/configure/omp.sh`                        | Configure oh-my-posh                                                |
+| `nix/configure/terraform.sh`                  | Install terraform binary via tfswitch to `~/.local/bin`             |
+| `nix/configure/profiles.sh`                   | Copy shell configs to `~/.config/shell/`                            |
+| `nix/configure/profiles.zsh`                  | Copy zsh configs (zsh, not bash, but runs on macOS)                 |
+| `nix/configure/profiles.ps1`                  | Copy PowerShell configs to `~/.config/powershell/`                  |
+| `nix/configure/starship.sh`                   | Configure starship prompt                                           |
+| `.assets/lib/helpers.sh`                      | Shared helpers (`download_file`, `gh_login_user`, `install_atomic`) |
+| `.assets/lib/profile_block.sh`                | Managed block library (sourced by profiles.sh/.zsh, nx)             |
+| `.assets/lib/env_block.sh`                    | Generic env block (sourced by setup_profile_user; legacy)           |
+| `.assets/lib/certs.sh`                        | CA bundle builder + VS Code Server cert setup                       |
+| `.assets/lib/nx.sh`                           | Standalone nx CLI + profile block rendering (bash/zsh)              |
+| `.assets/lib/nx_doctor.sh`                    | Health check script (`nx doctor`)                                   |
+| `.assets/config/shell_cfg/aliases_nix.sh`     | Shell config - aliases + thin nx wrapper (sources `nx.sh`)          |
+| `.assets/config/shell_cfg/aliases_git.sh`     | Shell config - git aliases                                          |
+| `.assets/config/shell_cfg/aliases_kubectl.sh` | Shell config - kubectl aliases                                      |
+| `.assets/config/shell_cfg/functions.sh`       | Shell config - shared functions                                     |
+| `.assets/config/shell_cfg/completions.bash`   | Shell config - bash tab completions for nx                          |
+| `.assets/config/shell_cfg/completions.zsh`    | Shell config - zsh tab completions for nx                           |
+| `.assets/setup/setup_common.sh`               | Post-install setup (called via `nix/setup.sh`)                      |
+| `.assets/setup/setup_profile_user.ps1`        | PowerShell user profile (certs, local-path, etc.)                   |
+| `.assets/provision/install_copilot.sh`        | Post-install - GitHub Copilot CLI                                   |
+| `nix/uninstall.sh`                            | Removes nix-env environment, optionally Nix itself                  |
 
 ### linux-only (bash 4+ OK)
 
@@ -320,6 +320,8 @@ Persists after the repo is removed. This is the user's nix environment.
 | `nx.sh`              | `.assets/lib/nx.sh`                       | `nix/setup.sh`               |
 | `nx_doctor.sh`       | `.assets/lib/nx_doctor.sh`                | `nix/setup.sh`               |
 | `profile_block.sh`   | `.assets/lib/profile_block.sh`            | `nix/setup.sh`               |
+
+`nx.sh`, `nx_doctor.sh`, and `profile_block.sh` are installed via `install_atomic` (temp file + same-filesystem rename) rather than plain `cp`. They get sourced/exec'd by user shells on every `nx` invocation, and a setup re-run that overwrites them with `cp` would race against any concurrent reader: the reader sees a half-written file, parses heredoc bodies as commands, and the user gets cryptic `command not found` / `syntax error near unexpected token ;;` errors. The same pattern is used by `_install_cfg_file` in `profiles.sh`/`profiles.zsh` for `~/.config/shell/` files. `flake.nix` and `scopes/*.nix` stay on plain `cp` because nix tooling, not the user's shell, reads them.
 
 ### Hook directories (`~/.config/nix-env/hooks/`)
 
@@ -707,6 +709,29 @@ All nix-path `.sh` files must avoid:
 - `grep \S` / `\w` / `\d` - use `[^[:space:]]` / `[a-zA-Z0-9_]` / `[0-9]`
 
 These constraints are enforced by the `check-bash32` pre-commit hook (`tests/hooks/check_bash32.py`).
+
+## Zsh compatibility constraints (shell-sourced files)
+
+`.assets/config/shell_cfg/*.sh`, `.assets/lib/nx.sh`, and `.assets/lib/profile_block.sh` get sourced into the
+user's interactive shell - directly from `.bashrc`/`.zshrc` for the shell_cfg files, lazily via the `nx()`
+wrapper for `nx.sh`, and from `nx.sh` at runtime for `profile_block.sh`. They must work under both bash and
+zsh. Constraints:
+
+- Bare function defs (`name() {`) - use `function name() {`. zsh expands aliases at parse time, so a function
+  whose name matches an alias breaks under zsh-only.
+- Numeric array subscripts (`${arr[0]}`) - zsh arrays are 1-based. Avoid indexed arrays or guard with
+  `[ -n "$BASH_VERSION" ]`.
+- For-loops over unquoted globs (`for f in "$dir"/*.ext`) - zsh's default `nomatch` option aborts the command on
+  no-match (`no matches found: ...`) instead of leaving the literal pattern. Use
+  `find ... | while IFS= read -r f` instead.
+- Bash-only builtins/vars (`BASH_SOURCE`, `BASH_REMATCH`, `compgen`, `complete -F`/`-W`, `COMP_WORDS`,
+  `COMP_CWORD`, `COMPREPLY`) - guard with `[ -n "$BASH_VERSION" ]` or fall back when in zsh.
+
+Inline suppression: append `# zsh-ok` to a line that's defensible under zsh despite tripping a regex (e.g. an
+exec guard at file end where `BASH_SOURCE[0]` is empty in zsh and the comparison just falls through).
+
+Enforced by `check-zsh-compat` (`tests/hooks/check_zsh_compat.py`); file scope is set in
+`.pre-commit-config.yaml` so the hook itself stays scope-agnostic.
 
 ## Managed block pattern
 

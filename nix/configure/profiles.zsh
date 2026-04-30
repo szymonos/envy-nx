@@ -19,6 +19,8 @@ ok()   { printf "\e[32m%s\e[0m\n" "$*"; }
 source "$LIB/certs.sh"
 # shellcheck source=../../.assets/lib/vscode.sh
 source "$LIB/vscode.sh"
+# shellcheck source=../../.assets/lib/helpers.sh
+source "$LIB/helpers.sh"
 
 info "configuring zsh profile..."
 
@@ -31,9 +33,10 @@ info "configuring zsh profile..."
 _install_cfg_file() {
   local src="$1" dst="$2"
   [[ -f "$src" ]] || return 0
+  # Skip when content matches; otherwise install atomically so a shell
+  # opening a new terminal mid-setup never sources a half-written file.
   if ! cmp -s "$src" "$dst" 2>/dev/null; then
-    mkdir -p "${dst:h}"
-    cp -f "$src" "$dst"
+    install_atomic "$src" "$dst"
   fi
 }
 
