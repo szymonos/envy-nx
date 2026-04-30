@@ -479,8 +479,7 @@ scenario.
 - `nix/uninstall.sh --env-only` removes nix-env state, preserves generic
   `managed env` block, leaves `/nix/store` intact.
 
-**Triggers:** manual (`workflow_dispatch` with scope override), PR label (`test:linux` / `test:macos`), or push to
-an already-labeled PR.
+**Triggers:** manual (`workflow_dispatch` with scope override), PR label (`test:integration`), or push to an already-labeled PR.
 
 **WSL end-to-end testing (intentionally omitted):** `wsl_setup.ps1` orchestration is not tested in CI. GitHub-hosted Windows runners only support WSL1 (no nested virtualization for WSL2), which lacks systemd and behaves differently from production WSL2 environments. A self-hosted Windows runner with WSL2 would work but cannot be ephemeral, making the maintenance cost disproportionate to the coverage gained. The orchestration logic is already validated by Pester unit tests (`tests/pester/WslSetup.Tests.ps1`) that mock `wsl.exe` and verify script dispatch for all scope/mode combinations.
 

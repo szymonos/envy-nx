@@ -2,8 +2,8 @@ name: macOS Integration Test
 
 # Triggers:
 #   1. Manual: Actions tab -> "Run workflow" button (pick runner + scopes)
-#   2. PR label: add "test:macos" label to a PR (runs with --shell only)
-#   3. Push to PR: runs on push if the PR already has the "test:macos" label
+#   2. PR label: add "test:integration" label to a PR (runs with --shell only)
+#   3. Push to PR: runs on push if the PR already has the "test:integration" label
 # Use manual dispatch for full scope coverage; label triggers are fast smoke tests.
 
 on:
@@ -48,11 +48,11 @@ jobs:
     # Re-evaluate default every ~6 months or on macOS enforcement changes.
     # See ARCHITECTURE.md "CI pipelines and validated targets" for the full map.
     #
-    # Run on label trigger only when the label is "test:macos"
+    # Run on label trigger only when the label is "test:integration"
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'pull_request' && github.event.label.name == 'test:macos') ||
-      (github.event_name == 'pull_request' && github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'test:macos'))
+      (github.event_name == 'pull_request' && github.event.label.name == 'test:integration') ||
+      (github.event_name == 'pull_request' && github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'test:integration'))
     name: "nix/setup.sh on ${{ github.event.inputs.runner || 'macos-15' }}"
     runs-on: ${{ github.event.inputs.runner || 'macos-15' }}
     timeout-minutes: 30

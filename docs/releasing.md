@@ -106,7 +106,7 @@ The release workflow runs three jobs sequentially:
 
 ### Test matrix
 
-The full test suite runs unconditionally (not gated on PR labels like `test:linux` / `test:macos`):
+The full test suite runs unconditionally (not gated on PR labels like `test:integration`):
 
 | Job          | Runner      | Nix method    | What it validates                                     |
 | ------------ | ----------- | ------------- | ----------------------------------------------------- |
