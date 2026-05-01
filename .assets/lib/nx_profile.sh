@@ -128,9 +128,9 @@ function _nx_render_nix_block() {
   if [ "$shell" = "bash" ]; then
     printf '\n# :make\n'
     # `complete -W` is emitted text for the user's bashrc, not a runtime
-    # invocation; split into three printfs so the suppression marker can
-    # sit on the same source line as the `complete -W` literal.
-    printf 'complete -W "' # zsh-ok: emitted text, not a runtime call
+    # invocation; split into three printfs so the multi-line $(if/elif)
+    # helper command can be its own printf with simple single-quote escaping.
+    printf 'complete -W "'
     printf '$(if [ -f Makefile ]; then grep -oE '\''^[a-zA-Z0-9_-]+:([^=]|$)'\'' Makefile | sed '\''s/[^a-zA-Z0-9_-]*$//'\''
 elif [ -f makefile ]; then grep -oE '\''^[a-zA-Z0-9_-]+:([^=]|$)'\'' makefile | sed '\''s/[^a-zA-Z0-9_-]*$//'\''
 fi)'

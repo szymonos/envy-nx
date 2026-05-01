@@ -743,8 +743,18 @@ zsh. Constraints:
 - Bash-only builtins/vars (`BASH_SOURCE`, `BASH_REMATCH`, `compgen`, `complete -F`/`-W`, `COMP_WORDS`,
   `COMP_CWORD`, `COMPREPLY`) - guard with `[ -n "$BASH_VERSION" ]` or fall back when in zsh.
 
-Inline suppression: append `# zsh-ok` to a line that's defensible under zsh despite tripping a regex (e.g. an
-exec guard at file end where `BASH_SOURCE[0]` is empty in zsh and the comparison just falls through).
+Auto-detected safe forms (no `# zsh-ok` marker needed):
+
+- `BASH_SOURCE` access with default-value form `${BASH_SOURCE[N]:-...}` (zsh expands to the default)
+- `BASH_SOURCE` on the same line as a `||` fallback (the fallback fires when zsh expansion yields empty)
+- `BASH_SOURCE` inside an equality test `[ "${BASH_SOURCE[0]}" = "..." ]` (in zsh BASH_SOURCE is empty and
+  the test just falls through)
+- Any code inside an `if [ -n "${BASH_SOURCE[0]:-}" ]; then ... fi` guard block
+- Pattern matches inside single-quoted string literals (`printf 'complete -W "..."'` is emitted text, not a
+  runtime call)
+
+Inline suppression escape hatch: append `# zsh-ok` to a line that's defensible under zsh despite tripping a
+regex. Rarely needed in practice now that the safe `BASH_SOURCE` forms are auto-detected.
 
 Enforced by `check-zsh-compat` (`tests/hooks/check_zsh_compat.py`); file scope is set in
 `.pre-commit-config.yaml` so the hook itself stays scope-agnostic.

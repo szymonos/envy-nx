@@ -90,8 +90,10 @@ Nix-path files must avoid: `mapfile`, `declare -A`, `declare -n`, `${var,,}`, ne
 `.assets/config/shell_cfg/*.sh`, `.assets/lib/nx.sh`, and `.assets/lib/profile_block.sh` get sourced into the user's
 interactive shell. They must work under both bash and zsh: use `function name() {` for definitions, avoid for-loops
 over unquoted globs (zsh's `nomatch` aborts on no-match), and guard bash-only builtins/vars (`BASH_SOURCE`,
-`compgen`, `complete -F`/`-W`, `COMP_*`) with `[ -n "$BASH_VERSION" ]`. Append `# zsh-ok` to any line that's
-defensible despite tripping a regex. Enforced by `check-zsh-compat`; full rules in `ARCHITECTURE.md` under "Zsh
+`compgen`, `complete -F`/`-W`, `COMP_*`) with `[ -n "$BASH_VERSION" ]`. The hook auto-recognizes safe
+`BASH_SOURCE` forms (default-value `${BASH_SOURCE[0]:-...}`, `||` fallback, equality tests, code inside
+`[ -n "$BASH_SOURCE..." ]` guards) and skips matches inside single-quoted string literals; inline `# zsh-ok`
+is the rarely-needed escape hatch. Enforced by `check-zsh-compat`; full rules in `ARCHITECTURE.md` under "Zsh
 compatibility constraints".
 
 ### Sourced libraries vs executable scripts

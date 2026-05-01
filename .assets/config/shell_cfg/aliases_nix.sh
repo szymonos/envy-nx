@@ -93,7 +93,7 @@ if command -v nix &>/dev/null; then
   function nx() {
     if ! type nx_main &>/dev/null 2>&1; then
       local _nx_script _nx_dir
-      _nx_dir="$(dirname "$(realpath "${BASH_SOURCE[0]}" 2>/dev/null || echo "$HOME/.config/shell/aliases_nix.sh")")" # zsh-ok: fallback path
+      _nx_dir="$(dirname "$(realpath "${BASH_SOURCE[0]}" 2>/dev/null || echo "$HOME/.config/shell/aliases_nix.sh")")"
       for _nx_script in \
         "$_nx_dir/../../.assets/lib/nx.sh" \
         "$HOME/.config/nix-env/nx.sh"; do
