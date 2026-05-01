@@ -440,15 +440,17 @@ Follow these exact steps. They are built from real change sets.
 
 ### 6.4. Add a new nx family file
 
-Rare - only when an existing family becomes too large or a new domain emerges.
+Rare - only when an existing family becomes too large or a new domain emerges. The lib-file list lives in 3 places that `check-nx-lib-files-parity` enforces in sync - update all three.
 
 1. Create `.assets/lib/nx_<family>.sh`. No shebang (sourced library). Every function definition uses `function name() {` (zsh-compat). Use private `_nx_<family>_*` names.
 2. Add `nx_<family>.sh` to the loop in `nx.sh` that sources family files.
-3. Add `nx_<family>.sh` to the install list in `nix/lib/phases/bootstrap.sh:phase_bootstrap_sync_env_dir` (the `install_atomic` loop). Verify the file ends up in `~/.config/nix-env/`.
-4. Add the file to the `env_dir_files` doctor check in `nx_doctor.sh`.
-5. Update `tests/bats/test_nx_zsh.bats` setup to copy the new family file into `$ENV_DIR` (so `_nx_find_lib`'s zsh fallback resolves it).
-6. Update §1 directory tree, §3c family table, and §13 runtime layout in this file.
-7. Run `make lint` and `make test-unit`.
+3. Add `nx_<family>.sh` to the **three** lib-file lists (parity-enforced):
+   - `nix/lib/phases/bootstrap.sh:phase_bootstrap_sync_env_dir` (`install_atomic` loop, line ~210)
+   - `.assets/lib/nx_lifecycle.sh:_nx_self_sync` (cp loop, line ~10)
+   - `.assets/lib/nx_doctor.sh:_check_env_dir_files` (existence check, line ~78)
+4. Update §1 directory tree, §3c family table, and §13 runtime layout in this file.
+5. `tests/bats/test_nx_zsh.bats` uses `NX_LIB_DIR` pointing at `.assets/lib/`, so the new family file is picked up automatically - no test-setup change needed.
+6. Run `make lint` (triggers `check-nx-lib-files-parity`) and `make test-unit`.
 
 ### 6.5. Add a new doctor check
 
@@ -585,20 +587,21 @@ Configured in `.pre-commit-config.yaml`, run via `prek` (not `pre-commit`).
 
 ### Local hooks (`tests/hooks/`)
 
-| Hook                       | Script                        | What it checks                                                                                                                        |
-| -------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `gremlins-check`           | `gremlins.py`                 | Unwanted Unicode (zero-width spaces, smart quotes); auto-fixes common substitutions                                                   |
-| `validate-docs-words`      | `validate_docs_words.py`      | `project-words.txt` contains only words that appear in docs (removes stale entries automatically)                                     |
-| `align-tables`             | `align_tables.py`             | Auto-aligns markdown tables on save                                                                                                   |
-| `validate-scopes`          | `validate_scopes.py`          | `scopes.json` and `nix/scopes/*.nix` consistent; every scope has `# bins:`                                                            |
-| `check-bash32`             | `check_bash32.py`             | Nix-path `.sh` files avoid bash 4+ constructs                                                                                         |
-| `check-zsh-compat`         | `check_zsh_compat.py`         | Shell-sourced files work under zsh                                                                                                    |
-| `check-changelog`          | `check_changelog.py`          | Runtime file changes require CHANGELOG entry under `[Unreleased]` (bypass via `skip-changelog` label)                                 |
-| `check-nx-completions`     | `check_nx_completions.py`     | Generated completers + `_nx_lifecycle_help` body match `nx_surface.json` (regenerate via `python3 -m tests.hooks.gen_nx_completions`) |
-| `check-nx-profile-parity`  | `check_nx_profile_parity.py`  | PowerShell `nx profile` subverbs match `nx_surface.json`                                                                              |
-| `check-nx-dispatch-parity` | `check_nx_dispatch_parity.py` | Bash `nx_main` case arms (verbs + aliases) match `nx_surface.json`                                                                    |
-| `bats-tests`               | `run_bats.py`                 | Runs bats unit tests when relevant files change (parses `source` directives to map files to tests)                                    |
-| `pester-tests`             | `run_pester.py`               | Runs Pester unit tests when relevant files change                                                                                     |
+| Hook                        | Script                         | What it checks                                                                                                                                    |
+| --------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gremlins-check`            | `gremlins.py`                  | Unwanted Unicode (zero-width spaces, smart quotes); auto-fixes common substitutions                                                               |
+| `validate-docs-words`       | `validate_docs_words.py`       | `project-words.txt` contains only words that appear in docs (removes stale entries automatically)                                                 |
+| `align-tables`              | `align_tables.py`              | Auto-aligns markdown tables on save                                                                                                               |
+| `validate-scopes`           | `validate_scopes.py`           | `scopes.json` and `nix/scopes/*.nix` consistent; every scope has `# bins:`                                                                        |
+| `check-bash32`              | `check_bash32.py`              | Nix-path `.sh` files avoid bash 4+ constructs                                                                                                     |
+| `check-zsh-compat`          | `check_zsh_compat.py`          | Shell-sourced files work under zsh                                                                                                                |
+| `check-changelog`           | `check_changelog.py`           | Runtime file changes require CHANGELOG entry under `[Unreleased]` (bypass via `skip-changelog` label)                                             |
+| `check-nx-completions`      | `check_nx_completions.py`      | Generated completers + `_nx_lifecycle_help` body match `nx_surface.json` (regenerate via `python3 -m tests.hooks.gen_nx_completions`)             |
+| `check-nx-profile-parity`   | `check_nx_profile_parity.py`   | PowerShell `nx profile` subverbs match `nx_surface.json`                                                                                          |
+| `check-nx-dispatch-parity`  | `check_nx_dispatch_parity.py`  | Bash `nx_main` case arms (verbs + aliases) match `nx_surface.json`                                                                                |
+| `check-nx-lib-files-parity` | `check_nx_lib_files_parity.py` | nx lib-file list matches across `bootstrap.sh:phase_bootstrap_sync_env_dir`, `nx_lifecycle.sh:_nx_self_sync`, `nx_doctor.sh:_check_env_dir_files` |
+| `bats-tests`                | `run_bats.py`                  | Runs bats unit tests when relevant files change (parses `source` directives to map files to tests)                                                |
+| `pester-tests`              | `run_pester.py`                | Runs Pester unit tests when relevant files change                                                                                                 |
 
 ### External hooks
 

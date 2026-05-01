@@ -54,6 +54,12 @@ repos:
         language: system
         pass_filenames: false
         files: (\.assets/lib/nx_surface\.json|\.assets/lib/nx\.sh|tests/hooks/check_nx_dispatch_parity\.py)
+      - id: check-nx-lib-files-parity
+        name: Check nx lib-file list parity across sync/self-sync/doctor
+        entry: python3 -m tests.hooks.check_nx_lib_files_parity
+        language: system
+        pass_filenames: false
+        files: (nix/lib/phases/bootstrap\.sh|\.assets/lib/nx_lifecycle\.sh|\.assets/lib/nx_doctor\.sh|tests/hooks/check_nx_lib_files_parity\.py)
       - id: bats-tests
         name: Run bats unit tests
         entry: python3 -m tests.hooks.run_bats
