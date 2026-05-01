@@ -27,7 +27,6 @@ elif
 euid
 fastfetch
 fixcertpy
-fixpoint
 forkable
 hyperv
 intune
@@ -52,7 +51,6 @@ nixos
 nixpkgs
 nmap
 nomatch
-nounset
 otbs
 pasteable
 pcre
@@ -82,7 +80,5 @@ tflint
 tfswitch
 tlsv
 unioned
-venv
-venvs
 virtualenv
 worktree
