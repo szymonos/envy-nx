@@ -68,7 +68,22 @@ else
   _check "flake_lock" "fail" "$ENV_DIR/flake.lock not found"
 fi
 
-# -- 3. install_record -------------------------------------------------------
+# -- 3. env_dir_files --------------------------------------------------------
+# Verify the durable nix-env state files exist. Each is sync'd by
+# phase_bootstrap_sync_env_dir on every setup run; missing files mean a
+# botched install (sync failed mid-run, or files were manually deleted) and
+# subsequent `nx` commands or `nix/setup.sh` runs will fail in opaque ways.
+_env_missing=""
+for _f in flake.nix nx.sh nx_doctor.sh profile_block.sh config.nix; do
+  [ -f "$ENV_DIR/$_f" ] || _env_missing="${_env_missing:+$_env_missing, }$_f"
+done
+if [ -z "$_env_missing" ]; then
+  _check "env_dir_files" "pass"
+else
+  _check "env_dir_files" "fail" "missing in $ENV_DIR: $_env_missing"
+fi
+
+# -- 4. install_record -------------------------------------------------------
 if [ -f "$DEV_ENV_DIR/install.json" ]; then
   if command -v jq >/dev/null 2>&1; then
     _ir_status="$(jq -r '.status // empty' "$DEV_ENV_DIR/install.json" 2>/dev/null)" || true
@@ -89,7 +104,7 @@ else
   _check "install_record" "warn" "$DEV_ENV_DIR/install.json not found"
 fi
 
-# -- 4. scope_binaries -------------------------------------------------------
+# -- 5. scope_binaries -------------------------------------------------------
 # Parse "# bins:" comments from scope .nix files (single source of truth).
 _scopes_dir=""
 for _sd_path in \
@@ -123,7 +138,7 @@ else
   _check "scope_binaries" "warn" "cannot verify (scope files or install.json not found)"
 fi
 
-# -- 5. shell_profile --------------------------------------------------------
+# -- 6. shell_profile --------------------------------------------------------
 # Audit only the rc file matching the invoking shell. nx.sh sets
 # NX_INVOKING_SHELL based on $BASH_VERSION/$ZSH_VERSION (it's sourced into
 # the user's shell, so it knows which one). Default to bash for direct
@@ -153,7 +168,27 @@ else
   _check "shell_profile" "fail" "$_profile_detail"
 fi
 
-# -- 6. cert_bundle -----------------------------------------------------------
+# -- 7. shell_config_files ---------------------------------------------------
+# The managed block sources files from ~/.config/shell/. Most are guarded
+# with `[ -f ]` (silent no-op when missing) but `aliases_nix.sh` is
+# unguarded - missing it spams "No such file or directory" on every shell
+# start. Even guarded misses silently lose functionality, so flag any
+# referenced file that doesn't resolve.
+_shell_missing=""
+if [ -f "$_rc" ]; then
+  while IFS= read -r _ref; do
+    [ -z "$_ref" ] && continue
+    _path="$(printf '%s' "$_ref" | sed "s|^\\\$HOME|$HOME|")"
+    [ -f "$_path" ] || _shell_missing="${_shell_missing:+$_shell_missing, }${_ref##*/}"
+  done < <(grep -oE '\$HOME/\.config/shell/[a-zA-Z0-9_]+\.(sh|bash|zsh)' "$_rc" 2>/dev/null | sort -u)
+fi
+if [ -z "$_shell_missing" ]; then
+  _check "shell_config_files" "pass"
+else
+  _check "shell_config_files" "fail" "referenced by $(basename "$_rc") but missing in ~/.config/shell/: $_shell_missing"
+fi
+
+# -- 8. cert_bundle -----------------------------------------------------------
 # Only relevant when custom certs exist (MITM proxy / corporate CA).
 # No ca-custom.crt means no interception detected - bundle is not needed.
 _cert_dir="$HOME/.config/certs"
@@ -176,7 +211,7 @@ else
   _check "cert_bundle" "fail" "$_cert_detail"
 fi
 
-# -- 7. vscode_server_env -----------------------------------------------------
+# -- 9. vscode_server_env ----------------------------------------------------
 if [ -d "$HOME/.nix-profile/bin" ]; then
   if [ -f "$HOME/.vscode-server/server-env-setup" ] &&
     grep -q 'nix-profile/bin' "$HOME/.vscode-server/server-env-setup" 2>/dev/null; then
@@ -186,7 +221,7 @@ if [ -d "$HOME/.nix-profile/bin" ]; then
   fi
 fi
 
-# -- 8. nix_profile -----------------------------------------------------------
+# -- 10. nix_profile ---------------------------------------------------------
 if command -v nix >/dev/null 2>&1; then
   if nix profile list --json 2>/dev/null | grep -q 'nix-env'; then
     _check "nix_profile" "pass"
@@ -199,7 +234,26 @@ else
   _check "nix_profile" "fail" "nix not available"
 fi
 
-# -- 9. overlay_dir -----------------------------------------------------------
+# -- 11. nix_profile_link ----------------------------------------------------
+# `nix_profile` checks the registry; this verifies the on-disk symlink that
+# user shells (PATH=$HOME/.nix-profile/bin) and managed blocks rely on. A
+# dangling symlink (pointing at a removed generation) breaks every nix-built
+# binary even though nix-env is still listed in `nix profile list`.
+_np_link="$HOME/.nix-profile"
+if [ -L "$_np_link" ]; then
+  if [ -e "$_np_link" ]; then
+    _check "nix_profile_link" "pass"
+  else
+    _np_target="$(readlink "$_np_link" 2>/dev/null)" || _np_target="<unreadable>"
+    _check "nix_profile_link" "fail" "dangling symlink -> $_np_target"
+  fi
+elif [ -d "$_np_link" ]; then
+  _check "nix_profile_link" "warn" "$_np_link is a directory, not a symlink (unexpected layout)"
+else
+  _check "nix_profile_link" "fail" "$_np_link not found"
+fi
+
+# -- 12. overlay_dir ---------------------------------------------------------
 if [ -n "${NIX_ENV_OVERLAY_DIR:-}" ]; then
   if [ -d "$NIX_ENV_OVERLAY_DIR" ] && [ -r "$NIX_ENV_OVERLAY_DIR" ]; then
     _check "overlay_dir" "pass"
@@ -208,7 +262,7 @@ if [ -n "${NIX_ENV_OVERLAY_DIR:-}" ]; then
   fi
 fi
 
-# -- 10. version_skew ---------------------------------------------------------
+# -- 13. version_skew --------------------------------------------------------
 if command -v gh >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
   _repo_slug=""
   for _git_dir in \
