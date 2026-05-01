@@ -32,6 +32,7 @@ Everything sourced or called by `nix/setup.sh`, plus shell config files that get
 | `nix/lib/phases/summary.sh`                   | Mode detection and final status output                                        |
 | `.assets/lib/scopes.sh`                       | Scope helpers (sourced by `nix/setup.sh` and `linux_setup.sh`)                |
 | `.assets/lib/scopes.json`                     | Scope definitions (read by `scopes.sh` via jq)                                |
+| `.assets/lib/nx_surface.json`                 | nx CLI verb/flag/subverb surface (single source for tab completers)           |
 | `.assets/lib/install_record.sh`               | Install provenance writer (sourced by all entry points)                       |
 | `nix/configure/az.sh`                         | Configure azure-cli                                                           |
 | `nix/configure/conda.sh`                      | Configure conda                                                               |
@@ -58,8 +59,8 @@ Everything sourced or called by `nix/setup.sh`, plus shell config files that get
 | `.assets/config/shell_cfg/aliases_git.sh`     | Shell config - git aliases                                                    |
 | `.assets/config/shell_cfg/aliases_kubectl.sh` | Shell config - kubectl aliases                                                |
 | `.assets/config/shell_cfg/functions.sh`       | Shell config - shared functions                                               |
-| `.assets/config/shell_cfg/completions.bash`   | Shell config - bash tab completions for nx                                    |
-| `.assets/config/shell_cfg/completions.zsh`    | Shell config - zsh tab completions for nx                                     |
+| `.assets/config/shell_cfg/completions.bash`   | bash tab completions for nx (**generated** from `nx_surface.json`)            |
+| `.assets/config/shell_cfg/completions.zsh`    | zsh tab completions for nx (**generated** from `nx_surface.json`)             |
 | `.assets/setup/setup_common.sh`               | Post-install setup (called via `nix/setup.sh`)                                |
 | `.assets/setup/setup_profile_user.ps1`        | PowerShell user profile (certs, local-path, etc.)                             |
 | `.assets/provision/install_copilot.sh`        | Post-install - GitHub Copilot CLI                                             |
@@ -81,20 +82,20 @@ Scripts that only run on Linux where bash 5.x is the standard.
 
 ### powershell
 
-| File / Pattern                             | Role                                                          |
-| ------------------------------------------ | ------------------------------------------------------------- |
-| `wsl/*.ps1`                                | WSL management (Windows host)                                 |
-| `.assets/config/pwsh_cfg/_aliases_nix.ps1` | PowerShell aliases + nx (bash proxy + native PS profile mgmt) |
-| `.assets/config/pwsh_cfg/profile_nix.ps1`  | Base profile template                                         |
-| `.assets/scripts/module_manage.ps1`        | Vendored module clone/update management                       |
-| `modules/InstallUtils/`                    | Install utility module (repo cloning)                         |
-| `modules/SetupUtils/`                      | Setup utility module (scopes, WSL config)                     |
-| `modules/do-common/`                       | Vendored: common functions (certs, cfg, logging, CLI helpers) |
-| `modules/do-linux/`                        | Vendored: Linux-specific helpers                              |
-| `modules/do-az/`                           | Vendored: Azure CLI/Graph helpers                             |
-| `modules/psm-windows/`                     | Vendored: Windows-specific functions (env path, retry, admin) |
-| `modules/aliases-git/`                     | Vendored: git aliases and completers                          |
-| `modules/aliases-kubectl/`                 | Vendored: kubectl aliases and completers                      |
+| File / Pattern                             | Role                                                                                                                                |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `wsl/*.ps1`                                | WSL management (Windows host)                                                                                                       |
+| `.assets/config/pwsh_cfg/_aliases_nix.ps1` | PowerShell aliases + nx (bash proxy + native PS profile mgmt); `#region nx-completer` block is **generated** from `nx_surface.json` |
+| `.assets/config/pwsh_cfg/profile_nix.ps1`  | Base profile template                                                                                                               |
+| `.assets/scripts/module_manage.ps1`        | Vendored module clone/update management                                                                                             |
+| `modules/InstallUtils/`                    | Install utility module (repo cloning)                                                                                               |
+| `modules/SetupUtils/`                      | Setup utility module (scopes, WSL config)                                                                                           |
+| `modules/do-common/`                       | Vendored: common functions (certs, cfg, logging, CLI helpers)                                                                       |
+| `modules/do-linux/`                        | Vendored: Linux-specific helpers                                                                                                    |
+| `modules/do-az/`                           | Vendored: Azure CLI/Graph helpers                                                                                                   |
+| `modules/psm-windows/`                     | Vendored: Windows-specific functions (env path, retry, admin)                                                                       |
+| `modules/aliases-git/`                     | Vendored: git aliases and completers                                                                                                |
+| `modules/aliases-kubectl/`                 | Vendored: kubectl aliases and completers                                                                                            |
 
 ### nix declarations (not bash)
 
@@ -747,6 +748,49 @@ exec guard at file end where `BASH_SOURCE[0]` is empty in zsh and the comparison
 
 Enforced by `check-zsh-compat` (`tests/hooks/check_zsh_compat.py`); file scope is set in
 `.pre-commit-config.yaml` so the hook itself stays scope-agnostic.
+
+## nx CLI surface (manifest-driven completions)
+
+The user-facing surface of `nx` (verbs, subverbs, aliases, flags, dynamic completer references) is declared once
+in `.assets/lib/nx_surface.json`. Three completer files are **generated** from it:
+
+| Generated file                              | Generator                           | Replacement scope                                |
+| ------------------------------------------- | ----------------------------------- | ------------------------------------------------ |
+| `.assets/config/shell_cfg/completions.bash` | `tests/hooks/gen_nx_completions.py` | full file                                        |
+| `.assets/config/shell_cfg/completions.zsh`  | same                                | full file                                        |
+| `.assets/config/pwsh_cfg/_aliases_nix.ps1`  | same                                | only `#region nx-completer ... #endregion` block |
+
+Adding a verb, subverb, or flag is a **one-file edit** to `nx_surface.json` followed by `python3 -m
+tests.hooks.gen_nx_completions`. Before this manifest existed, every flag addition was a four-file change
+(parser in `nx.sh` + bash/zsh/pwsh completers); the file scope is now automatic.
+
+The schema is intentionally narrow:
+
+- `verbs[]` - top-level commands (`name`, `summary`, optional `aliases`, `subverbs`, `args`, `flags`).
+- `subverbs[]` - same shape as a verb, no further nesting (current `nx` has no depth-3 verbs).
+- `args[]` - positional shape: `name`, `required`, `variadic`, optional `completer` reference.
+- `flags[]` - `long`, optional `short`, `summary`, optional `takes_value` + `value_completer`.
+- `completers{}` - registry of named dynamic completers (`installed_packages`, `all_scopes`, `theme_omp`,
+  `theme_starship`). The implementation lives in the generator as per-shell snippets so the shell-native
+  idioms (zsh's `(@f)`, bash's `compgen -W`, PowerShell's `Where-Object`) stay readable instead of being
+  encoded as JSON strings.
+
+Two pre-commit hooks defend against drift:
+
+- `check-nx-completions` (`tests/hooks/check_nx_completions.py`) imports the generator's `emit_*` functions
+  and diffs the result against the committed completer files. Fails with `Regenerate with: python3 -m
+  tests.hooks.gen_nx_completions` if anyone hand-edits a completer or forgets to regenerate after a manifest
+  edit. Triggers when the manifest, any of the three generated files, or the generator/checker scripts
+  themselves change.
+- `check-nx-profile-parity` (`tests/hooks/check_nx_profile_parity.py`) parses the PowerShell `switch
+  ($subCmd)` block in `_aliases_nix.ps1` and asserts the subverbs match `nx_surface.json`'s
+  `profile.subverbs`. The bash and PS `nx profile` dispatchers operate on structurally different files
+  (bash/zsh rc vs PowerShell `$PROFILE`), so the implementations are independent - but the user-facing
+  surface stays in sync. See *Managed block pattern* for the symmetry rationale.
+
+This pattern is the third instance of "single JSON manifest consumed by bash/PowerShell/Python" in the repo,
+joining `scopes.json` (scope catalog) and `flake.lock` (nixpkgs pin). See *Bootstrap dependency
+(base_init.nix)* under Design decisions for why JSON is the chosen interchange format.
 
 ## Managed block pattern
 
