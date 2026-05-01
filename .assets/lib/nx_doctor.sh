@@ -124,21 +124,29 @@ else
 fi
 
 # -- 5. shell_profile --------------------------------------------------------
+# Audit only the rc file matching the invoking shell. nx.sh sets
+# NX_INVOKING_SHELL based on $BASH_VERSION/$ZSH_VERSION (it's sourced into
+# the user's shell, so it knows which one). Default to bash for direct
+# script invocations (bats tests, manual `bash nx_doctor.sh`). Pwsh has
+# its own `nx profile doctor` (in _aliases_nix.ps1) and is not audited here.
+case "${NX_INVOKING_SHELL:-bash}" in
+zsh) _rc="$HOME/.zshrc" ;;
+*) _rc="$HOME/.bashrc" ;;
+esac
 _profile_ok=true
 _profile_detail=""
 _block_marker="nix-env managed"
-for _rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
-  [ -f "$_rc" ] || continue
+if [ -f "$_rc" ]; then
   _count="$(grep -cF "# >>> $_block_marker >>>" "$_rc" 2>/dev/null || true)"
   _rc_name="$(basename "$_rc")"
   if [ "$_count" = "0" ] 2>/dev/null; then
-    _profile_detail="${_profile_detail:+$_profile_detail; }no managed block in $_rc_name"
+    _profile_detail="no managed block in $_rc_name"
     _profile_ok=false
   elif [ "$_count" -gt 1 ] 2>/dev/null; then
-    _profile_detail="${_profile_detail:+$_profile_detail; }$_count duplicate blocks in $_rc_name"
+    _profile_detail="$_count duplicate blocks in $_rc_name"
     _profile_ok=false
   fi
-done
+fi
 if [ "$_profile_ok" = true ]; then
   _check "shell_profile" "pass"
 else

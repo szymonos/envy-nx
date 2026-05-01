@@ -144,6 +144,55 @@ EOF
   [[ "$output" == *"duplicate"* ]]
 }
 
+@test "shell_profile audits only .bashrc by default (bash invocation)" {
+  _write_flake_lock
+  _write_install_json
+  cat >"$HOME/.bashrc" <<'EOF'
+# >>> nix-env managed >>>
+some content
+# <<< nix-env managed <<<
+EOF
+  # broken .zshrc must NOT cause a failure when invoked from bash
+  cat >"$HOME/.zshrc" <<'EOF'
+# legacy zshrc, no managed block
+EOF
+  run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"PASS  shell_profile"* ]]
+}
+
+@test "shell_profile audits .zshrc when NX_INVOKING_SHELL=zsh" {
+  _write_flake_lock
+  _write_install_json
+  # broken .bashrc must NOT cause a failure when invoked from zsh
+  cat >"$HOME/.bashrc" <<'EOF'
+# legacy bashrc, no managed block
+EOF
+  cat >"$HOME/.zshrc" <<'EOF'
+# >>> nix-env managed >>>
+some content
+# <<< nix-env managed <<<
+EOF
+  NX_INVOKING_SHELL=zsh run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"PASS  shell_profile"* ]]
+}
+
+@test "shell_profile fails when invoking shell's rc lacks managed block" {
+  _write_flake_lock
+  _write_install_json
+  # valid .bashrc, broken .zshrc - and we're auditing zsh
+  cat >"$HOME/.bashrc" <<'EOF'
+# >>> nix-env managed >>>
+some content
+# <<< nix-env managed <<<
+EOF
+  cat >"$HOME/.zshrc" <<'EOF'
+# legacy zshrc, no managed block
+EOF
+  NX_INVOKING_SHELL=zsh run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"FAIL  shell_profile"* ]]
+  [[ "$output" == *"no managed block in .zshrc"* ]]
+}
+
 # -- cert_bundle check ------------------------------------------------------
 
 @test "cert_bundle passes when no custom certs exist" {
