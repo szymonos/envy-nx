@@ -7,7 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Changed
 
-- `make release`: auto-detects the version from the latest `## [X.Y.Z] - YYYY-MM-DD` heading in `CHANGELOG.md` instead of prompting interactively. Override with `make release VERSION=X.Y.Z` when needed (e.g. building a hotfix tag from a different ref). Aborts if the detected `vX.Y.Z` tag already exists - catches the common "forgot to add a new release section to CHANGELOG.md before running release" mistake. Behavior unchanged otherwise: the target still stops after building the tarball and prints the `git tag` / `git push` commands for manual review.
+- `make release`: end-to-end release flow with one interactive confirmation. Auto-detects the version from the latest `## [X.Y.Z] - YYYY-MM-DD` heading in `CHANGELOG.md` (override with `make release VERSION=X.Y.Z` for hotfix builds). Enforces three preconditions: branch must be `main` (no accidentally tagging from a feature branch), worktree must be clean, and local `HEAD` must match `origin/main` after a `git fetch` (so the tag always points at a published commit). Aborts if `vX.Y.Z` already exists - catches the "forgot to add a new release section" mistake. After the tarball builds, prompts `Tag vX.Y.Z at HEAD and push to origin? [y/N]`: `y` runs `git tag -a` + `git push origin vX.Y.Z` (triggers `release.yml`); anything else prints the manual commands as an escape hatch (lets you inspect the tarball first). One target replaces the previous "build + print + manually tag + manually push" four-step dance.
 
 ## [1.4.0] - 2026-05-01
 
