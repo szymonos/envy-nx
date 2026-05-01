@@ -1,0 +1,152 @@
+{
+  "_about": "Single source of truth for the nx CLI surface. Consumed by the completion generator to produce bash, zsh, and PowerShell completers. May also be read by nx.sh for argument validation and by docs tooling for help text. Edit this file when adding/renaming verbs, subverbs, or flags - the completers regenerate from it via tests/hooks/gen_nx_completions.py (Phase 1 deliverable).",
+  "completers": {
+    "installed_packages": "Names from ~/.config/nix-env/packages.nix",
+    "all_scopes": "Scope names: enabled in config.nix + overlay local_*.nix",
+    "theme_omp": "Bundled oh-my-posh theme names (base, nerd, powerline) - free-form also accepted",
+    "theme_starship": "Bundled starship theme names (base, nerd) - free-form also accepted"
+  },
+  "verbs": [
+    {
+      "name": "search",
+      "summary": "search nixpkgs for a package",
+      "args": [{ "name": "query", "required": true }]
+    },
+    {
+      "name": "install",
+      "summary": "install packages from nixpkgs",
+      "args": [{ "name": "packages", "variadic": true, "required": true }]
+    },
+    {
+      "name": "remove",
+      "aliases": ["uninstall"],
+      "summary": "remove installed packages",
+      "args": [{ "name": "packages", "variadic": true, "required": true, "completer": "installed_packages" }]
+    },
+    {
+      "name": "upgrade",
+      "aliases": ["update"],
+      "summary": "upgrade all packages"
+    },
+    {
+      "name": "rollback",
+      "summary": "rollback to previous profile generation"
+    },
+    {
+      "name": "list",
+      "summary": "list installed packages"
+    },
+    {
+      "name": "scope",
+      "summary": "manage scopes",
+      "subverbs": [
+        { "name": "list", "summary": "list all scopes" },
+        { "name": "show", "summary": "show scope contents", "args": [{ "name": "scope", "required": true, "completer": "all_scopes" }] },
+        { "name": "tree", "summary": "show scope dependency tree" },
+        { "name": "add", "summary": "create a new overlay scope", "args": [{ "name": "scope", "required": true }, { "name": "packages", "variadic": true }] },
+        { "name": "edit", "summary": "edit a scope file", "args": [{ "name": "scope", "required": true, "completer": "all_scopes" }] },
+        { "name": "remove", "aliases": ["rm"], "summary": "remove an overlay scope", "args": [{ "name": "scope", "required": true, "completer": "all_scopes" }] }
+      ]
+    },
+    {
+      "name": "overlay",
+      "summary": "manage overlay directory",
+      "subverbs": [
+        { "name": "list", "summary": "show overlay directory and contents" },
+        { "name": "status", "summary": "show overlay sync status" }
+      ]
+    },
+    {
+      "name": "pin",
+      "summary": "manage nixpkgs revision pin",
+      "subverbs": [
+        { "name": "set", "summary": "pin nixpkgs to a specific revision", "args": [{ "name": "revision" }] },
+        { "name": "remove", "aliases": ["rm"], "summary": "remove the nixpkgs pin" },
+        { "name": "show", "summary": "show current pin" },
+        { "name": "help", "summary": "show pin help" }
+      ]
+    },
+    {
+      "name": "profile",
+      "summary": "manage shell profile blocks",
+      "subverbs": [
+        { "name": "doctor", "summary": "check profile block health" },
+        { "name": "regenerate", "summary": "regenerate profile blocks" },
+        { "name": "uninstall", "summary": "remove profile blocks" },
+        { "name": "help", "summary": "show profile help" }
+      ]
+    },
+    {
+      "name": "setup",
+      "summary": "run nix/setup.sh from anywhere",
+      "flags": [
+        { "long": "--az", "summary": "Azure CLI + azcopy" },
+        { "long": "--bun", "summary": "Bun JavaScript/TypeScript runtime" },
+        { "long": "--conda", "summary": "Miniforge" },
+        { "long": "--docker", "summary": "Docker post-install check" },
+        { "long": "--gcloud", "summary": "Google Cloud CLI" },
+        { "long": "--k8s-base", "summary": "kubectl, kubelogin, k9s, kubecolor" },
+        { "long": "--k8s-dev", "summary": "argo, cilium, flux, helm, hubble, kustomize, trivy" },
+        { "long": "--k8s-ext", "summary": "minikube, k3d, kind" },
+        { "long": "--nodejs", "summary": "Node.js" },
+        { "long": "--pwsh", "summary": "PowerShell" },
+        { "long": "--python", "summary": "uv + prek" },
+        { "long": "--rice", "summary": "btop, cmatrix, cowsay, fastfetch" },
+        { "long": "--shell", "summary": "fzf, eza, bat, ripgrep, yq" },
+        { "long": "--terraform", "summary": "terraform, tflint" },
+        { "long": "--zsh", "summary": "zsh plugins" },
+        { "long": "--all", "summary": "enable all scopes" },
+        { "long": "--upgrade", "summary": "upgrade all packages" },
+        { "long": "--allow-unfree", "summary": "allow unfree packages" },
+        { "long": "--unattended", "summary": "skip interactive steps" },
+        { "long": "--skip-repo-update", "summary": "skip the git fetch + fast-forward of the source repo" },
+        { "long": "--update-modules", "summary": "update PowerShell modules" },
+        { "long": "--omp-theme", "summary": "oh-my-posh theme name", "takes_value": true, "value_completer": "theme_omp" },
+        { "long": "--starship-theme", "summary": "starship theme name", "takes_value": true, "value_completer": "theme_starship" },
+        { "long": "--remove", "summary": "remove scopes", "takes_value": true, "value_completer": "all_scopes" },
+        { "long": "--help", "short": "-h", "summary": "show help" }
+      ]
+    },
+    {
+      "name": "self",
+      "summary": "manage the source repository",
+      "subverbs": [
+        {
+          "name": "update",
+          "summary": "update the source repository",
+          "flags": [
+            { "long": "--force", "summary": "force reset to origin" }
+          ]
+        },
+        { "name": "path", "summary": "print the source repository path" },
+        { "name": "help", "summary": "show self help" }
+      ]
+    },
+    {
+      "name": "doctor",
+      "summary": "run health checks",
+      "flags": [
+        { "long": "--strict", "summary": "treat warnings as failures" },
+        { "long": "--json", "summary": "JSON output" }
+      ]
+    },
+    {
+      "name": "prune",
+      "summary": "remove old profile generations"
+    },
+    {
+      "name": "gc",
+      "aliases": ["clean"],
+      "summary": "run nix garbage collection"
+    },
+    {
+      "name": "version",
+      "summary": "show version information"
+    },
+    {
+      "name": "help",
+      "aliases": ["-h", "--help"],
+      "summary": "show help"
+    }
+  ]
+}
