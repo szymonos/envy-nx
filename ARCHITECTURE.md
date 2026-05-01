@@ -229,7 +229,9 @@ Implemented in `resolve_scope_deps` (`.assets/lib/scopes.sh`). `--omp-theme <the
 
 `nx.sh` is sourced into the user's interactive shell lazily via the `nx()` wrapper in `.assets/config/shell_cfg/aliases_nix.sh`. **All five files** (`nx.sh` + the four family files) are subject to zsh-compat constraints (§7).
 
-**`nx_doctor.sh` registry.** Each check is a `_check_<name>` function returning `pass|warn|fail<TAB><detail>` (or empty for skip). A single `_run_check` runner iterates the `CHECKS` list. The `shell_profile` check uses the `NX_INVOKING_SHELL` env var (set by the shell wrapper) to audit only the active shell - not every shell that happens to exist on PATH. By default only FAILs produce a non-zero exit; `--strict` treats warnings as failures too (used in CI).
+**`nx_doctor.sh` registry.** Each check is a `_check_<name>` function returning `pass|warn|fail<TAB><detail>` (or empty for skip). A single `_run_check` runner iterates the `CHECKS` list. The `shell_profile` check audits only the invoking shell - not every shell that happens to exist on PATH. The shell is resolved by `_invoking_rc()` in this order: `NX_INVOKING_SHELL` env var (set by the `nx` shell wrapper from `$BASH_VERSION`/`$ZSH_VERSION`) → in-script `$ZSH_VERSION` (only set if invoked as `zsh nx_doctor.sh`) → `basename $SHELL` (the user's login shell - handles direct `bash nx_doctor.sh` invocations) → bash. By default only FAILs produce a non-zero exit; `--strict` treats warnings as failures too (used in CI).
+
+**`_nx_find_lib` resolution.** Looks for sibling library files (`profile_block.sh`, family files when sourced standalone). Order: `NX_LIB_DIR` env var override → `BASH_SOURCE`-derived script directory (bash) → `$HOME/.config/nix-env` (zsh fallback, where `BASH_SOURCE[0]` is empty). `NX_LIB_DIR` lets `tests/bats/test_nx_zsh.bats` point at the source repo's `.assets/lib/` instead of copying files into the test's mock ENV_DIR.
 
 **Doctor checks:**
 
@@ -886,6 +888,16 @@ Written on every setup run (success or failure) by an EXIT trap (bash) or `clean
 | `NIX_ENV_TLS_PROBE_URL` | `certs.sh` | On source                        | TLS probe URL for MITM detection               |
 
 `NIX_ENV_VERSION` uses a three-step fallback: `git describe --tags --dirty`, then a `VERSION` file (present in release tarballs), then `"unknown"`.
+
+### 13.9. Environment variables read by the `nx` CLI (consumer-side)
+
+These are read, not set, by `nx*.sh`. Useful for tests, dev iteration, and overriding default behavior.
+
+| Variable              | Read by                | Purpose                                                                                                                                                                                                                             |
+| --------------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NX_LIB_DIR`          | `_nx_find_lib`         | Override library lookup path (highest priority); used by `test_nx_zsh.bats` to point at the source repo without copying files                                                                                                       |
+| `NX_INVOKING_SHELL`   | `nx_doctor.sh`         | Shell name (`bash`/`zsh`) the `nx` wrapper detected from `$BASH_VERSION`/`$ZSH_VERSION`; routes the `shell_profile` check to the right rc file. Falls back to `$ZSH_VERSION` then `basename $SHELL` when unset (direct invocations) |
+| `NIX_ENV_OVERLAY_DIR` | `nx_scope.sh`, `nx.sh` | Overlay directory location override (default: `~/.config/nix-env/local/`)                                                                                                                                                           |
 
 ## 14. Cross-links
 

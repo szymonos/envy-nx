@@ -193,6 +193,23 @@ EOF
   [[ "$output" == *"no managed block in .zshrc"* ]]
 }
 
+@test "shell_profile falls back to \$SHELL when NX_INVOKING_SHELL is unset" {
+  _write_flake_lock
+  _write_install_json
+  # broken .bashrc, valid .zshrc; \$SHELL=zsh -> doctor must pick .zshrc
+  cat >"$HOME/.bashrc" <<'EOF'
+# legacy bashrc, no managed block
+EOF
+  cat >"$HOME/.zshrc" <<'EOF'
+# >>> nix-env managed >>>
+some content
+# <<< nix-env managed <<<
+EOF
+  unset NX_INVOKING_SHELL
+  SHELL=/usr/bin/zsh run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"PASS  shell_profile"* ]]
+}
+
 # -- env_dir_files check ----------------------------------------------------
 
 _write_env_dir_files() {
