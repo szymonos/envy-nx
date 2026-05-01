@@ -24,14 +24,13 @@ setup() {
   TEST_DIR="$(mktemp -d)"
   export HOME="$TEST_DIR"
   export ENV_DIR="$TEST_DIR/.config/nix-env"
+  # Point _nx_find_lib at the source repo's .assets/lib/ via NX_LIB_DIR
+  # override - removes the need to copy 7 files into ENV_DIR before each
+  # test. The fallback test below uses a marker.sh that isn't in
+  # NX_LIB_DIR, so it still exercises the zsh BASH_SOURCE-empty fallback
+  # to $HOME/.config/nix-env/.
+  export NX_LIB_DIR="$REPO_ROOT/.assets/lib"
   mkdir -p "$ENV_DIR/scopes"
-  # In zsh, nx.sh's _nx_find_lib falls back to $HOME/.config/nix-env/
-  # (BASH_SOURCE[0] is empty), so family files must live there. This
-  # mirrors the real install layout - phase_bootstrap_sync_env_dir
-  # populates the same directory in production.
-  for f in nx.sh nx_pkg.sh nx_scope.sh nx_profile.sh nx_lifecycle.sh nx_doctor.sh profile_block.sh; do
-    cp "$REPO_ROOT/.assets/lib/$f" "$ENV_DIR/$f"
-  done
   # minimal config.nix with one scope so dispatchers don't hit empty-config bail-outs
   cat >"$ENV_DIR/config.nix" <<'EOF'
 {
@@ -50,15 +49,15 @@ teardown() {
   rm -rf "$TEST_DIR"
 }
 
-# Run a snippet under zsh with the test's HOME/ENV_DIR exported.
+# Run a snippet under zsh with the test's HOME/ENV_DIR/NX_LIB_DIR exported.
 _zsh() {
-  HOME="$HOME" ENV_DIR="$ENV_DIR" zsh -c "$@"
+  HOME="$HOME" ENV_DIR="$ENV_DIR" NX_LIB_DIR="$NX_LIB_DIR" zsh -c "$@"
 }
 
 # -- sourcing -----------------------------------------------------------------
 
 @test "nx.sh sources cleanly into zsh (no parse errors, all family files load)" {
-  run _zsh "source $ENV_DIR/nx.sh"
+  run _zsh "source $NX_LIB_DIR/nx.sh"
   [ "$status" -eq 0 ]
   # any family-file load failure prints "nx: family file <name> not found"
   [[ "$output" != *"family file"*"not found"* ]]
@@ -67,7 +66,7 @@ _zsh() {
 @test "all four family files source cleanly into zsh in isolation" {
   for f in nx_pkg.sh nx_scope.sh nx_profile.sh nx_lifecycle.sh; do
     # source nx.sh first to set up shared helpers + constants the family expects
-    run _zsh "source $ENV_DIR/nx.sh && source $REPO_ROOT/.assets/lib/$f"
+    run _zsh "source $NX_LIB_DIR/nx.sh && source $REPO_ROOT/.assets/lib/$f"
     [ "$status" -eq 0 ] || fail "$f failed to source under zsh: $output"
   done
 }
@@ -82,31 +81,31 @@ _zsh() {
 # -- dispatcher routing -------------------------------------------------------
 
 @test "nx_main help works under zsh" {
-  run _zsh "source $ENV_DIR/nx.sh && nx_main help"
+  run _zsh "source $NX_LIB_DIR/nx.sh && nx_main help"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Usage: nx"* ]]
 }
 
 @test "nx_main version works under zsh" {
   # No install.json in this test env - version prints "No install record found"
-  run _zsh "source $ENV_DIR/nx.sh && nx_main version"
+  run _zsh "source $NX_LIB_DIR/nx.sh && nx_main version"
   [ "$status" -eq 0 ]
 }
 
 @test "nx_main pin show works under zsh (scope/pin family dispatcher)" {
-  run _zsh "source $ENV_DIR/nx.sh && nx_main pin show"
+  run _zsh "source $NX_LIB_DIR/nx.sh && nx_main pin show"
   [ "$status" -eq 0 ]
   [[ "$output" == *"No pin set"* ]]
 }
 
 @test "nx_main profile help works under zsh (profile family dispatcher)" {
-  run _zsh "source $ENV_DIR/nx.sh && nx_main profile help"
+  run _zsh "source $NX_LIB_DIR/nx.sh && nx_main profile help"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Usage: nx profile"* ]]
 }
 
 @test "nx_main self help works under zsh (lifecycle family dispatcher)" {
-  run _zsh "source $ENV_DIR/nx.sh && nx_main self help"
+  run _zsh "source $NX_LIB_DIR/nx.sh && nx_main self help"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Usage: nx self"* ]]
 }
@@ -117,20 +116,20 @@ _zsh() {
   # The for-loop over $scopes_dir/local_*.nix used to abort under zsh's
   # `nomatch` option when no local_*.nix existed. After the find/while
   # refactor, this should pass cleanly.
-  run _zsh "source $ENV_DIR/nx.sh && nx_main scope list"
+  run _zsh "source $NX_LIB_DIR/nx.sh && nx_main scope list"
   [ "$status" -eq 0 ]
   [[ "$output" != *"no matches found"* ]]
   [[ "$output" == *"shell"* ]]
 }
 
 @test "nx_main scope tree works under zsh with no overlay scopes" {
-  run _zsh "source $ENV_DIR/nx.sh && nx_main scope tree"
+  run _zsh "source $NX_LIB_DIR/nx.sh && nx_main scope tree"
   [ "$status" -eq 0 ]
   [[ "$output" != *"no matches found"* ]]
 }
 
 @test "nx_main overlay works under zsh with no overlay dir" {
-  run _zsh "source $ENV_DIR/nx.sh && nx_main overlay"
+  run _zsh "source $NX_LIB_DIR/nx.sh && nx_main overlay"
   [ "$status" -eq 0 ]
   [[ "$output" != *"no matches found"* ]]
 }
@@ -141,7 +140,7 @@ _zsh() {
   # Plant a marker file in the runtime location and verify _nx_find_lib finds
   # it when invoked under zsh (where BASH_SOURCE[0] is empty by default).
   : >"$ENV_DIR/marker.sh"
-  run _zsh "source $ENV_DIR/nx.sh && _nx_find_lib marker.sh"
+  run _zsh "source $NX_LIB_DIR/nx.sh && _nx_find_lib marker.sh"
   [ "$status" -eq 0 ]
   [[ "$output" == *"$ENV_DIR/marker.sh"* ]]
 }

@@ -139,19 +139,39 @@ _check_scope_binaries() {
 
 # Resolve the rc file matching the invoking shell. Used by both shell_profile
 # and shell_config_files so the choice stays consistent.
+#
+# Resolution order:
+#   1. NX_INVOKING_SHELL env var - set by the `nx` shell wrapper from
+#      $BASH_VERSION / $ZSH_VERSION before delegating to this script. The
+#      reliable signal for `nx doctor` invocations.
+#   2. In-script $ZSH_VERSION - only set when the script was invoked as
+#      `zsh nx_doctor.sh` (rare; the shebang is bash).
+#   3. Basename of $SHELL - the user's login shell. Best available signal
+#      for direct `bash nx_doctor.sh` invocations from any terminal.
+#   4. Final fallback: bash.
 _invoking_rc() {
-  case "${NX_INVOKING_SHELL:-bash}" in
+  local _shell="${NX_INVOKING_SHELL:-}"
+  if [ -z "$_shell" ]; then
+    if [ -n "${ZSH_VERSION:-}" ]; then
+      _shell="zsh"
+    elif [ -n "${SHELL:-}" ]; then
+      _shell="$(basename "$SHELL")"
+    else
+      _shell="bash"
+    fi
+  fi
+  case "$_shell" in
   zsh) echo "$HOME/.zshrc" ;;
   *) echo "$HOME/.bashrc" ;;
   esac
 }
 
 _check_shell_profile() {
-  # Audit only the rc file matching the invoking shell. nx.sh sets
-  # NX_INVOKING_SHELL based on $BASH_VERSION/$ZSH_VERSION (it's sourced into
-  # the user's shell, so it knows which one). Default to bash for direct
-  # script invocations (bats tests, manual `bash nx_doctor.sh`). Pwsh has
-  # its own `nx profile doctor` (in _aliases_nix.ps1) and is not audited here.
+  # Audit only the rc file matching the invoking shell - nx.sh sets
+  # NX_INVOKING_SHELL based on $BASH_VERSION/$ZSH_VERSION; direct
+  # invocations (bats tests, manual `zsh nx_doctor.sh`) fall back to
+  # auto-detection in _invoking_rc(). Pwsh has its own `nx profile doctor`
+  # (in _aliases_nix.ps1) and is not audited here.
   local _rc _count _name
   _rc="$(_invoking_rc)"
   [ -f "$_rc" ] || {

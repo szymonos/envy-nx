@@ -127,6 +127,13 @@ function _nx_all_scope_pkgs() {
 
 function _nx_find_lib() {
   local name="$1"
+  # NX_LIB_DIR is an explicit override - lets tests and dev iteration
+  # point at .assets/lib/ in a repo checkout without copying files into
+  # ~/.config/nix-env/. Wins over auto-discovery when set + readable.
+  if [ -n "${NX_LIB_DIR:-}" ] && [ -f "$NX_LIB_DIR/$name" ]; then
+    echo "$NX_LIB_DIR/$name"
+    return 0
+  fi
   local script_dir
   # BASH_SOURCE-based self-location with a zsh fallback: in zsh BASH_SOURCE[0]
   # is empty, the else branch falls through to the durable config dir.
