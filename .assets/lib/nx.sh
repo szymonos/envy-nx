@@ -130,8 +130,8 @@ function _nx_find_lib() {
   local script_dir
   # BASH_SOURCE-based self-location with a zsh fallback: in zsh BASH_SOURCE[0]
   # is empty, the else branch falls through to the durable config dir.
-  if [ -n "${BASH_SOURCE[0]:-}" ]; then                        # zsh-ok: guarded by [-n]; falls through in zsh
-    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" # zsh-ok: only reached in bash
+  if [ -n "${BASH_SOURCE[0]:-}" ]; then
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   else
     script_dir="$HOME/.config/nix-env"
   fi
@@ -206,6 +206,6 @@ function nx_main() {
 # --- Execution guard ---
 # In bash: fires when nx.sh is run as a script (not sourced).
 # In zsh: BASH_SOURCE[0] is empty, comparison is false, nx_main is not auto-invoked.
-if [ "${BASH_SOURCE[0]}" = "$0" ]; then # zsh-ok: false in zsh; nx_main only runs under bash standalone
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   nx_main "$@"
 fi
