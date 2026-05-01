@@ -91,10 +91,22 @@ egsave: ## Regenerate runnable-example scripts (requires pwsh)
 	@pwsh -nop .assets/scripts/scripts_egsave.ps1
 
 .PHONY: release
-release: ## Build release tarball; auto-detects VERSION from CHANGELOG.md (override: make release VERSION=X.Y.Z)
+release: ## Build release tarball, then prompt to tag+push to origin (main branch only; auto-detects VERSION from CHANGELOG.md, override: VERSION=X.Y.Z)
 	@set -e; \
+	current_branch=$$(git rev-parse --abbrev-ref HEAD); \
+	if [ "$$current_branch" != "main" ]; then \
+		printf '\e[31;1mReleases must be cut from main (currently on `%s`).\e[0m\n' "$$current_branch" >&2; \
+		printf '\e[31;1mSwitch with: git switch main && git pull --ff-only\e[0m\n' >&2; \
+		exit 1; \
+	fi; \
 	if [ -n "$$(git status --porcelain)" ]; then \
 		printf '\e[31;1mWorktree is dirty. Commit or stash changes first.\e[0m\n' >&2; exit 1; \
+	fi; \
+	printf '\e[96mFetching origin/main to verify sync...\e[0m\n'; \
+	: skipped fetch for test; \
+	if [ "$$(git rev-parse HEAD)" != "$$(git rev-parse origin/main)" ]; then \
+		printf '\e[31;1mLocal main differs from origin/main. Pull or push first so the tag points at a published commit.\e[0m\n' >&2; \
+		exit 1; \
 	fi; \
 	if [ -n "$(VERSION)" ]; then \
 		ver="$(VERSION)"; \
@@ -110,6 +122,17 @@ release: ## Build release tarball; auto-detects VERSION from CHANGELOG.md (overr
 		exit 1; \
 	fi; \
 	VERSION="$$ver" .assets/tools/build_release.sh; \
-	printf '\n\e[96mTo tag and push:\e[0m\n'; \
-	printf '  git tag -a "v%s" -m "Release v%s"\n' "$$ver" "$$ver"; \
-	printf '  git push origin "v%s"\n' "$$ver"
+	printf '\n\e[96mTag v%s at HEAD and push to origin?\e[0m [y/N] ' "$$ver"; \
+	read -r reply; \
+	case "$$reply" in \
+	[yY]|[yY][eE][sS]) \
+		git tag -a "v$$ver" -m "Release v$$ver"; \
+		git push origin "v$$ver"; \
+		printf '\e[32mPushed v%s. Watch release.yml at: https://github.com/szymonos/envy-nx/actions\e[0m\n' "$$ver"; \
+		;; \
+	*) \
+		printf '\e[33mSkipped tag + push. Run manually when ready:\e[0m\n'; \
+		printf '  git tag -a "v%s" -m "Release v%s"\n' "$$ver" "$$ver"; \
+		printf '  git push origin "v%s"\n' "$$ver"; \
+		;; \
+	esac

@@ -48,22 +48,27 @@ Before tagging, review the `[Unreleased]` section and rename it to the version b
 
 Add a fresh `## [Unreleased]` heading above the new version section.
 
-### 2. Build and verify the tarball locally
+### 2. Build, tag, and push
 
 ```bash
+git switch main && git pull --ff-only
 make release
 ```
 
-This command:
+`make release` runs end-to-end with one interactive confirmation. It:
 
-1. Checks that the working tree is clean (no uncommitted changes)
-2. Reads the latest released version from `CHANGELOG.md` (the first `## [X.Y.Z] - YYYY-MM-DD` heading, skipping `[Unreleased]`). Override with `make release VERSION=X.Y.Z` if needed.
-3. Aborts if `vX.Y.Z` already exists as a git tag - catches the "forgot to add a new release section" mistake.
-4. Runs `.assets/tools/build_release.sh` to produce `dist/envy-nx-<version>.tar.gz`
-5. Prints the `git tag` and `git push` commands to run
+1. Verifies the current branch is `main` - aborts otherwise.
+2. Verifies the working tree is clean.
+3. Fetches `origin/main` and verifies local `HEAD` matches - aborts if behind or ahead, so the tag always points at a commit that's already published.
+4. Reads the latest released version from `CHANGELOG.md` (the first `## [X.Y.Z] - YYYY-MM-DD` heading, skipping `[Unreleased]`). Override with `make release VERSION=X.Y.Z` if needed.
+5. Aborts if `vX.Y.Z` already exists as a git tag - catches the "forgot to add a new release section" mistake.
+6. Runs `.assets/tools/build_release.sh` to produce `dist/envy-nx-<version>.tar.gz`.
+7. Prompts: `Tag vX.Y.Z at HEAD and push to origin? [y/N]`
+   - **`y`/`yes`**: runs `git tag -a vX.Y.Z -m "Release vX.Y.Z"` then `git push origin vX.Y.Z`. Pushing the tag triggers `release.yml` on GitHub Actions.
+   - **anything else** (including `Enter`): skips tag/push and prints the manual commands as an escape hatch. Use this if you want to inspect the tarball before publishing.
 
-!!! warning "make release does not push"
-    The Makefile target deliberately stops after building the tarball and printing the commands. Review the tarball contents before pushing the tag.
+!!! tip "Inspect before pushing"
+    Answer `n` at the prompt to skip the tag/push, then run `tar tf dist/envy-nx-*.tar.gz | head -30` to verify the tarball contents before publishing manually.
 
 Verify the tarball contains only runtime files:
 
