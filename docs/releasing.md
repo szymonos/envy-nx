@@ -57,9 +57,10 @@ make release
 This command:
 
 1. Checks that the working tree is clean (no uncommitted changes)
-2. Prompts for a version number
-3. Runs `scripts/build_release.sh` to produce `dist/envy-nx-<version>.tar.gz`
-4. Prints the `git tag` and `git push` commands to run
+2. Reads the latest released version from `CHANGELOG.md` (the first `## [X.Y.Z] - YYYY-MM-DD` heading, skipping `[Unreleased]`). Override with `make release VERSION=X.Y.Z` if needed.
+3. Aborts if `vX.Y.Z` already exists as a git tag - catches the "forgot to add a new release section" mistake.
+4. Runs `.assets/tools/build_release.sh` to produce `dist/envy-nx-<version>.tar.gz`
+5. Prints the `git tag` and `git push` commands to run
 
 !!! warning "make release does not push"
     The Makefile target deliberately stops after building the tarball and printing the commands. Review the tarball contents before pushing the tag.

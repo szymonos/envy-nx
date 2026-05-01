@@ -91,13 +91,24 @@ egsave: ## Regenerate runnable-example scripts (requires pwsh)
 	@pwsh -nop .assets/scripts/scripts_egsave.ps1
 
 .PHONY: release
-release: ## Build release tarball and print tag commands
+release: ## Build release tarball; auto-detects VERSION from CHANGELOG.md (override: make release VERSION=X.Y.Z)
 	@set -e; \
 	if [ -n "$$(git status --porcelain)" ]; then \
 		printf '\e[31;1mWorktree is dirty. Commit or stash changes first.\e[0m\n' >&2; exit 1; \
 	fi; \
-	printf 'Enter version (e.g. 1.0.0): '; read -r ver; \
-	[ -n "$$ver" ] || { printf '\e[31;1mVersion required.\e[0m\n' >&2; exit 1; }; \
+	if [ -n "$(VERSION)" ]; then \
+		ver="$(VERSION)"; \
+		printf '\e[96mUsing VERSION override: \e[1mv%s\e[0m\n' "$$ver"; \
+	else \
+		ver=$$(awk '/^## \[[0-9]+\.[0-9]+\.[0-9]+\]/{gsub(/[][]/,"",$$2); print $$2; exit}' CHANGELOG.md); \
+		[ -n "$$ver" ] || { printf '\e[31;1mNo released version in CHANGELOG.md (expected `## [X.Y.Z] - YYYY-MM-DD`).\e[0m\n' >&2; exit 1; }; \
+		printf '\e[96mDetected version from CHANGELOG.md: \e[1mv%s\e[0m\n' "$$ver"; \
+	fi; \
+	if git rev-parse "v$$ver" >/dev/null 2>&1; then \
+		printf '\e[31;1mTag v%s already exists. Did you forget to add a new release section to CHANGELOG.md?\e[0m\n' "$$ver" >&2; \
+		printf '\e[31;1mOverride with: make release VERSION=X.Y.Z\e[0m\n' >&2; \
+		exit 1; \
+	fi; \
 	VERSION="$$ver" .assets/tools/build_release.sh; \
 	printf '\n\e[96mTo tag and push:\e[0m\n'; \
 	printf '  git tag -a "v%s" -m "Release v%s"\n' "$$ver" "$$ver"; \
