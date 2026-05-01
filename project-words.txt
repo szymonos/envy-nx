@@ -23,6 +23,7 @@ devbox
 distrobox
 distros
 egsave
+elif
 euid
 fastfetch
 fixcertpy
@@ -73,6 +74,8 @@ sonoma
 sourceable
 stdlib
 subshells
+subverb
+subverbs
 sysinfo
 szymonos
 tflint
