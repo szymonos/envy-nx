@@ -107,6 +107,7 @@ trap _on_exit EXIT
 # ---- run phases --------------------------------------------------------------
 setup_log_start
 
+phase_bootstrap_refresh_repo "$@"
 phase_bootstrap_check_root
 phase_bootstrap_resolve_paths "$SCRIPT_ROOT"
 phase_bootstrap_detect_nix

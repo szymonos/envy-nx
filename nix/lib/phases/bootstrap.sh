@@ -6,7 +6,73 @@
 # Writes: SCRIPT_ROOT, NIX_ENV_VERSION, NIX_SRC, CONFIGURE_DIR, ENV_DIR,
 #         CONFIG_NIX, omp_theme, starship_theme, unattended, update_modules,
 #         upgrade_packages, quiet_summary, allow_unfree, remove_scopes,
-#         any_scope, _scope_set
+#         any_scope, _scope_set, _ir_skip
+
+# Refresh the repo from upstream when behind. Skips silently when:
+#   - --skip-repo-update is in $@ (caller already refreshed the repo, e.g.
+#     wsl_setup.ps1's Update-GitRepository, or developer iterating locally)
+#   - SCRIPT_ROOT is not a git work tree (tarball install)
+#   - git is unavailable
+#   - no upstream tracking branch is configured (e.g. detached HEAD on CI)
+#   - working tree has uncommitted changes (would be discarded by reset)
+#   - HEAD has diverged from upstream (would discard local commits)
+# Uses ls-remote as a cheap pre-check (one small network round-trip, no local
+# writes) to skip the heavy `git fetch` when the remote tip already matches the
+# local tracking ref - the common case on rerun. Sets _ir_skip and exits 0
+# after a successful update so the user re-invokes with fresh source (the
+# running script's source has been replaced under it).
+phase_bootstrap_refresh_repo() {
+  local _arg
+  for _arg in "$@"; do
+    [ "$_arg" = "--skip-repo-update" ] && return 0
+  done
+  command -v git >/dev/null 2>&1 || return 0
+  git -C "$SCRIPT_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+
+  local upstream
+  upstream="$(git -C "$SCRIPT_ROOT" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null)" || return 0
+  [ -n "$upstream" ] || return 0
+  local remote="${upstream%%/*}"
+  local branch="${upstream#*/}"
+
+  local remote_sha local_sha
+  remote_sha="$(git -C "$SCRIPT_ROOT" ls-remote --heads "$remote" "$branch" 2>/dev/null | awk 'NR==1{print $1}')"
+  local_sha="$(git -C "$SCRIPT_ROOT" rev-parse "$upstream" 2>/dev/null)"
+  if [ -n "$remote_sha" ] && [ -n "$local_sha" ] && [ "$remote_sha" = "$local_sha" ]; then
+    [ "$(git -C "$SCRIPT_ROOT" rev-parse HEAD)" = "$local_sha" ] && return 0
+    _bootstrap_refresh_apply "$upstream"
+    return 0
+  fi
+
+  if ! git -C "$SCRIPT_ROOT" fetch --tags --prune --prune-tags --force "$remote" 2>/dev/null; then
+    warn "failed to fetch from $remote, continuing with current revision"
+    return 0
+  fi
+  local head_sha upstream_sha
+  head_sha="$(git -C "$SCRIPT_ROOT" rev-parse HEAD)"
+  upstream_sha="$(git -C "$SCRIPT_ROOT" rev-parse "$upstream")"
+  [ "$head_sha" = "$upstream_sha" ] && return 0
+  _bootstrap_refresh_apply "$upstream"
+}
+
+# Apply upstream as new HEAD when the working tree is clean and HEAD is an
+# ancestor of upstream (safe fast-forward). Bails with a warning when local
+# work would be lost - protects feature-branch and dirty-tree development.
+_bootstrap_refresh_apply() {
+  local upstream="$1"
+  if [ -n "$(git -C "$SCRIPT_ROOT" status --porcelain 2>/dev/null)" ]; then
+    warn "uncommitted changes in $SCRIPT_ROOT - skipping auto-update of repository"
+    return 0
+  fi
+  if ! git -C "$SCRIPT_ROOT" merge-base --is-ancestor HEAD "$upstream" 2>/dev/null; then
+    warn "local branch has diverged from $upstream - skipping auto-update"
+    return 0
+  fi
+  git -C "$SCRIPT_ROOT" reset --hard "$upstream" >/dev/null
+  info "repository updated to $upstream - run the script again"
+  _ir_skip=true
+  exit 0
+}
 
 phase_bootstrap_check_root() {
   if [[ $EUID -eq 0 ]]; then
@@ -201,6 +267,7 @@ Options:
   --omp-theme <name>        Install oh-my-posh with theme (base, nerd, powerline, ...)
   --starship-theme <name>   Install starship with theme (base, nerd)
   --unattended              Skip all interactive steps (gh auth, SSH key, git config)
+  --skip-repo-update        Skip the git fetch + fast-forward of the source repo
   --update-modules          Update installed PowerShell modules
   -h, --help                Show this help
 EOF
@@ -264,6 +331,10 @@ phase_bootstrap_parse_args() {
       ;;
     --unattended)
       unattended="true"
+      ;;
+    --skip-repo-update)
+      # consumed earlier by phase_bootstrap_refresh_repo; accept here so
+      # parse_args doesn't reject it as an unknown option
       ;;
     --update-modules)
       update_modules="true"

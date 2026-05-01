@@ -428,7 +428,7 @@ Register-ArgumentCompleter -CommandName nx -Native -ScriptBlock {
             elseif ($tokens[1].Value -eq 'profile') { 'doctor', 'regenerate', 'uninstall', 'help' }
             elseif ($tokens[1].Value -eq 'self') { 'update', 'path', 'help' }
             elseif ($tokens[1].Value -eq 'setup') {
-                '--az', '--bun', '--conda', '--docker', '--gcloud', '--k8s-base', '--k8s-dev', '--k8s-ext', '--nodejs', '--pwsh', '--python', '--rice', '--shell', '--terraform', '--zsh', '--all', '--upgrade', '--allow-unfree', '--unattended', '--update-modules', '--omp-theme', '--starship-theme', '--remove', '--help'
+                '--az', '--bun', '--conda', '--docker', '--gcloud', '--k8s-base', '--k8s-dev', '--k8s-ext', '--nodejs', '--pwsh', '--python', '--rice', '--shell', '--terraform', '--zsh', '--all', '--upgrade', '--allow-unfree', '--unattended', '--skip-repo-update', '--update-modules', '--omp-theme', '--starship-theme', '--remove', '--help'
             }
             elseif ($tokens[1].Value -in 'remove', 'uninstall') {
                 $pkgFile = "$HOME/.config/nix-env/packages.nix"
@@ -440,7 +440,7 @@ Register-ArgumentCompleter -CommandName nx -Native -ScriptBlock {
         default {
             if ($tokens[1].Value -eq 'self' -and $tokens[2].Value -eq 'update') { '--force' }
             elseif ($tokens[1].Value -eq 'setup') {
-                '--az', '--bun', '--conda', '--docker', '--gcloud', '--k8s-base', '--k8s-dev', '--k8s-ext', '--nodejs', '--pwsh', '--python', '--rice', '--shell', '--terraform', '--zsh', '--all', '--upgrade', '--allow-unfree', '--unattended', '--update-modules', '--omp-theme', '--starship-theme', '--remove', '--help'
+                '--az', '--bun', '--conda', '--docker', '--gcloud', '--k8s-base', '--k8s-dev', '--k8s-ext', '--nodejs', '--pwsh', '--python', '--rice', '--shell', '--terraform', '--zsh', '--all', '--upgrade', '--allow-unfree', '--unattended', '--skip-repo-update', '--update-modules', '--omp-theme', '--starship-theme', '--remove', '--help'
             }
             elseif ($tokens[1].Value -eq 'scope' -and $tokens[2].Value -in 'show', 'edit', 'remove', 'rm') {
                 $envDir = "$HOME/.config/nix-env"

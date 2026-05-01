@@ -490,7 +490,10 @@ process {
 
         # -- build nix/setup.sh arguments --
         $nixArgs = [System.Collections.Generic.List[string]]::new()
-        $nixArgs.AddRange([string[]]@('--unattended', '--quiet-summary'))
+        # --skip-repo-update: wsl_setup.ps1 already refreshed the repo via
+        # Update-GitRepository at script start; the nix path's auto-refresh
+        # would be a wasted ls-remote round-trip on the WSL side
+        $nixArgs.AddRange([string[]]@('--unattended', '--skip-repo-update', '--quiet-summary'))
         if (-not $PSBoundParameters.SkipModulesUpdate) {
             $nixArgs.Add('--update-modules')
         }
