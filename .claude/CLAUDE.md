@@ -54,7 +54,17 @@ Runs on the Windows host; creates/configures WSL distros and calls the Nix path 
 
 ## Architecture
 
-See `ARCHITECTURE.md` for file classification (nix-path vs linux-only), call tree, runtime file locations, and bash 3.2/BSD sed constraints. Read it before making global or cross-cutting changes.
+`ARCHITECTURE.md` is the single source of truth for file classification, call tree, constraints, runtime layout, pre-commit hooks, and step-by-step recipes. **Read it first** when the task touches any of:
+
+- Adding/modifying a scope, `nx` verb, family file, doctor check, flag, completer, or pre-commit hook → use the recipes in §6
+- Anything under `nix/lib/phases/`, `nix/configure/`, or the `phase_*` orchestration → §3a
+- Files sourced into the user's shell (`.assets/config/shell_cfg/*`, `.assets/lib/nx*.sh`, `.assets/lib/profile_block.sh`) → zsh-compat rules in §7.3
+- Managed shell-rc blocks or PowerShell `#region nix:*` regions → §3e
+- `nx_surface.json` or any of the generated completer files → §3d (regenerate via `python3 -m tests.hooks.gen_nx_completions`)
+- A pre-commit hook fires that you don't recognize → §8 explains each one
+- A constraint feels arbitrary (`set -eo pipefail` without `-u`, no `flake.lock` in repo, atomic file install, symmetric bash/PS dispatchers) → §5 documents the load-bearing decisions
+
+Skip reading it for typo fixes, doc-only edits, and conversational questions.
 
 **Scope system**: users select feature sets (e.g., `shell`, `python`, `k8s_base`, `pwsh`). Scope logic and dependency resolution are in `.assets/lib/scopes.sh`; canonical definitions in `.assets/lib/scopes.json`. The Nix path uses the same scope names with package lists in `nix/scopes/*.nix`.
 
