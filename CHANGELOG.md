@@ -5,6 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+
+- `make release`: auto-detects the version from the latest `## [X.Y.Z] - YYYY-MM-DD` heading in `CHANGELOG.md` instead of prompting interactively. Override with `make release VERSION=X.Y.Z` when needed (e.g. building a hotfix tag from a different ref). Aborts if the detected `vX.Y.Z` tag already exists - catches the common "forgot to add a new release section to CHANGELOG.md before running release" mistake. Behavior unchanged otherwise: the target still stops after building the tarball and prints the `git tag` / `git push` commands for manual review.
+
 ## [1.4.0] - 2026-05-01
 
 This release introduces the **manifest-driven nx CLI surface** - `.assets/lib/nx_surface.json` is the single source of truth for verbs, subverbs, aliases, flags, completer references, and `nx help` text. Adding a verb or flag is a one-file edit, regenerated into bash/zsh/PowerShell completers and the `nx help` body via one Python script. Four pre-commit parity hooks defend the surface against drift in any direction (completer files, PS `nx profile` dispatcher, bash `nx_main` dispatcher, lib-file installer/audit lists). Other highlights: `nix/setup.sh` auto-refreshes the source repo at start (with `--skip-repo-update` opt-out), `nx doctor` adds three new checks closing silent-failure gaps, the monolithic `nx.sh` is split into four verb-family files, and `nx_doctor.sh` is refactored into a registry pattern.
