@@ -251,30 +251,33 @@ Implemented in `resolve_scope_deps` (`.assets/lib/scopes.sh`). `--omp-theme <the
 
 **PowerShell `nx` wrapper.** `.assets/config/pwsh_cfg/_aliases_nix.ps1` defines a PS `nx` function that proxies almost every verb to `bash $ENV_DIR/nx.sh "$@"`. The single exception is `nx profile *`, handled natively because **the bash and PS profile dispatchers operate on structurally different files** (`~/.bashrc`/`~/.zshrc` with `# >>> nix-env managed >>>` blocks vs `$PROFILE.CurrentUserAllHosts` with `#region nix:* ... #endregion` regions). The `$PROFILE` path is resolved by the .NET runtime per host and cannot be derived from bash; the region syntax is PowerShell-specific. This is **symmetric implementation, not duplicated logic** - but the user-facing subverb surface must stay in sync (enforced by `check-nx-profile-parity`, see §3d).
 
-### 3d. Manifest-driven completions (`.assets/lib/nx_surface.json` + `tests/hooks/gen_nx_completions.py`)
+### 3d. Manifest-driven completions and help (`.assets/lib/nx_surface.json` + `tests/hooks/gen_nx_completions.py`)
 
-The user-facing surface of `nx` (verbs, subverbs, aliases, flags, dynamic completer references) is declared once in `.assets/lib/nx_surface.json`. Three completer files are **generated** from it:
+The user-facing surface of `nx` (verbs, subverbs, aliases, flags, dynamic completer references, summaries) is declared once in `.assets/lib/nx_surface.json`. Four artifacts are **generated** from it:
 
-| Generated file                              | Generator                           | Replacement scope                                |
-| ------------------------------------------- | ----------------------------------- | ------------------------------------------------ |
-| `.assets/config/shell_cfg/completions.bash` | `tests/hooks/gen_nx_completions.py` | full file                                        |
-| `.assets/config/shell_cfg/completions.zsh`  | same                                | full file                                        |
-| `.assets/config/pwsh_cfg/_aliases_nix.ps1`  | same                                | only `#region nx-completer ... #endregion` block |
+| Generated artifact                                        | Generator                           | Replacement scope                                       |
+| --------------------------------------------------------- | ----------------------------------- | ------------------------------------------------------- |
+| `.assets/config/shell_cfg/completions.bash`               | `tests/hooks/gen_nx_completions.py` | full file                                               |
+| `.assets/config/shell_cfg/completions.zsh`                | same                                | full file                                               |
+| `.assets/config/pwsh_cfg/_aliases_nix.ps1`                | same                                | only `#region nx-completer ... #endregion` block        |
+| `.assets/lib/nx_lifecycle.sh` (`_nx_lifecycle_help` body) | same                                | between `# >>> nx-help generated >>>` / `# <<< ... <<<` |
 
-Adding a verb, subverb, or flag is a **one-file edit** to `nx_surface.json` followed by `python3 -m tests.hooks.gen_nx_completions`. Before this manifest existed, every flag addition was a four-file change (parser in `nx.sh` + bash/zsh/pwsh completers).
+Adding a verb, subverb, or flag is a **one-file edit** to `nx_surface.json` followed by `python3 -m tests.hooks.gen_nx_completions`. Before this manifest existed, every flag addition was a four-file change (parser in `nx.sh` + bash/zsh/pwsh completers); verb summaries lived twice (heredoc in `nx_lifecycle.sh` + manifest `summary` field).
 
 **Schema** (intentionally narrow):
 
-- `verbs[]` - top-level commands (`name`, `summary`, optional `aliases`, `subverbs`, `args`, `flags`).
+- `verbs[]` - top-level commands (`name`, `summary`, optional `aliases`, `subverbs`, `args`, `flags`, `help_args`).
 - `subverbs[]` - same shape as a verb, no further nesting (current `nx` has no depth-3 verbs).
 - `args[]` - positional shape: `name`, `required`, `variadic`, optional `completer` reference.
 - `flags[]` - `long`, optional `short`, `summary`, optional `takes_value` + `value_completer`.
+- `help_args` - optional override for the `nx help` args column. Used by `setup` to render `[flags...]` since its primary surface is passthrough flags, not positional args.
 - `completers{}` - registry of named dynamic completers (`installed_packages`, `all_scopes`, `theme_omp`, `theme_starship`). Implementation lives in the generator as per-shell snippets so shell-native idioms (zsh `(@f)`, bash `compgen -W`, PS `Where-Object`) stay readable.
 
 **Drift defenders** (pre-commit hooks):
 
-- `check-nx-completions` (`tests/hooks/check_nx_completions.py`) imports the generator's `emit_*` functions and diffs against the committed completer files. Fails with `Regenerate with: python3 -m tests.hooks.gen_nx_completions`. Triggers on changes to the manifest, any of the three generated files, or the generator/checker scripts.
+- `check-nx-completions` (`tests/hooks/check_nx_completions.py`) imports the generator's `emit_*` functions and diffs against the committed completer files **and** the `nx-help generated` region in `nx_lifecycle.sh`. Fails with `Regenerate with: python3 -m tests.hooks.gen_nx_completions`. Triggers on changes to the manifest, any generated file, or the generator/checker scripts.
 - `check-nx-profile-parity` (`tests/hooks/check_nx_profile_parity.py`) parses the PowerShell `switch ($subCmd)` block in `_aliases_nix.ps1` and asserts the subverbs match `nx_surface.json`'s `profile.subverbs`.
+- `check-nx-dispatch-parity` (`tests/hooks/check_nx_dispatch_parity.py`) parses `nx_main`'s `case "$cmd" in` block in `nx.sh` and asserts every verb (and alias) matches `nx_surface.json`. Closes the third drift loop: completers, PS profile dispatcher, and the bash dispatcher itself all stay in sync.
 
 This is the third instance of "single JSON manifest consumed by bash/PowerShell/Python" in the repo, joining `scopes.json` and `flake.lock`. See *Bootstrap dependency* under §5 for why JSON.
 
@@ -425,13 +428,13 @@ Follow these exact steps. They are built from real change sets.
 
 1. Edit `.assets/lib/nx_surface.json` - add the verb (or subverb) under the appropriate parent. Include `name`, `summary`, optional `aliases`, `subverbs`, `args`, `flags`.
 2. Implement the verb in the matching family file (`nx_pkg.sh`, `nx_scope.sh`, `nx_profile.sh`, or `nx_lifecycle.sh`). Use `function name() {` (zsh-compat).
-3. Wire the dispatcher in `.assets/lib/nx.sh`'s `nx_main` if the verb is top-level.
-4. Regenerate completers: `python3 -m tests.hooks.gen_nx_completions`.
+3. Wire the dispatcher in `.assets/lib/nx.sh`'s `nx_main` if the verb is top-level - every manifest verb name and alias must have a matching `case` arm, otherwise `check-nx-dispatch-parity` will fail.
+4. Regenerate completers and `nx help`: `python3 -m tests.hooks.gen_nx_completions` (also rewrites the `_nx_lifecycle_help` body from the manifest).
 5. If the verb is `nx profile *`: also add the case to PowerShell `_aliases_nix.ps1`'s `switch ($subCmd)` block, otherwise `check-nx-profile-parity` will fail.
 6. Add bats tests in `tests/bats/test_nx_*.bats` (and Pester tests under `tests/pester/` for any PS-side change).
 7. Update the user-facing summary in `docs/nx.md`.
 8. Add a CHANGELOG entry.
-9. Run `make lint` (triggers `check-nx-completions`, `check-nx-profile-parity`, `bats-tests`).
+9. Run `make lint` (triggers `check-nx-completions`, `check-nx-profile-parity`, `check-nx-dispatch-parity`, `bats-tests`).
 
 ### 6.4. Add a new nx family file
 
@@ -580,19 +583,20 @@ Configured in `.pre-commit-config.yaml`, run via `prek` (not `pre-commit`).
 
 ### Local hooks (`tests/hooks/`)
 
-| Hook                      | Script                       | What it checks                                                                                            |
-| ------------------------- | ---------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `gremlins-check`          | `gremlins.py`                | Unwanted Unicode (zero-width spaces, smart quotes); auto-fixes common substitutions                       |
-| `validate-docs-words`     | `validate_docs_words.py`     | `project-words.txt` contains only words that appear in docs (removes stale entries automatically)         |
-| `align-tables`            | `align_tables.py`            | Auto-aligns markdown tables on save                                                                       |
-| `validate-scopes`         | `validate_scopes.py`         | `scopes.json` and `nix/scopes/*.nix` consistent; every scope has `# bins:`                                |
-| `check-bash32`            | `check_bash32.py`            | Nix-path `.sh` files avoid bash 4+ constructs                                                             |
-| `check-zsh-compat`        | `check_zsh_compat.py`        | Shell-sourced files work under zsh                                                                        |
-| `check-changelog`         | `check_changelog.py`         | Runtime file changes require CHANGELOG entry under `[Unreleased]` (bypass via `skip-changelog` label)     |
-| `check-nx-completions`    | `check_nx_completions.py`    | Generated completers match `nx_surface.json` (regenerate via `python3 -m tests.hooks.gen_nx_completions`) |
-| `check-nx-profile-parity` | `check_nx_profile_parity.py` | PowerShell `nx profile` subverbs match `nx_surface.json`                                                  |
-| `bats-tests`              | `run_bats.py`                | Runs bats unit tests when relevant files change (parses `source` directives to map files to tests)        |
-| `pester-tests`            | `run_pester.py`              | Runs Pester unit tests when relevant files change                                                         |
+| Hook                       | Script                        | What it checks                                                                                                                        |
+| -------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `gremlins-check`           | `gremlins.py`                 | Unwanted Unicode (zero-width spaces, smart quotes); auto-fixes common substitutions                                                   |
+| `validate-docs-words`      | `validate_docs_words.py`      | `project-words.txt` contains only words that appear in docs (removes stale entries automatically)                                     |
+| `align-tables`             | `align_tables.py`             | Auto-aligns markdown tables on save                                                                                                   |
+| `validate-scopes`          | `validate_scopes.py`          | `scopes.json` and `nix/scopes/*.nix` consistent; every scope has `# bins:`                                                            |
+| `check-bash32`             | `check_bash32.py`             | Nix-path `.sh` files avoid bash 4+ constructs                                                                                         |
+| `check-zsh-compat`         | `check_zsh_compat.py`         | Shell-sourced files work under zsh                                                                                                    |
+| `check-changelog`          | `check_changelog.py`          | Runtime file changes require CHANGELOG entry under `[Unreleased]` (bypass via `skip-changelog` label)                                 |
+| `check-nx-completions`     | `check_nx_completions.py`     | Generated completers + `_nx_lifecycle_help` body match `nx_surface.json` (regenerate via `python3 -m tests.hooks.gen_nx_completions`) |
+| `check-nx-profile-parity`  | `check_nx_profile_parity.py`  | PowerShell `nx profile` subverbs match `nx_surface.json`                                                                              |
+| `check-nx-dispatch-parity` | `check_nx_dispatch_parity.py` | Bash `nx_main` case arms (verbs + aliases) match `nx_surface.json`                                                                    |
+| `bats-tests`               | `run_bats.py`                 | Runs bats unit tests when relevant files change (parses `source` directives to map files to tests)                                    |
+| `pester-tests`             | `run_pester.py`               | Runs Pester unit tests when relevant files change                                                                                     |
 
 ### External hooks
 

@@ -237,27 +237,29 @@ function _nx_lifecycle_doctor() {
   NX_INVOKING_SHELL="$_dr_shell" bash "$_dr_script" "$@"
 }
 
+# >>> nx-help generated >>> (regenerate: python3 -m tests.hooks.gen_nx_completions)
 function _nx_lifecycle_help() {
-  cat <<'EOF'
+  cat <<'NX_HELP_EOF'
 Usage: nx <command> [args]
 
 Commands:
-  search  <query>         Search for packages in nixpkgs
-  install <pkg> [pkg...]  Install packages (declarative, via packages.nix)
-  remove  <pkg> [pkg...]  Remove user-installed packages
-  upgrade                 Upgrade all packages to latest nixpkgs
-  rollback                Roll back to previous profile generation
-  pin                     Pin nixpkgs to a specific revision (nx pin help)
-  list                    List all installed packages with scope annotations
-  scope                   Manage scopes (nx scope help)
-  overlay                 Show overlay directory contents and sync status
-  profile                 Manage shell rc profile blocks (nx profile help)
-  setup   [flags...]      Run nix/setup.sh from anywhere (with passthrough args)
-  self                    Manage the source repository (nx self help)
-  doctor                  Run health checks on the nix-env environment
-  prune                   Remove stale imperative profile entries
-  gc                      Garbage collect old versions and free disk space
-  version                 Show installation provenance and version info
-  help                    Show this help
-EOF
+  search    <query>        search nixpkgs for a package
+  install   <packages...>  install packages from nixpkgs
+  remove    <packages...>  remove installed packages
+  upgrade                  upgrade all packages
+  rollback                 rollback to previous profile generation
+  list                     list installed packages
+  scope                    manage scopes (nx scope help)
+  overlay                  manage overlay directory (nx overlay help)
+  pin                      manage nixpkgs revision pin (nx pin help)
+  profile                  manage shell profile blocks (nx profile help)
+  setup     [flags...]     run nix/setup.sh from anywhere
+  self                     manage the source repository (nx self help)
+  doctor                   run health checks
+  prune                    remove old profile generations
+  gc                       run nix garbage collection
+  version                  show version information
+  help                     show help
+NX_HELP_EOF
 }
+# <<< nx-help generated <<<

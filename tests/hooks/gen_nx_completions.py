@@ -1,11 +1,14 @@
 """
-Generate nx tab completions for bash, zsh, and PowerShell from
-.assets/lib/nx_surface.json.
+Generate nx tab completions and `nx help` text for bash, zsh, and
+PowerShell from .assets/lib/nx_surface.json.
 
 Outputs:
   - .assets/config/shell_cfg/completions.bash    (full file, overwritten)
   - .assets/config/shell_cfg/completions.zsh     (full file, overwritten)
   - .assets/config/pwsh_cfg/_aliases_nix.ps1     (region replacement)
+  - .assets/lib/nx_lifecycle.sh                  (region replacement, the
+                                                  `_nx_lifecycle_help`
+                                                  function body)
 
 Dynamic completers (all_scopes, installed_packages, theme_omp, theme_starship)
 are emitted as inline shell-native code per shell - see render_completer_*().
@@ -35,8 +38,13 @@ MANIFEST = REPO_ROOT / ".assets/lib/nx_surface.json"
 BASH_OUT = REPO_ROOT / ".assets/config/shell_cfg/completions.bash"
 ZSH_OUT = REPO_ROOT / ".assets/config/shell_cfg/completions.zsh"
 PS_FILE = REPO_ROOT / ".assets/config/pwsh_cfg/_aliases_nix.ps1"
+LIFECYCLE_FILE = REPO_ROOT / ".assets/lib/nx_lifecycle.sh"
 
 PS_REGION_RE = re.compile(r"#region nx-completer.*?#endregion nx-completer", re.DOTALL)
+HELP_REGION_RE = re.compile(
+    r"# >>> nx-help generated >>>.*?# <<< nx-help generated <<<",
+    re.DOTALL,
+)
 
 GEN_NOTICE_SH = (
     "# Generated from .assets/lib/nx_surface.json - DO NOT EDIT\n"
@@ -523,6 +531,76 @@ def emit_ps_region(manifest):
 
 
 # ---------------------------------------------------------------------------
+# nx help text (replaces the `_nx_lifecycle_help` body in nx_lifecycle.sh)
+# ---------------------------------------------------------------------------
+
+
+def _help_args_repr(verb):
+    """Derive the args column for `nx help` from a manifest verb.
+
+    `help_args` overrides everything (used by `setup` to emit `[flags...]`
+    since its primary surface is passthrough flags, not positional args).
+    Otherwise: `<name>` for required, `[name]` for optional, with `...`
+    suffix for variadic.
+    """
+    if "help_args" in verb:
+        return verb["help_args"]
+    parts = []
+    for a in verb.get("args", []):
+        name = a["name"]
+        suffix = "..." if a.get("variadic") else ""
+        if a.get("required"):
+            parts.append(f"<{name}{suffix}>")
+        else:
+            parts.append(f"[{name}{suffix}]")
+    return " ".join(parts)
+
+
+def _help_summary(verb):
+    """Append `(nx <verb> help)` hint when the verb has subverbs."""
+    summary = verb["summary"]
+    if verb.get("subverbs"):
+        summary = f"{summary} (nx {verb['name']} help)"
+    return summary
+
+
+def emit_lifecycle_help(manifest):
+    """Emit the `_nx_lifecycle_help` function body, marker-wrapped.
+
+    Output is the full bash function definition between
+    `# >>> nx-help generated >>>` / `# <<< nx-help generated <<<`.
+    """
+    verbs = manifest["verbs"]
+    name_w = max(len(v["name"]) for v in verbs)
+    args_w = max(len(_help_args_repr(v)) for v in verbs)
+
+    body_lines = ["Usage: nx <command> [args]", "", "Commands:"]
+    for v in verbs:
+        name = v["name"]
+        args = _help_args_repr(v)
+        summary = _help_summary(v)
+        # Two-space gap after name column; two-space gap after args column.
+        if args_w > 0:
+            body_lines.append(
+                f"  {name:<{name_w}}  {args:<{args_w}}  {summary}".rstrip()
+            )
+        else:
+            body_lines.append(f"  {name:<{name_w}}  {summary}".rstrip())
+
+    out = []
+    out.append(
+        "# >>> nx-help generated >>> (regenerate: python3 -m tests.hooks.gen_nx_completions)"
+    )
+    out.append("function _nx_lifecycle_help() {")
+    out.append("  cat <<'NX_HELP_EOF'")
+    out.extend(body_lines)
+    out.append("NX_HELP_EOF")
+    out.append("}")
+    out.append("# <<< nx-help generated <<<")
+    return "\n".join(out)
+
+
+# ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
 
@@ -549,6 +627,22 @@ def main():
     else:
         print(
             f"nx-completer region in {PS_FILE.relative_to(REPO_ROOT)} already current"
+        )
+
+    lifecycle_text = LIFECYCLE_FILE.read_text()
+    new_help = emit_lifecycle_help(manifest)
+    if not HELP_REGION_RE.search(lifecycle_text):
+        raise SystemExit(
+            f"# >>> nx-help generated >>> ... # <<< nx-help generated <<< markers "
+            f"not found in {LIFECYCLE_FILE.relative_to(REPO_ROOT)}"
+        )
+    new_lifecycle = HELP_REGION_RE.sub(lambda _: new_help, lifecycle_text)
+    if new_lifecycle != lifecycle_text:
+        LIFECYCLE_FILE.write_text(new_lifecycle)
+        print(f"updated nx-help region in {LIFECYCLE_FILE.relative_to(REPO_ROOT)}")
+    else:
+        print(
+            f"nx-help region in {LIFECYCLE_FILE.relative_to(REPO_ROOT)} already current"
         )
 
 
