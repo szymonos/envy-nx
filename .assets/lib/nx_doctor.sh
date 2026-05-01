@@ -75,7 +75,7 @@ _check_env_dir_files() {
   # botched install and subsequent `nx` / `nix profile upgrade` runs fail
   # in opaque ways.
   local _missing="" _f
-  for _f in flake.nix nx.sh nx_doctor.sh profile_block.sh config.nix; do
+  for _f in flake.nix nx.sh nx_pkg.sh nx_scope.sh nx_profile.sh nx_lifecycle.sh nx_doctor.sh profile_block.sh config.nix; do
     [ -f "$ENV_DIR/$_f" ] || _missing="${_missing:+$_missing, }$_f"
   done
   if [ -z "$_missing" ]; then
