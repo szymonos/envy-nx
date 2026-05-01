@@ -5,6 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+
+- `Update-GitRepository` (`modules/InstallUtils/Functions/git.ps1`): added a `git ls-remote --heads` pre-check that skips the always-on `git fetch --tags --prune --prune-tags --force` when the remote tip already matches the local tracking ref. Cuts several seconds off `wsl/wsl_setup.ps1`'s startup repo-freshness check on lower-end systems with slow disks (fetch always rewrites `FETCH_HEAD`/packed-refs even on a no-op). Upstream resolution is now a single `rev-parse --abbrev-ref --symbolic-full-name @{upstream}` call (replaces the `git remote` + `git branch --show-current` pair) and the post-fetch HEAD/upstream comparison is collapsed into one `rev-parse HEAD upstream`. The 0/1/2 return contract, retry loop, and `--prune-tags --force` semantics on the fetch path are unchanged.
+
 ## [1.3.1] - 2026-04-30
 
 ### Added
