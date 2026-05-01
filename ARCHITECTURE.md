@@ -439,16 +439,21 @@ in CI).
 
 **Checks:**
 
-| Check            | Pass                                          | Fail/Warn                        |
-| ---------------- | --------------------------------------------- | -------------------------------- |
-| `nix_available`  | `nix` in PATH                                 | FAIL: nix not found              |
-| `flake_lock`     | `flake.lock` exists, nixpkgs node valid       | FAIL: missing; WARN: unreadable  |
-| `install_record` | `install.json` exists, status=success         | WARN: missing or last run failed |
-| `scope_binaries` | All `# bins:` binaries from scope files found | WARN: lists missing binaries     |
-| `shell_profile`  | Exactly 1 managed block per rc file           | FAIL: zero or duplicates         |
-| `cert_bundle`    | Custom CA bundle + VS Code env OK             | FAIL: bundle or env missing      |
-| `nix_profile`    | `nix-env` in `nix profile list`               | FAIL: not found                  |
-| `overlay_dir`    | `NIX_ENV_OVERLAY_DIR` readable (if set)       | FAIL: not a readable directory   |
+| Check                | Pass                                                                                                       | Fail/Warn                         |
+| -------------------- | ---------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| `nix_available`      | `nix` in PATH                                                                                              | FAIL: nix not found               |
+| `flake_lock`         | `flake.lock` exists, nixpkgs node valid                                                                    | FAIL: missing; WARN: unreadable   |
+| `env_dir_files`      | `flake.nix`, `nx.sh`, `nx_doctor.sh`, `profile_block.sh`, `config.nix` all present in `~/.config/nix-env/` | FAIL: lists missing files         |
+| `install_record`     | `install.json` exists, status=success                                                                      | WARN: missing or last run failed  |
+| `scope_binaries`     | All `# bins:` binaries from scope files found                                                              | WARN: lists missing binaries      |
+| `shell_profile`      | Exactly 1 managed block in the **invoking shell's** rc file (bash → `.bashrc`, zsh → `.zshrc`)             | FAIL: zero or duplicates          |
+| `shell_config_files` | Every `~/.config/shell/<file>` referenced by the rc resolves on disk                                       | FAIL: lists missing files         |
+| `cert_bundle`        | Custom CA bundle + VS Code env OK                                                                          | FAIL: bundle or env missing       |
+| `vscode_server_env`  | `~/.vscode-server/server-env-setup` includes nix PATH (if `~/.nix-profile/bin` exists)                     | WARN: nix PATH missing from setup |
+| `nix_profile`        | `nix-env` in `nix profile list`                                                                            | FAIL: not found                   |
+| `nix_profile_link`   | `~/.nix-profile` is a symlink resolving to a live target                                                   | FAIL: missing or dangling         |
+| `overlay_dir`        | `NIX_ENV_OVERLAY_DIR` readable (if set)                                                                    | FAIL: not a readable directory    |
+| `version_skew`       | Installed version matches latest GitHub release (if `gh` available)                                        | WARN: installed version is older  |
 
 **Binary names** are declared in each scope's `.nix` file via a `# bins:` comment (e.g. `# bins: rg yq fzf`). This
 is the single source of truth - `validate_scopes.py` enforces that every scope file has one.

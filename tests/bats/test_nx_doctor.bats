@@ -193,6 +193,109 @@ EOF
   [[ "$output" == *"no managed block in .zshrc"* ]]
 }
 
+# -- env_dir_files check ----------------------------------------------------
+
+_write_env_dir_files() {
+  : >"$ENV_DIR/flake.nix"
+  : >"$ENV_DIR/nx.sh"
+  : >"$ENV_DIR/nx_doctor.sh"
+  : >"$ENV_DIR/profile_block.sh"
+  : >"$ENV_DIR/config.nix"
+}
+
+@test "env_dir_files passes when all durable files are present" {
+  _write_flake_lock
+  _write_install_json
+  _write_env_dir_files
+  run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"PASS  env_dir_files"* ]]
+}
+
+@test "env_dir_files fails when nx.sh is missing" {
+  _write_flake_lock
+  _write_install_json
+  _write_env_dir_files
+  rm "$ENV_DIR/nx.sh"
+  run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"FAIL  env_dir_files"* ]]
+  [[ "$output" == *"nx.sh"* ]]
+}
+
+# -- shell_config_files check ----------------------------------------------
+
+@test "shell_config_files passes when no shell config is referenced" {
+  _write_flake_lock
+  _write_install_json
+  cat >"$HOME/.bashrc" <<'EOF'
+# >>> nix-env managed >>>
+echo hello
+# <<< nix-env managed <<<
+EOF
+  run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"PASS  shell_config_files"* ]]
+}
+
+@test "shell_config_files passes when referenced files exist" {
+  _write_flake_lock
+  _write_install_json
+  mkdir -p "$HOME/.config/shell"
+  : >"$HOME/.config/shell/aliases_nix.sh"
+  cat >"$HOME/.bashrc" <<'EOF'
+# >>> nix-env managed >>>
+. "$HOME/.config/shell/aliases_nix.sh"
+# <<< nix-env managed <<<
+EOF
+  run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"PASS  shell_config_files"* ]]
+}
+
+@test "shell_config_files fails when a referenced file is missing" {
+  _write_flake_lock
+  _write_install_json
+  mkdir -p "$HOME/.config/shell"
+  : >"$HOME/.config/shell/aliases_nix.sh"
+  # aliases_git.sh is referenced but doesn't exist
+  cat >"$HOME/.bashrc" <<'EOF'
+# >>> nix-env managed >>>
+. "$HOME/.config/shell/aliases_nix.sh"
+[ -f "$HOME/.config/shell/aliases_git.sh" ] && . "$HOME/.config/shell/aliases_git.sh"
+# <<< nix-env managed <<<
+EOF
+  run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"FAIL  shell_config_files"* ]]
+  [[ "$output" == *"aliases_git.sh"* ]]
+}
+
+# -- nix_profile_link check ------------------------------------------------
+
+@test "nix_profile_link passes when symlink resolves" {
+  _write_flake_lock
+  _write_install_json
+  mkdir -p "$HOME/nix-target"
+  ln -s "$HOME/nix-target" "$HOME/.nix-profile"
+  run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"PASS  nix_profile_link"* ]]
+}
+
+@test "nix_profile_link fails when symlink is dangling" {
+  _write_flake_lock
+  _write_install_json
+  ln -s "$HOME/does-not-exist" "$HOME/.nix-profile"
+  run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"FAIL  nix_profile_link"* ]]
+  [[ "$output" == *"dangling"* ]]
+}
+
+@test "nix_profile_link fails when symlink is missing" {
+  _write_flake_lock
+  _write_install_json
+  # ensure no .nix-profile in test HOME
+  [ ! -e "$HOME/.nix-profile" ]
+  run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"FAIL  nix_profile_link"* ]]
+  [[ "$output" == *"not found"* ]]
+}
+
 # -- cert_bundle check ------------------------------------------------------
 
 @test "cert_bundle passes when no custom certs exist" {
