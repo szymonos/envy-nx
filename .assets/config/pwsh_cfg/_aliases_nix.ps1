@@ -83,6 +83,18 @@ function _NxShortPath([string]$Path) {
     $Path.Replace([Environment]::GetFolderPath('UserProfile'), '~')
 }
 
+function _NxProfileHelp {
+    Write-Host @"
+Usage: nx profile <command>
+
+Commands:
+  doctor          Check PowerShell profile health
+  regenerate      Regenerate managed regions in PowerShell profile
+  uninstall       Remove managed regions from PowerShell profile
+  help            Show this help
+"@
+}
+
 function _NxUpdateProfileRegion {
     param(
         [System.Collections.Generic.List[string]]$Lines,
@@ -385,17 +397,8 @@ function nx {
                 }
                 Write-Host "`e[32mProfile regions removed`e[0m"
             }
-            default {
-                Write-Host @"
-Usage: nx profile <command>
-
-Commands:
-  doctor          Check PowerShell profile health
-  regenerate      Regenerate managed regions in PowerShell profile
-  uninstall       Remove managed regions from PowerShell profile
-  help            Show this help
-"@
-            }
+            'help' { _NxProfileHelp }
+            default { _NxProfileHelp }
         }
         return
     }

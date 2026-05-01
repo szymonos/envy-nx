@@ -799,6 +799,16 @@ Profile region rendering lives in `_aliases_nix.ps1` (native PowerShell). The `p
 provisioning (file copy) then delegates region management to `_NxProfileRegenerate`. The `nx profile` subcommand
 is intercepted by the PowerShell `nx` function and handled natively (not proxied to bash).
 
+The PowerShell `nx` function is otherwise a thin wrapper: every verb except `nx profile *` is delegated to
+`bash $ENV_DIR/nx.sh "$@"`. The `nx profile *` exception exists because **the bash and PowerShell profile
+dispatchers operate on structurally different files** (`~/.bashrc`/`~/.zshrc` with `# >>> nix-env managed >>>`
+blocks vs `$PROFILE.CurrentUserAllHosts` with `#region nix:* ... #endregion` regions). The `$PROFILE` path is
+resolved by the .NET runtime per host and cannot be derived from bash; the region syntax is PowerShell-specific.
+This is **symmetric implementation, not duplicated logic** - the two dispatchers are independent by necessity, but
+their **subverb surface must stay in sync** so a user who switches shells gets the same verbs. `tests/hooks/check_nx_profile_parity.py`
+asserts exactly that: it parses the PS dispatcher's `switch ($subCmd)` block and compares against
+`nx_surface.json`'s `profile.subverbs`. Drift on either side fails the pre-commit hook.
+
 ```powershell
 #region nix:base
 . "$HOME/.config/nix-env/profile_base.ps1"
