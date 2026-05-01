@@ -8,6 +8,8 @@ if (( ! ${+functions[compdef]} )); then
   autoload -Uz compinit
   compinit -i
 fi
+# Generated from .assets/lib/nx_surface.json - DO NOT EDIT
+# Regenerate with: python3 -m tests.hooks.gen_nx_completions
 
 function _nx() {
   local -a subcmds
@@ -15,18 +17,21 @@ function _nx() {
     'search:search nixpkgs for a package'
     'install:install packages from nixpkgs'
     'remove:remove installed packages'
+    'uninstall:remove installed packages'
     'upgrade:upgrade all packages'
+    'update:upgrade all packages'
     'rollback:rollback to previous profile generation'
-    'pin:manage nixpkgs revision pin'
     'list:list installed packages'
     'scope:manage scopes'
     'overlay:manage overlay directory'
+    'pin:manage nixpkgs revision pin'
     'profile:manage shell profile blocks'
+    'setup:run nix/setup.sh from anywhere'
+    'self:manage the source repository'
     'doctor:run health checks'
     'prune:remove old profile generations'
     'gc:run nix garbage collection'
-    'setup:run nix/setup.sh from anywhere'
-    'self:manage the source repository'
+    'clean:run nix garbage collection'
     'version:show version information'
     'help:show help'
   )
@@ -37,6 +42,11 @@ function _nx() {
   fi
 
   case "${words[2]}" in
+  remove|uninstall)
+    local -a _pkgs
+    _pkgs=("${(@f)$(sed -n 's/^[[:space:]]*"\([^"]*\)".*/\1/p' "$HOME/.config/nix-env/packages.nix" 2>/dev/null)}")
+    [[ -n "${_pkgs[*]}" ]] && _describe 'package' _pkgs
+    ;;
   scope)
     if (( CURRENT == 3 )); then
       local -a scope_cmds
@@ -47,6 +57,7 @@ function _nx() {
         'add:create a new overlay scope'
         'edit:edit a scope file'
         'remove:remove an overlay scope'
+        'rm:remove an overlay scope'
       )
       _describe 'scope command' scope_cmds
     elif (( CURRENT >= 4 )); then
@@ -69,12 +80,23 @@ function _nx() {
       esac
     fi
     ;;
+  overlay)
+    if (( CURRENT == 3 )); then
+      local -a overlay_cmds
+      overlay_cmds=(
+        'list:show overlay directory and contents'
+        'status:show overlay sync status'
+      )
+      _describe 'overlay command' overlay_cmds
+    fi
+    ;;
   pin)
     if (( CURRENT == 3 )); then
       local -a pin_cmds
       pin_cmds=(
         'set:pin nixpkgs to a specific revision'
         'remove:remove the nixpkgs pin'
+        'rm:remove the nixpkgs pin'
         'show:show current pin'
         'help:show pin help'
       )
@@ -133,16 +155,23 @@ function _nx() {
         'help:show self help'
       )
       _describe 'self command' self_cmds
-    elif (( CURRENT >= 4 )) && [[ "${words[3]}" == "update" ]]; then
-      local -a update_flags
-      update_flags=('--force:force reset to origin')
-      _describe 'update flag' update_flags
+    elif (( CURRENT >= 4 )); then
+      if [[ "${words[3]}" == "update" ]]; then
+        local -a update_flags
+        update_flags=(
+          '--force:force reset to origin'
+        )
+        _describe 'flag' update_flags
+      fi
     fi
     ;;
-  remove|uninstall)
-    local -a _pkgs
-    _pkgs=("${(@f)$(sed -n 's/^[[:space:]]*"\([^"]*\)".*/\1/p' "$HOME/.config/nix-env/packages.nix" 2>/dev/null)}")
-    [[ -n "${_pkgs[*]}" ]] && _describe 'package' _pkgs
+  doctor)
+    local -a doctor_flags
+    doctor_flags=(
+      '--strict:treat warnings as failures'
+      '--json:JSON output'
+    )
+    _describe 'doctor flag' doctor_flags
     ;;
   esac
 }

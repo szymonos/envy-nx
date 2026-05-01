@@ -414,6 +414,7 @@ Commands:
     & bash $nxScript @args
 }
 
+#region nx-completer (generated from .assets/lib/nx_surface.json - regenerate with: python3 -m tests.hooks.gen_nx_completions)
 Register-ArgumentCompleter -CommandName nx -Native -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)
     $tokens = $commandAst.CommandElements
@@ -421,20 +422,24 @@ Register-ArgumentCompleter -CommandName nx -Native -ScriptBlock {
     if ($wordToComplete) { $pos-- }
 
     $completions = switch ($pos) {
-        1 { 'search', 'install', 'remove', 'upgrade', 'rollback', 'pin', 'list', 'scope', 'overlay', 'profile', 'setup', 'self', 'doctor', 'prune', 'gc', 'version', 'help' }
+        1 { 'search', 'install', 'remove', 'uninstall', 'upgrade', 'update', 'rollback', 'list', 'scope', 'overlay', 'pin', 'profile', 'setup', 'self', 'doctor', 'prune', 'gc', 'clean', 'version', 'help' }
         2 {
-            if ($tokens[1].Value -eq 'scope') { 'list', 'show', 'tree', 'add', 'edit', 'remove' }
-            elseif ($tokens[1].Value -eq 'pin') { 'set', 'remove', 'show', 'help' }
+            if ($tokens[1].Value -eq 'scope') { 'list', 'show', 'tree', 'add', 'edit', 'remove', 'rm' }
+            elseif ($tokens[1].Value -eq 'overlay') { 'list', 'status' }
+            elseif ($tokens[1].Value -eq 'pin') { 'set', 'remove', 'rm', 'show', 'help' }
             elseif ($tokens[1].Value -eq 'profile') { 'doctor', 'regenerate', 'uninstall', 'help' }
             elseif ($tokens[1].Value -eq 'self') { 'update', 'path', 'help' }
             elseif ($tokens[1].Value -eq 'setup') {
                 '--az', '--bun', '--conda', '--docker', '--gcloud', '--k8s-base', '--k8s-dev', '--k8s-ext', '--nodejs', '--pwsh', '--python', '--rice', '--shell', '--terraform', '--zsh', '--all', '--upgrade', '--allow-unfree', '--unattended', '--skip-repo-update', '--update-modules', '--omp-theme', '--starship-theme', '--remove', '--help'
             }
+            elseif ($tokens[1].Value -eq 'doctor') {
+                '--strict', '--json'
+            }
             elseif ($tokens[1].Value -in 'remove', 'uninstall') {
                 $pkgFile = "$HOME/.config/nix-env/packages.nix"
-                if (Test-Path $pkgFile) {
-                    (Get-Content $pkgFile) | ForEach-Object { if ($_ -match '^\s*"([^"]+)"') { $Matches[1] } }
-                }
+                                if (Test-Path $pkgFile) {
+                                    (Get-Content $pkgFile) | ForEach-Object { if ($_ -match '^\s*"([^"]+)"') { $Matches[1] } }
+                                }
             }
         }
         default {
@@ -442,31 +447,77 @@ Register-ArgumentCompleter -CommandName nx -Native -ScriptBlock {
             elseif ($tokens[1].Value -eq 'setup') {
                 '--az', '--bun', '--conda', '--docker', '--gcloud', '--k8s-base', '--k8s-dev', '--k8s-ext', '--nodejs', '--pwsh', '--python', '--rice', '--shell', '--terraform', '--zsh', '--all', '--upgrade', '--allow-unfree', '--unattended', '--skip-repo-update', '--update-modules', '--omp-theme', '--starship-theme', '--remove', '--help'
             }
-            elseif ($tokens[1].Value -eq 'scope' -and $tokens[2].Value -in 'show', 'edit', 'remove', 'rm') {
+            elseif ($tokens[1].Value -eq 'doctor') {
+                '--strict', '--json'
+            }
+            elseif ($tokens[1].Value -eq 'scope' -and $tokens[2].Value -in 'show') {
                 $envDir = "$HOME/.config/nix-env"
-                $cfgFile = "$envDir/config.nix"
-                $scopeNames = @()
-                if (Test-Path $cfgFile) {
-                    $inScopes = $false
-                    (Get-Content $cfgFile) | ForEach-Object {
-                        if ($_ -match 'scopes\s*=\s*\[') { $inScopes = $true }
-                        if ($inScopes -and $_ -match '^\s*"([^"]+)"') { $scopeNames += $Matches[1] -replace '^local_', '' }
-                        if ($inScopes -and $_ -match '\]') { $inScopes = $false }
-                    }
-                }
-                $scopesDir = "$envDir/scopes"
-                if (Test-Path $scopesDir) {
-                    Get-ChildItem "$scopesDir/local_*.nix" -ErrorAction SilentlyContinue | ForEach-Object {
-                        $n = $_.BaseName -replace '^local_', ''
-                        if ($n -notin $scopeNames) { $scopeNames += $n }
-                    }
-                }
-                $scopeNames
-            } elseif ($tokens[1].Value -in 'remove', 'uninstall') {
+                                $cfgFile = "$envDir/config.nix"
+                                $scopeNames = @()
+                                if (Test-Path $cfgFile) {
+                                    $inScopes = $false
+                                    (Get-Content $cfgFile) | ForEach-Object {
+                                        if ($_ -match 'scopes\s*=\s*\[') { $inScopes = $true }
+                                        if ($inScopes -and $_ -match '^\s*"([^"]+)"') { $scopeNames += $Matches[1] -replace '^local_', '' }
+                                        if ($inScopes -and $_ -match '\]') { $inScopes = $false }
+                                    }
+                                }
+                                $scopesDir = "$envDir/scopes"
+                                if (Test-Path $scopesDir) {
+                                    Get-ChildItem "$scopesDir/local_*.nix" -ErrorAction SilentlyContinue | ForEach-Object {
+                                        $n = $_.BaseName -replace '^local_', ''
+                                        if ($n -notin $scopeNames) { $scopeNames += $n }
+                                    }
+                                }
+                                $scopeNames
+            }
+            elseif ($tokens[1].Value -eq 'scope' -and $tokens[2].Value -in 'edit') {
+                $envDir = "$HOME/.config/nix-env"
+                                $cfgFile = "$envDir/config.nix"
+                                $scopeNames = @()
+                                if (Test-Path $cfgFile) {
+                                    $inScopes = $false
+                                    (Get-Content $cfgFile) | ForEach-Object {
+                                        if ($_ -match 'scopes\s*=\s*\[') { $inScopes = $true }
+                                        if ($inScopes -and $_ -match '^\s*"([^"]+)"') { $scopeNames += $Matches[1] -replace '^local_', '' }
+                                        if ($inScopes -and $_ -match '\]') { $inScopes = $false }
+                                    }
+                                }
+                                $scopesDir = "$envDir/scopes"
+                                if (Test-Path $scopesDir) {
+                                    Get-ChildItem "$scopesDir/local_*.nix" -ErrorAction SilentlyContinue | ForEach-Object {
+                                        $n = $_.BaseName -replace '^local_', ''
+                                        if ($n -notin $scopeNames) { $scopeNames += $n }
+                                    }
+                                }
+                                $scopeNames
+            }
+            elseif ($tokens[1].Value -eq 'scope' -and $tokens[2].Value -in 'remove', 'rm') {
+                $envDir = "$HOME/.config/nix-env"
+                                $cfgFile = "$envDir/config.nix"
+                                $scopeNames = @()
+                                if (Test-Path $cfgFile) {
+                                    $inScopes = $false
+                                    (Get-Content $cfgFile) | ForEach-Object {
+                                        if ($_ -match 'scopes\s*=\s*\[') { $inScopes = $true }
+                                        if ($inScopes -and $_ -match '^\s*"([^"]+)"') { $scopeNames += $Matches[1] -replace '^local_', '' }
+                                        if ($inScopes -and $_ -match '\]') { $inScopes = $false }
+                                    }
+                                }
+                                $scopesDir = "$envDir/scopes"
+                                if (Test-Path $scopesDir) {
+                                    Get-ChildItem "$scopesDir/local_*.nix" -ErrorAction SilentlyContinue | ForEach-Object {
+                                        $n = $_.BaseName -replace '^local_', ''
+                                        if ($n -notin $scopeNames) { $scopeNames += $n }
+                                    }
+                                }
+                                $scopeNames
+            }
+            elseif ($tokens[1].Value -in 'remove', 'uninstall') {
                 $pkgFile = "$HOME/.config/nix-env/packages.nix"
-                if (Test-Path $pkgFile) {
-                    (Get-Content $pkgFile) | ForEach-Object { if ($_ -match '^\s*"([^"]+)"') { $Matches[1] } }
-                }
+                                if (Test-Path $pkgFile) {
+                                    (Get-Content $pkgFile) | ForEach-Object { if ($_ -match '^\s*"([^"]+)"') { $Matches[1] } }
+                                }
             }
         }
     }
@@ -474,4 +525,5 @@ Register-ArgumentCompleter -CommandName nx -Native -ScriptBlock {
         [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
     }
 }
+#endregion nx-completer
 #endregion
