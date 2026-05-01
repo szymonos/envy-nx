@@ -1251,12 +1251,16 @@ SELF_HELP
     esac
     ;;
   doctor)
-    local _dr_script
+    # nx.sh is sourced into the user's interactive shell (bash or zsh), so
+    # we can detect which one and pass it down. nx_doctor.sh runs as a bash
+    # subprocess and would otherwise have no way to know.
+    local _dr_script _dr_shell="bash"
+    [ -n "${ZSH_VERSION:-}" ] && _dr_shell="zsh"
     _dr_script="$(_nx_find_lib nx_doctor.sh)" || {
       printf '\e[31mnx doctor not found\e[0m\n' >&2
       return 1
     }
-    bash "$_dr_script" "${@:2}"
+    NX_INVOKING_SHELL="$_dr_shell" bash "$_dr_script" "${@:2}"
     ;;
   version)
     _nx_version

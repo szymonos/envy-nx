@@ -14,6 +14,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 - `Update-GitRepository` (`modules/InstallUtils/Functions/git.ps1`): added a `git ls-remote --heads` pre-check that skips the always-on `git fetch --tags --prune --prune-tags --force` when the remote tip already matches the local tracking ref. Cuts several seconds off `wsl/wsl_setup.ps1`'s startup repo-freshness check on lower-end systems with slow disks (fetch always rewrites `FETCH_HEAD`/packed-refs even on a no-op). Upstream resolution is now a single `rev-parse --abbrev-ref --symbolic-full-name @{upstream}` call (replaces the `git remote` + `git branch --show-current` pair) and the post-fetch HEAD/upstream comparison is collapsed into one `rev-parse HEAD upstream`. The 0/1/2 return contract, retry loop, and `--prune-tags --force` semantics on the fetch path are unchanged.
 
+### Fixed
+
+- `nx doctor` `shell_profile` check: now audits only the rc file of the **invoking shell** instead of always checking both `~/.bashrc` and `~/.zshrc`. `nx.sh` (sourced into the user's interactive shell) detects bash vs zsh from `$BASH_VERSION`/`$ZSH_VERSION` and passes it to `nx_doctor.sh` via `NX_INVOKING_SHELL`. Removes the false positive where a legacy `.zshrc` (e.g. left over from a previously-installed zsh) failed `nx doctor` from a bash session. Pwsh continues to own its own check via `nx profile doctor` (in `_aliases_nix.ps1`) - same self-only contract, consistent across all three shells.
+
 ## [1.3.1] - 2026-04-30
 
 ### Added
