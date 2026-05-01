@@ -1,10 +1,11 @@
 """
-Verify the committed nx tab completers match what gen_nx_completions
-would emit from .assets/lib/nx_surface.json.
+Verify the committed nx tab completers and `nx help` text match what
+gen_nx_completions would emit from .assets/lib/nx_surface.json.
 
 Catches drift in either direction:
-  - manifest changed but completers not regenerated
-  - completer file hand-edited bypassing the manifest
+  - manifest changed but completers/help not regenerated
+  - completer file or `_nx_lifecycle_help` body hand-edited bypassing
+    the manifest
 
 # :example
 python3 -m tests.hooks.check_nx_completions
@@ -21,6 +22,7 @@ def main():
     expected_bash = gen.emit_bash(manifest)
     expected_zsh = gen.emit_zsh(manifest)
     expected_ps_region = gen.emit_ps_region(manifest)
+    expected_help = gen.emit_lifecycle_help(manifest)
 
     failures = []
 
@@ -41,9 +43,20 @@ def main():
             f"{gen.PS_FILE.relative_to(gen.REPO_ROOT)} (nx-completer region)"
         )
 
+    lifecycle_text = gen.LIFECYCLE_FILE.read_text()
+    help_match = gen.HELP_REGION_RE.search(lifecycle_text)
+    if not help_match:
+        failures.append(
+            f"{gen.LIFECYCLE_FILE.relative_to(gen.REPO_ROOT)} (missing nx-help markers)"
+        )
+    elif help_match.group(0) != expected_help:
+        failures.append(
+            f"{gen.LIFECYCLE_FILE.relative_to(gen.REPO_ROOT)} (nx-help region)"
+        )
+
     if failures:
         print(
-            "nx completers are out of sync with .assets/lib/nx_surface.json:",
+            "nx generated outputs are out of sync with .assets/lib/nx_surface.json:",
             file=sys.stderr,
         )
         for f in failures:

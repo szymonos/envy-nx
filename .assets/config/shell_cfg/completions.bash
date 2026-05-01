@@ -8,7 +8,7 @@ function _nx_completions() {
   prev="${COMP_WORDS[COMP_CWORD - 1]}"
 
   if [ "$COMP_CWORD" -eq 1 ]; then
-    while IFS= read -r line; do COMPREPLY+=("$line"); done < <(compgen -W "search install remove uninstall upgrade update rollback list scope overlay pin profile setup self doctor prune gc clean version help" -- "$cur")
+    while IFS= read -r line; do COMPREPLY+=("$line"); done < <(compgen -W "search install add remove uninstall upgrade update rollback list ls scope overlay pin profile setup self doctor prune gc clean version help" -- "$cur")
   elif [ "$COMP_CWORD" -eq 2 ] && [ "$prev" = "scope" ]; then
     while IFS= read -r line; do COMPREPLY+=("$line"); done < <(compgen -W "list show tree add edit remove rm" -- "$cur")
   elif [ "$COMP_CWORD" -eq 2 ] && [ "$prev" = "overlay" ]; then

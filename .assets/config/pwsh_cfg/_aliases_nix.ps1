@@ -425,7 +425,7 @@ Register-ArgumentCompleter -CommandName nx -Native -ScriptBlock {
     if ($wordToComplete) { $pos-- }
 
     $completions = switch ($pos) {
-        1 { 'search', 'install', 'remove', 'uninstall', 'upgrade', 'update', 'rollback', 'list', 'scope', 'overlay', 'pin', 'profile', 'setup', 'self', 'doctor', 'prune', 'gc', 'clean', 'version', 'help' }
+        1 { 'search', 'install', 'add', 'remove', 'uninstall', 'upgrade', 'update', 'rollback', 'list', 'ls', 'scope', 'overlay', 'pin', 'profile', 'setup', 'self', 'doctor', 'prune', 'gc', 'clean', 'version', 'help' }
         2 {
             if ($tokens[1].Value -eq 'scope') { 'list', 'show', 'tree', 'add', 'edit', 'remove', 'rm' }
             elseif ($tokens[1].Value -eq 'overlay') { 'list', 'status' }
