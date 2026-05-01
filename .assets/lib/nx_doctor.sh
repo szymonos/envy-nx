@@ -12,7 +12,297 @@ set -eo pipefail
 ENV_DIR="${ENV_DIR:-$HOME/.config/nix-env}"
 DEV_ENV_DIR="${DEV_ENV_DIR:-$HOME/.config/dev-env}"
 
-_dr_pass=0 _dr_fail=0 _dr_warn=0
+# ---------------------------------------------------------------------------
+# Adding a check:
+#   1. Define `_check_<name>` that prints one of:
+#        - empty stdout              -> skip (don't record)
+#        - "pass"                    -> recorded as pass
+#        - "warn<TAB><detail>"       -> recorded as warn
+#        - "fail<TAB><detail>"       -> recorded as fail
+#      Functions read globals (ENV_DIR, DEV_ENV_DIR, HOME); never write to them.
+#   2. Add the name to CHECKS in the desired execution order.
+#   3. Add a bats test in tests/bats/test_nx_doctor.bats.
+#   4. Update ARCHITECTURE.md and docs/nx.md tables.
+# ---------------------------------------------------------------------------
+
+CHECKS="
+  nix_available
+  flake_lock
+  env_dir_files
+  install_record
+  scope_binaries
+  shell_profile
+  shell_config_files
+  cert_bundle
+  vscode_server_env
+  nix_profile
+  nix_profile_link
+  overlay_dir
+  version_skew
+"
+
+# ---- check functions -------------------------------------------------------
+
+_check_nix_available() {
+  if command -v nix >/dev/null 2>&1; then
+    echo "pass"
+  else
+    printf 'fail\tnix not found in PATH\n'
+  fi
+}
+
+_check_flake_lock() {
+  if [ ! -f "$ENV_DIR/flake.lock" ]; then
+    printf 'fail\t%s/flake.lock not found\n' "$ENV_DIR"
+    return
+  fi
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "warn	flake.lock exists but jq not available to validate"
+    return
+  fi
+  local _rev
+  _rev="$(jq -r '.nodes.nixpkgs.locked.rev // empty' "$ENV_DIR/flake.lock" 2>/dev/null)" || true
+  if [ -n "$_rev" ]; then
+    echo "pass"
+  else
+    echo "warn	flake.lock exists but nixpkgs node not found"
+  fi
+}
+
+_check_env_dir_files() {
+  # Verify durable nix-env state files exist. Sync'd by
+  # phase_bootstrap_sync_env_dir on every setup run; missing files mean a
+  # botched install and subsequent `nx` / `nix profile upgrade` runs fail
+  # in opaque ways.
+  local _missing="" _f
+  for _f in flake.nix nx.sh nx_doctor.sh profile_block.sh config.nix; do
+    [ -f "$ENV_DIR/$_f" ] || _missing="${_missing:+$_missing, }$_f"
+  done
+  if [ -z "$_missing" ]; then
+    echo "pass"
+  else
+    printf 'fail\tmissing in %s: %s\n' "$ENV_DIR" "$_missing"
+  fi
+}
+
+_check_install_record() {
+  if [ ! -f "$DEV_ENV_DIR/install.json" ]; then
+    printf 'warn\t%s/install.json not found\n' "$DEV_ENV_DIR"
+    return
+  fi
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "pass"
+    return
+  fi
+  local _status _phase
+  _status="$(jq -r '.status // empty' "$DEV_ENV_DIR/install.json" 2>/dev/null)" || true
+  if [ -z "$_status" ]; then
+    echo "warn	install.json exists but missing status field"
+  elif [ "$_status" = "success" ]; then
+    echo "pass"
+  else
+    _phase="$(jq -r '.phase // "unknown"' "$DEV_ENV_DIR/install.json" 2>/dev/null)" || true
+    printf 'warn\tlast run status: %s (phase: %s)\n' "$_status" "$_phase"
+  fi
+}
+
+_check_scope_binaries() {
+  # Parse "# bins:" comments from scope .nix files (single source of truth).
+  local _scopes_dir="" _sd
+  for _sd in \
+    "$ENV_DIR/scopes" \
+    "$(cd "$(dirname "$0")/../../nix/scopes" 2>/dev/null && pwd)"; do
+    if [ -d "$_sd" ]; then
+      _scopes_dir="$_sd"
+      break
+    fi
+  done
+  if [ -z "$_scopes_dir" ] || [ ! -f "$DEV_ENV_DIR/install.json" ] || ! command -v jq >/dev/null 2>&1; then
+    echo "warn	cannot verify (scope files or install.json not found)"
+    return
+  fi
+  local _scopes _missing="" _scope _bin _bins
+  _scopes="$(jq -r '.scopes[]? // empty' "$DEV_ENV_DIR/install.json" 2>/dev/null)" || true
+  for _scope in $_scopes; do
+    [ -f "$_scopes_dir/$_scope.nix" ] || continue
+    _bins="$(sed -n 's/^# bins: *//p' "$_scopes_dir/$_scope.nix")" || true
+    for _bin in $_bins; do
+      command -v "$_bin" >/dev/null 2>&1 || _missing="${_missing:+$_missing, }$_scope/$_bin"
+    done
+  done
+  if [ -z "$_missing" ]; then
+    echo "pass"
+  else
+    printf 'warn\tmissing: %s\n' "$_missing"
+  fi
+}
+
+# Resolve the rc file matching the invoking shell. Used by both shell_profile
+# and shell_config_files so the choice stays consistent.
+_invoking_rc() {
+  case "${NX_INVOKING_SHELL:-bash}" in
+  zsh) echo "$HOME/.zshrc" ;;
+  *) echo "$HOME/.bashrc" ;;
+  esac
+}
+
+_check_shell_profile() {
+  # Audit only the rc file matching the invoking shell. nx.sh sets
+  # NX_INVOKING_SHELL based on $BASH_VERSION/$ZSH_VERSION (it's sourced into
+  # the user's shell, so it knows which one). Default to bash for direct
+  # script invocations (bats tests, manual `bash nx_doctor.sh`). Pwsh has
+  # its own `nx profile doctor` (in _aliases_nix.ps1) and is not audited here.
+  local _rc _count _name
+  _rc="$(_invoking_rc)"
+  [ -f "$_rc" ] || {
+    echo "pass"
+    return
+  }
+  _count="$(grep -cF '# >>> nix-env managed >>>' "$_rc" 2>/dev/null || true)"
+  _name="$(basename "$_rc")"
+  if [ "$_count" = "0" ] 2>/dev/null; then
+    printf 'fail\tno managed block in %s\n' "$_name"
+  elif [ "$_count" -gt 1 ] 2>/dev/null; then
+    printf 'fail\t%d duplicate blocks in %s\n' "$_count" "$_name"
+  else
+    echo "pass"
+  fi
+}
+
+_check_shell_config_files() {
+  # The managed block sources files from ~/.config/shell/. Most are guarded
+  # with `[ -f ]` (silent no-op when missing) but `aliases_nix.sh` is
+  # unguarded - missing it spams "No such file or directory" on every shell
+  # start. Even guarded misses silently lose functionality, so flag any
+  # referenced file that doesn't resolve.
+  local _rc _missing="" _ref _path
+  _rc="$(_invoking_rc)"
+  [ -f "$_rc" ] || {
+    echo "pass"
+    return
+  }
+  while IFS= read -r _ref; do
+    [ -z "$_ref" ] && continue
+    _path="$(printf '%s' "$_ref" | sed "s|^\\\$HOME|$HOME|")"
+    [ -f "$_path" ] || _missing="${_missing:+$_missing, }${_ref##*/}"
+  done < <(grep -oE '\$HOME/\.config/shell/[a-zA-Z0-9_]+\.(sh|bash|zsh)' "$_rc" 2>/dev/null | sort -u)
+  if [ -z "$_missing" ]; then
+    echo "pass"
+  else
+    printf 'fail\treferenced by %s but missing in ~/.config/shell/: %s\n' \
+      "$(basename "$_rc")" "$_missing"
+  fi
+}
+
+_check_cert_bundle() {
+  # Only relevant when custom certs exist (MITM proxy / corporate CA).
+  # No ca-custom.crt means no interception detected - bundle is not needed.
+  local _dir="$HOME/.config/certs" _detail=""
+  if [ ! -f "$_dir/ca-custom.crt" ]; then
+    echo "pass"
+    return
+  fi
+  [ -e "$_dir/ca-bundle.crt" ] || _detail="ca-bundle.crt missing"
+  if [ ! -f "$HOME/.vscode-server/server-env-setup" ] ||
+    ! grep -q 'NODE_EXTRA_CA_CERTS' "$HOME/.vscode-server/server-env-setup" 2>/dev/null; then
+    _detail="${_detail:+$_detail; }NODE_EXTRA_CA_CERTS not in server-env-setup"
+  fi
+  if [ -z "$_detail" ]; then
+    echo "pass"
+  else
+    printf 'fail\t%s\n' "$_detail"
+  fi
+}
+
+_check_vscode_server_env() {
+  # Only audited when nix is installed (the env-setup is what makes nix tools
+  # visible to VS Code Server extensions, which don't source ~/.bashrc).
+  [ -d "$HOME/.nix-profile/bin" ] || return
+  if [ -f "$HOME/.vscode-server/server-env-setup" ] &&
+    grep -q 'nix-profile/bin' "$HOME/.vscode-server/server-env-setup" 2>/dev/null; then
+    echo "pass"
+  else
+    echo "warn	nix PATH not in server-env-setup; run: nx upgrade"
+  fi
+}
+
+_check_nix_profile() {
+  if ! command -v nix >/dev/null 2>&1; then
+    echo "fail	nix not available"
+    return
+  fi
+  if nix profile list --json 2>/dev/null | grep -q 'nix-env' ||
+    nix profile list 2>/dev/null | grep -q 'nix-env'; then
+    echo "pass"
+  else
+    echo "fail	nix-env not found in nix profile list"
+  fi
+}
+
+_check_nix_profile_link() {
+  # `nix_profile` checks the registry; this verifies the on-disk symlink that
+  # user shells (PATH=$HOME/.nix-profile/bin) and managed blocks rely on. A
+  # dangling symlink (pointing at a removed generation) breaks every nix-built
+  # binary even though nix-env is still listed in `nix profile list`.
+  local _link="$HOME/.nix-profile" _target
+  if [ -L "$_link" ]; then
+    if [ -e "$_link" ]; then
+      echo "pass"
+    else
+      _target="$(readlink "$_link" 2>/dev/null)" || _target="<unreadable>"
+      printf 'fail\tdangling symlink -> %s\n' "$_target"
+    fi
+  elif [ -d "$_link" ]; then
+    printf 'warn\t%s is a directory, not a symlink (unexpected layout)\n' "$_link"
+  else
+    printf 'fail\t%s not found\n' "$_link"
+  fi
+}
+
+_check_overlay_dir() {
+  # Only audited when the user has opted into an overlay directory.
+  [ -n "${NIX_ENV_OVERLAY_DIR:-}" ] || return
+  if [ -d "$NIX_ENV_OVERLAY_DIR" ] && [ -r "$NIX_ENV_OVERLAY_DIR" ]; then
+    echo "pass"
+  else
+    printf 'fail\tNIX_ENV_OVERLAY_DIR=%s is not a readable directory\n' "$NIX_ENV_OVERLAY_DIR"
+  fi
+}
+
+_check_version_skew() {
+  # Only audited when gh+jq are available (no point fetching releases without them).
+  command -v gh >/dev/null 2>&1 || return
+  command -v jq >/dev/null 2>&1 || return
+  local _slug="" _git_dir _installed _latest_tag _latest
+  for _git_dir in \
+    "$(cd "$(dirname "$0")/../.." 2>/dev/null && pwd)" \
+    "$ENV_DIR"; do
+    if [ -d "$_git_dir/.git" ] 2>/dev/null; then
+      _slug="$(git -C "$_git_dir" remote get-url origin 2>/dev/null |
+        sed -n 's|.*github\.com[:/]\(.*\)\.git$|\1|p')" || true
+      [ -n "$_slug" ] && break
+    fi
+  done
+  [ -n "$_slug" ] || return
+  _installed=""
+  if [ -f "$DEV_ENV_DIR/install.json" ]; then
+    _installed="$(jq -r '.version // empty' "$DEV_ENV_DIR/install.json" 2>/dev/null)" || true
+  fi
+  _latest_tag="$(gh api "repos/$_slug/releases/latest" --jq '.tag_name' 2>/dev/null)" || true
+  _latest="${_latest_tag#v}"
+  [ -n "$_latest" ] || return
+  if [ -n "$_installed" ] && [ "$_latest" != "$_installed" ]; then
+    printf 'warn\tinstalled %s, latest release %s\n' "$_installed" "$_latest"
+  else
+    echo "pass"
+  fi
+}
+
+# ---- runner ----------------------------------------------------------------
+
+_dr_pass=0
+_dr_fail=0
+_dr_warn=0
 _dr_json="false"
 _dr_strict="false"
 _dr_checks=""
@@ -25,7 +315,7 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-_check() {
+_record() {
   local name="$1" status="$2" detail="${3:-}"
   if [ "$status" = "pass" ]; then
     _dr_pass=$((_dr_pass + 1))
@@ -37,259 +327,35 @@ _check() {
     _dr_fail=$((_dr_fail + 1))
     [ "$_dr_json" = "false" ] && printf '\e[31m  FAIL  %s: %s\e[0m\n' "$name" "$detail"
   fi
-  if [ -n "$_dr_checks" ]; then
-    _dr_checks="$_dr_checks,"
-  fi
-  local escaped_detail
-  escaped_detail="$(printf '%s' "$detail" | sed 's/\\/\\\\/g; s/"/\\"/g')"
-  _dr_checks="${_dr_checks}{\"name\":\"$name\",\"status\":\"$status\",\"detail\":\"$escaped_detail\"}"
+  [ -n "$_dr_checks" ] && _dr_checks="$_dr_checks,"
+  local _esc
+  _esc="$(printf '%s' "$detail" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+  _dr_checks="${_dr_checks}{\"name\":\"$name\",\"status\":\"$status\",\"detail\":\"$_esc\"}"
 }
 
-# -- 1. nix_available --------------------------------------------------------
-if command -v nix >/dev/null 2>&1; then
-  _check "nix_available" "pass"
-else
-  _check "nix_available" "fail" "nix not found in PATH"
-fi
+_run_check() {
+  local _name="$1" _result _status _detail
+  _result="$("_check_$_name")" || true
+  [ -z "$_result" ] && return
+  case "$_result" in
+  *$'\t'*)
+    _status="${_result%%$'\t'*}"
+    _detail="${_result#*$'\t'}"
+    ;;
+  *)
+    _status="$_result"
+    _detail=""
+    ;;
+  esac
+  _record "$_name" "$_status" "$_detail"
+}
 
-# -- 2. flake_lock ------------------------------------------------------------
-if [ -f "$ENV_DIR/flake.lock" ]; then
-  if command -v jq >/dev/null 2>&1; then
-    _nixpkgs_rev="$(jq -r '.nodes.nixpkgs.locked.rev // empty' "$ENV_DIR/flake.lock" 2>/dev/null)" || true
-    if [ -n "$_nixpkgs_rev" ]; then
-      _check "flake_lock" "pass"
-    else
-      _check "flake_lock" "warn" "flake.lock exists but nixpkgs node not found"
-    fi
-  else
-    _check "flake_lock" "warn" "flake.lock exists but jq not available to validate"
-  fi
-else
-  _check "flake_lock" "fail" "$ENV_DIR/flake.lock not found"
-fi
-
-# -- 3. env_dir_files --------------------------------------------------------
-# Verify the durable nix-env state files exist. Each is sync'd by
-# phase_bootstrap_sync_env_dir on every setup run; missing files mean a
-# botched install (sync failed mid-run, or files were manually deleted) and
-# subsequent `nx` commands or `nix/setup.sh` runs will fail in opaque ways.
-_env_missing=""
-for _f in flake.nix nx.sh nx_doctor.sh profile_block.sh config.nix; do
-  [ -f "$ENV_DIR/$_f" ] || _env_missing="${_env_missing:+$_env_missing, }$_f"
-done
-if [ -z "$_env_missing" ]; then
-  _check "env_dir_files" "pass"
-else
-  _check "env_dir_files" "fail" "missing in $ENV_DIR: $_env_missing"
-fi
-
-# -- 4. install_record -------------------------------------------------------
-if [ -f "$DEV_ENV_DIR/install.json" ]; then
-  if command -v jq >/dev/null 2>&1; then
-    _ir_status="$(jq -r '.status // empty' "$DEV_ENV_DIR/install.json" 2>/dev/null)" || true
-    if [ -n "$_ir_status" ]; then
-      if [ "$_ir_status" = "success" ]; then
-        _check "install_record" "pass"
-      else
-        _ir_phase="$(jq -r '.phase // "unknown"' "$DEV_ENV_DIR/install.json" 2>/dev/null)" || true
-        _check "install_record" "warn" "last run status: $_ir_status (phase: $_ir_phase)"
-      fi
-    else
-      _check "install_record" "warn" "install.json exists but missing status field"
-    fi
-  else
-    _check "install_record" "pass"
-  fi
-else
-  _check "install_record" "warn" "$DEV_ENV_DIR/install.json not found"
-fi
-
-# -- 5. scope_binaries -------------------------------------------------------
-# Parse "# bins:" comments from scope .nix files (single source of truth).
-_scopes_dir=""
-for _sd_path in \
-  "$ENV_DIR/scopes" \
-  "$(cd "$(dirname "$0")/../../nix/scopes" 2>/dev/null && pwd)"; do
-  if [ -d "$_sd_path" ]; then
-    _scopes_dir="$_sd_path"
-    break
-  fi
+for _name in $CHECKS; do
+  _run_check "$_name"
 done
 
-if [ -n "$_scopes_dir" ] && [ -f "$DEV_ENV_DIR/install.json" ] && command -v jq >/dev/null 2>&1; then
-  _installed_scopes="$(jq -r '.scopes[]? // empty' "$DEV_ENV_DIR/install.json" 2>/dev/null)" || true
-  _missing_bins=""
-  for _scope in $_installed_scopes; do
-    _nix_file="$_scopes_dir/$_scope.nix"
-    [ -f "$_nix_file" ] || continue
-    _bins="$(sed -n 's/^# bins: *//p' "$_nix_file")" || true
-    for _bin in $_bins; do
-      if ! command -v "$_bin" >/dev/null 2>&1; then
-        _missing_bins="${_missing_bins:+$_missing_bins, }$_scope/$_bin"
-      fi
-    done
-  done
-  if [ -z "$_missing_bins" ]; then
-    _check "scope_binaries" "pass"
-  else
-    _check "scope_binaries" "warn" "missing: $_missing_bins"
-  fi
-else
-  _check "scope_binaries" "warn" "cannot verify (scope files or install.json not found)"
-fi
+# ---- summary ---------------------------------------------------------------
 
-# -- 6. shell_profile --------------------------------------------------------
-# Audit only the rc file matching the invoking shell. nx.sh sets
-# NX_INVOKING_SHELL based on $BASH_VERSION/$ZSH_VERSION (it's sourced into
-# the user's shell, so it knows which one). Default to bash for direct
-# script invocations (bats tests, manual `bash nx_doctor.sh`). Pwsh has
-# its own `nx profile doctor` (in _aliases_nix.ps1) and is not audited here.
-case "${NX_INVOKING_SHELL:-bash}" in
-zsh) _rc="$HOME/.zshrc" ;;
-*) _rc="$HOME/.bashrc" ;;
-esac
-_profile_ok=true
-_profile_detail=""
-_block_marker="nix-env managed"
-if [ -f "$_rc" ]; then
-  _count="$(grep -cF "# >>> $_block_marker >>>" "$_rc" 2>/dev/null || true)"
-  _rc_name="$(basename "$_rc")"
-  if [ "$_count" = "0" ] 2>/dev/null; then
-    _profile_detail="no managed block in $_rc_name"
-    _profile_ok=false
-  elif [ "$_count" -gt 1 ] 2>/dev/null; then
-    _profile_detail="$_count duplicate blocks in $_rc_name"
-    _profile_ok=false
-  fi
-fi
-if [ "$_profile_ok" = true ]; then
-  _check "shell_profile" "pass"
-else
-  _check "shell_profile" "fail" "$_profile_detail"
-fi
-
-# -- 7. shell_config_files ---------------------------------------------------
-# The managed block sources files from ~/.config/shell/. Most are guarded
-# with `[ -f ]` (silent no-op when missing) but `aliases_nix.sh` is
-# unguarded - missing it spams "No such file or directory" on every shell
-# start. Even guarded misses silently lose functionality, so flag any
-# referenced file that doesn't resolve.
-_shell_missing=""
-if [ -f "$_rc" ]; then
-  while IFS= read -r _ref; do
-    [ -z "$_ref" ] && continue
-    _path="$(printf '%s' "$_ref" | sed "s|^\\\$HOME|$HOME|")"
-    [ -f "$_path" ] || _shell_missing="${_shell_missing:+$_shell_missing, }${_ref##*/}"
-  done < <(grep -oE '\$HOME/\.config/shell/[a-zA-Z0-9_]+\.(sh|bash|zsh)' "$_rc" 2>/dev/null | sort -u)
-fi
-if [ -z "$_shell_missing" ]; then
-  _check "shell_config_files" "pass"
-else
-  _check "shell_config_files" "fail" "referenced by $(basename "$_rc") but missing in ~/.config/shell/: $_shell_missing"
-fi
-
-# -- 8. cert_bundle -----------------------------------------------------------
-# Only relevant when custom certs exist (MITM proxy / corporate CA).
-# No ca-custom.crt means no interception detected - bundle is not needed.
-_cert_dir="$HOME/.config/certs"
-_cert_ok=true
-_cert_detail=""
-if [ -f "$_cert_dir/ca-custom.crt" ]; then
-  if [ ! -e "$_cert_dir/ca-bundle.crt" ]; then
-    _cert_detail="ca-bundle.crt missing"
-    _cert_ok=false
-  fi
-  if [ ! -f "$HOME/.vscode-server/server-env-setup" ] ||
-    ! grep -q 'NODE_EXTRA_CA_CERTS' "$HOME/.vscode-server/server-env-setup" 2>/dev/null; then
-    _cert_detail="${_cert_detail:+$_cert_detail; }NODE_EXTRA_CA_CERTS not in server-env-setup"
-    _cert_ok=false
-  fi
-fi
-if [ "$_cert_ok" = true ]; then
-  _check "cert_bundle" "pass"
-else
-  _check "cert_bundle" "fail" "$_cert_detail"
-fi
-
-# -- 9. vscode_server_env ----------------------------------------------------
-if [ -d "$HOME/.nix-profile/bin" ]; then
-  if [ -f "$HOME/.vscode-server/server-env-setup" ] &&
-    grep -q 'nix-profile/bin' "$HOME/.vscode-server/server-env-setup" 2>/dev/null; then
-    _check "vscode_server_env" "pass"
-  else
-    _check "vscode_server_env" "warn" "nix PATH not in server-env-setup; run: nx upgrade"
-  fi
-fi
-
-# -- 10. nix_profile ---------------------------------------------------------
-if command -v nix >/dev/null 2>&1; then
-  if nix profile list --json 2>/dev/null | grep -q 'nix-env'; then
-    _check "nix_profile" "pass"
-  elif nix profile list 2>/dev/null | grep -q 'nix-env'; then
-    _check "nix_profile" "pass"
-  else
-    _check "nix_profile" "fail" "nix-env not found in nix profile list"
-  fi
-else
-  _check "nix_profile" "fail" "nix not available"
-fi
-
-# -- 11. nix_profile_link ----------------------------------------------------
-# `nix_profile` checks the registry; this verifies the on-disk symlink that
-# user shells (PATH=$HOME/.nix-profile/bin) and managed blocks rely on. A
-# dangling symlink (pointing at a removed generation) breaks every nix-built
-# binary even though nix-env is still listed in `nix profile list`.
-_np_link="$HOME/.nix-profile"
-if [ -L "$_np_link" ]; then
-  if [ -e "$_np_link" ]; then
-    _check "nix_profile_link" "pass"
-  else
-    _np_target="$(readlink "$_np_link" 2>/dev/null)" || _np_target="<unreadable>"
-    _check "nix_profile_link" "fail" "dangling symlink -> $_np_target"
-  fi
-elif [ -d "$_np_link" ]; then
-  _check "nix_profile_link" "warn" "$_np_link is a directory, not a symlink (unexpected layout)"
-else
-  _check "nix_profile_link" "fail" "$_np_link not found"
-fi
-
-# -- 12. overlay_dir ---------------------------------------------------------
-if [ -n "${NIX_ENV_OVERLAY_DIR:-}" ]; then
-  if [ -d "$NIX_ENV_OVERLAY_DIR" ] && [ -r "$NIX_ENV_OVERLAY_DIR" ]; then
-    _check "overlay_dir" "pass"
-  else
-    _check "overlay_dir" "fail" "NIX_ENV_OVERLAY_DIR=$NIX_ENV_OVERLAY_DIR is not a readable directory"
-  fi
-fi
-
-# -- 13. version_skew --------------------------------------------------------
-if command -v gh >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
-  _repo_slug=""
-  for _git_dir in \
-    "$(cd "$(dirname "$0")/../.." 2>/dev/null && pwd)" \
-    "$ENV_DIR"; do
-    if [ -d "$_git_dir/.git" ] 2>/dev/null; then
-      _repo_slug="$(git -C "$_git_dir" remote get-url origin 2>/dev/null |
-        sed -n 's|.*github\.com[:/]\(.*\)\.git$|\1|p')" || true
-      [ -n "$_repo_slug" ] && break
-    fi
-  done
-  if [ -n "$_repo_slug" ]; then
-    _installed_ver=""
-    if [ -f "$DEV_ENV_DIR/install.json" ]; then
-      _installed_ver="$(jq -r '.version // empty' "$DEV_ENV_DIR/install.json" 2>/dev/null)" || true
-    fi
-    _latest_tag="$(gh api "repos/$_repo_slug/releases/latest" --jq '.tag_name' 2>/dev/null)" || true
-    _latest_ver="${_latest_tag#v}"
-    if [ -n "$_latest_ver" ] && [ -n "$_installed_ver" ] && [ "$_latest_ver" != "$_installed_ver" ]; then
-      _check "version_skew" "warn" "installed $_installed_ver, latest release $_latest_ver"
-    elif [ -n "$_latest_ver" ]; then
-      _check "version_skew" "pass"
-    fi
-  fi
-fi
-
-# -- Summary ------------------------------------------------------------------
 if [ "$_dr_json" = "true" ]; then
   _overall="ok"
   [ "$_dr_warn" -gt 0 ] && _overall="degraded"
