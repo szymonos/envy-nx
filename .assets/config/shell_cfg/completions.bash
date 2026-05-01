@@ -15,7 +15,7 @@ function _nx_completions() {
   elif [ "$COMP_CWORD" -eq 2 ] && [ "$prev" = "self" ]; then
     while IFS= read -r line; do COMPREPLY+=("$line"); done < <(compgen -W "update path help" -- "$cur")
   elif [ "$COMP_CWORD" -ge 2 ] && [ "${COMP_WORDS[1]}" = "setup" ]; then
-    while IFS= read -r line; do COMPREPLY+=("$line"); done < <(compgen -W "--az --bun --conda --docker --gcloud --k8s-base --k8s-dev --k8s-ext --nodejs --pwsh --python --rice --shell --terraform --zsh --all --upgrade --allow-unfree --unattended --update-modules --omp-theme --starship-theme --remove --help" -- "$cur")
+    while IFS= read -r line; do COMPREPLY+=("$line"); done < <(compgen -W "--az --bun --conda --docker --gcloud --k8s-base --k8s-dev --k8s-ext --nodejs --pwsh --python --rice --shell --terraform --zsh --all --upgrade --allow-unfree --unattended --skip-repo-update --update-modules --omp-theme --starship-theme --remove --help" -- "$cur")
   elif [ "$COMP_CWORD" -ge 3 ] && [ "${COMP_WORDS[1]}" = "self" ] && [ "${COMP_WORDS[2]}" = "update" ]; then
     while IFS= read -r line; do COMPREPLY+=("$line"); done < <(compgen -W "--force" -- "$cur")
   elif [ "$COMP_CWORD" -ge 3 ] && [ "${COMP_WORDS[1]}" = "scope" ] &&

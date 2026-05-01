@@ -150,6 +150,7 @@ Describe 'wsl_setup.ps1 orchestration' {
             $nixArgs | Should -Match '--shell'
             $nixArgs | Should -Match '--python'
             $nixArgs | Should -Match '--unattended'
+            $nixArgs | Should -Match '--skip-repo-update'
         }
     }
 

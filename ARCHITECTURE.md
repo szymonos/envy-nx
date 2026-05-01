@@ -17,49 +17,49 @@ cross-cutting changes.
 
 Everything sourced or called by `nix/setup.sh`, plus shell config files that get sourced at login on macOS.
 
-| File                                          | Role                                                                |
-| --------------------------------------------- | ------------------------------------------------------------------- |
-| `nix/setup.sh`                                | Main entry point (slim orchestrator, sources phase libraries)       |
-| `nix/lib/io.sh`                               | Structured logging + side-effect wrappers (tests override)          |
-| `.assets/lib/setup_log.sh`                    | Log file creation and rotation (sourced by `nix/setup.sh`)          |
-| `nix/lib/phases/bootstrap.sh`                 | Root guard, path resolution, nix/jq detection, arg parsing          |
-| `nix/lib/phases/platform.sh`                  | OS detection, overlay discovery, hook runner                        |
-| `nix/lib/phases/scopes.sh`                    | Load/merge scopes, resolve deps, write config.nix                   |
-| `nix/lib/phases/nix_profile.sh`               | Flake update, nix profile upgrade, MITM probe                       |
-| `nix/lib/phases/configure.sh`                 | GitHub CLI auth, git config, per-scope configure dispatch           |
-| `nix/lib/phases/profiles.sh`                  | Bash/zsh/PowerShell shell profile setup                             |
-| `nix/lib/phases/post_install.sh`              | Common post-install setup and nix garbage collection                |
-| `nix/lib/phases/summary.sh`                   | Mode detection and final status output                              |
-| `.assets/lib/scopes.sh`                       | Scope helpers (sourced by `nix/setup.sh` and `linux_setup.sh`)      |
-| `.assets/lib/scopes.json`                     | Scope definitions (read by `scopes.sh` via jq)                      |
-| `.assets/lib/install_record.sh`               | Install provenance writer (sourced by all entry points)             |
-| `nix/configure/az.sh`                         | Configure azure-cli                                                 |
-| `nix/configure/conda.sh`                      | Configure conda                                                     |
-| `nix/configure/docker.sh`                     | Configure docker                                                    |
-| `nix/configure/gh.sh`                         | Configure GitHub CLI                                                |
-| `nix/configure/git.sh`                        | Configure git                                                       |
-| `nix/configure/omp.sh`                        | Configure oh-my-posh                                                |
-| `nix/configure/terraform.sh`                  | Install terraform binary via tfswitch to `~/.local/bin`             |
-| `nix/configure/profiles.sh`                   | Copy shell configs to `~/.config/shell/`                            |
-| `nix/configure/profiles.zsh`                  | Copy zsh configs (zsh, not bash, but runs on macOS)                 |
-| `nix/configure/profiles.ps1`                  | Copy PowerShell configs to `~/.config/powershell/`                  |
-| `nix/configure/starship.sh`                   | Configure starship prompt                                           |
-| `.assets/lib/helpers.sh`                      | Shared helpers (`download_file`, `gh_login_user`, `install_atomic`) |
-| `.assets/lib/profile_block.sh`                | Managed block library (sourced by profiles.sh/.zsh, nx)             |
-| `.assets/lib/env_block.sh`                    | Generic env block (sourced by setup_profile_user; legacy)           |
-| `.assets/lib/certs.sh`                        | CA bundle builder + VS Code Server cert setup                       |
-| `.assets/lib/nx.sh`                           | Standalone nx CLI + profile block rendering (bash/zsh)              |
-| `.assets/lib/nx_doctor.sh`                    | Health check script (`nx doctor`)                                   |
-| `.assets/config/shell_cfg/aliases_nix.sh`     | Shell config - aliases + thin nx wrapper (sources `nx.sh`)          |
-| `.assets/config/shell_cfg/aliases_git.sh`     | Shell config - git aliases                                          |
-| `.assets/config/shell_cfg/aliases_kubectl.sh` | Shell config - kubectl aliases                                      |
-| `.assets/config/shell_cfg/functions.sh`       | Shell config - shared functions                                     |
-| `.assets/config/shell_cfg/completions.bash`   | Shell config - bash tab completions for nx                          |
-| `.assets/config/shell_cfg/completions.zsh`    | Shell config - zsh tab completions for nx                           |
-| `.assets/setup/setup_common.sh`               | Post-install setup (called via `nix/setup.sh`)                      |
-| `.assets/setup/setup_profile_user.ps1`        | PowerShell user profile (certs, local-path, etc.)                   |
-| `.assets/provision/install_copilot.sh`        | Post-install - GitHub Copilot CLI                                   |
-| `nix/uninstall.sh`                            | Removes nix-env environment, optionally Nix itself                  |
+| File                                          | Role                                                                          |
+| --------------------------------------------- | ----------------------------------------------------------------------------- |
+| `nix/setup.sh`                                | Main entry point (slim orchestrator, sources phase libraries)                 |
+| `nix/lib/io.sh`                               | Structured logging + side-effect wrappers (tests override)                    |
+| `.assets/lib/setup_log.sh`                    | Log file creation and rotation (sourced by `nix/setup.sh`)                    |
+| `nix/lib/phases/bootstrap.sh`                 | Repo auto-refresh, root guard, path resolution, nix/jq detection, arg parsing |
+| `nix/lib/phases/platform.sh`                  | OS detection, overlay discovery, hook runner                                  |
+| `nix/lib/phases/scopes.sh`                    | Load/merge scopes, resolve deps, write config.nix                             |
+| `nix/lib/phases/nix_profile.sh`               | Flake update, nix profile upgrade, MITM probe                                 |
+| `nix/lib/phases/configure.sh`                 | GitHub CLI auth, git config, per-scope configure dispatch                     |
+| `nix/lib/phases/profiles.sh`                  | Bash/zsh/PowerShell shell profile setup                                       |
+| `nix/lib/phases/post_install.sh`              | Common post-install setup and nix garbage collection                          |
+| `nix/lib/phases/summary.sh`                   | Mode detection and final status output                                        |
+| `.assets/lib/scopes.sh`                       | Scope helpers (sourced by `nix/setup.sh` and `linux_setup.sh`)                |
+| `.assets/lib/scopes.json`                     | Scope definitions (read by `scopes.sh` via jq)                                |
+| `.assets/lib/install_record.sh`               | Install provenance writer (sourced by all entry points)                       |
+| `nix/configure/az.sh`                         | Configure azure-cli                                                           |
+| `nix/configure/conda.sh`                      | Configure conda                                                               |
+| `nix/configure/docker.sh`                     | Configure docker                                                              |
+| `nix/configure/gh.sh`                         | Configure GitHub CLI                                                          |
+| `nix/configure/git.sh`                        | Configure git                                                                 |
+| `nix/configure/omp.sh`                        | Configure oh-my-posh                                                          |
+| `nix/configure/terraform.sh`                  | Install terraform binary via tfswitch to `~/.local/bin`                       |
+| `nix/configure/profiles.sh`                   | Copy shell configs to `~/.config/shell/`                                      |
+| `nix/configure/profiles.zsh`                  | Copy zsh configs (zsh, not bash, but runs on macOS)                           |
+| `nix/configure/profiles.ps1`                  | Copy PowerShell configs to `~/.config/powershell/`                            |
+| `nix/configure/starship.sh`                   | Configure starship prompt                                                     |
+| `.assets/lib/helpers.sh`                      | Shared helpers (`download_file`, `gh_login_user`, `install_atomic`)           |
+| `.assets/lib/profile_block.sh`                | Managed block library (sourced by profiles.sh/.zsh, nx)                       |
+| `.assets/lib/env_block.sh`                    | Generic env block (sourced by setup_profile_user; legacy)                     |
+| `.assets/lib/certs.sh`                        | CA bundle builder + VS Code Server cert setup                                 |
+| `.assets/lib/nx.sh`                           | Standalone nx CLI + profile block rendering (bash/zsh)                        |
+| `.assets/lib/nx_doctor.sh`                    | Health check script (`nx doctor`)                                             |
+| `.assets/config/shell_cfg/aliases_nix.sh`     | Shell config - aliases + thin nx wrapper (sources `nx.sh`)                    |
+| `.assets/config/shell_cfg/aliases_git.sh`     | Shell config - git aliases                                                    |
+| `.assets/config/shell_cfg/aliases_kubectl.sh` | Shell config - kubectl aliases                                                |
+| `.assets/config/shell_cfg/functions.sh`       | Shell config - shared functions                                               |
+| `.assets/config/shell_cfg/completions.bash`   | Shell config - bash tab completions for nx                                    |
+| `.assets/config/shell_cfg/completions.zsh`    | Shell config - zsh tab completions for nx                                     |
+| `.assets/setup/setup_common.sh`               | Post-install setup (called via `nix/setup.sh`)                                |
+| `.assets/setup/setup_profile_user.ps1`        | PowerShell user profile (certs, local-path, etc.)                             |
+| `.assets/provision/install_copilot.sh`        | Post-install - GitHub Copilot CLI                                             |
+| `nix/uninstall.sh`                            | Removes nix-env environment, optionally Nix itself                            |
 
 ### linux-only (bash 4+ OK)
 
@@ -114,19 +114,19 @@ Entry point: `nix/setup.sh` (orchestrator, ~110 lines).
 
 **Phase libraries** (sourced at startup, executed in order):
 
-| File                             | Role                                             |
-| -------------------------------- | ------------------------------------------------ |
-| `nix/lib/io.sh`                  | Output helpers + side-effect wrappers            |
-| `nix/lib/phases/bootstrap.sh`    | Root guard, paths, nix detect/install, arg parse |
-| `nix/lib/phases/platform.sh`     | OS detect, overlay, hooks                        |
-| `nix/lib/phases/scopes.sh`       | Load/merge/resolve scopes, write `config.nix`    |
-| `nix/lib/phases/nix_profile.sh`  | Flake update, profile upgrade, MITM probe        |
-| `nix/lib/phases/configure.sh`    | gh/git/per-scope configure dispatch              |
-| `nix/lib/phases/profiles.sh`     | bash/zsh/pwsh profile setup                      |
-| `nix/lib/phases/post_install.sh` | `setup_common.sh` + nix GC                       |
-| `nix/lib/phases/summary.sh`      | Mode detect + final output                       |
-| `.assets/lib/install_record.sh`  | EXIT trap provenance                             |
-| `.assets/lib/scopes.sh`          | Scope helpers (reads `.assets/lib/scopes.json`)  |
+| File                             | Role                                                                |
+| -------------------------------- | ------------------------------------------------------------------- |
+| `nix/lib/io.sh`                  | Output helpers + side-effect wrappers                               |
+| `nix/lib/phases/bootstrap.sh`    | Repo auto-refresh, root guard, paths, nix detect/install, arg parse |
+| `nix/lib/phases/platform.sh`     | OS detect, overlay, hooks                                           |
+| `nix/lib/phases/scopes.sh`       | Load/merge/resolve scopes, write `config.nix`                       |
+| `nix/lib/phases/nix_profile.sh`  | Flake update, profile upgrade, MITM probe                           |
+| `nix/lib/phases/configure.sh`    | gh/git/per-scope configure dispatch                                 |
+| `nix/lib/phases/profiles.sh`     | bash/zsh/pwsh profile setup                                         |
+| `nix/lib/phases/post_install.sh` | `setup_common.sh` + nix GC                                          |
+| `nix/lib/phases/summary.sh`      | Mode detect + final output                                          |
+| `.assets/lib/install_record.sh`  | EXIT trap provenance                                                |
+| `.assets/lib/scopes.sh`          | Scope helpers (reads `.assets/lib/scopes.json`)                     |
 
 **Configure scripts** (dispatched by `configure.sh` via [`_io_run`](nix/lib/io.sh)):
 
@@ -497,6 +497,12 @@ The tool is a bootstrapper, not a daemon or agent. A single `nix/setup.sh` run p
 - `nx version` reads `~/.config/dev-env/install.json` for provenance and shows live config state (unfree, certs).
 
 Keeping the repo clone is a user choice, not a requirement. It simplifies adding new scopes (`setup.sh --k8s-base`), upgrading declarations to newer versions, and re-running the full setup after OS reinstalls. Users who don't need that can delete the clone - the environment continues to work and is fully manageable via `nx` commands.
+
+### Repo auto-refresh on `nix/setup.sh` start
+
+`phase_bootstrap_refresh_repo` (`nix/lib/phases/bootstrap.sh`) runs first, before any disk-mutating phase, and brings the repo to its upstream tip when behind. The mechanism mirrors `wsl/wsl_setup.ps1`'s `Update-GitRepository`: `git ls-remote --heads` is a cheap pre-check that skips the heavy `git fetch` when the remote tip already matches the local tracking ref (the common rerun case). On a successful update the script exits 0 with `repository updated to <upstream> - run the script again` so the user re-invokes against fresh source (the running script's bytes were just replaced under it).
+
+The refresh is **conservative for repo developers**: it skips silently when the working tree has uncommitted changes, when HEAD has diverged from upstream (local commits would be discarded), when not in a git work tree (tarball install), when no upstream tracking branch is configured (e.g. detached HEAD on CI), or when `--skip-repo-update` is on the command line. `--skip-repo-update` is the explicit opt-out for the dev-iteration case ("test my edits to setup.sh before committing"); `wsl/wsl_setup.ps1` passes it to `nix/setup.sh` because it already runs `Update-GitRepository` itself. `--unattended` no longer gates the refresh (it now means only "skip interactive prompts" - gh auth, git config, ssh key) - the two concerns are independent.
 
 ### nixpkgs-unstable with explicit upgrade semantics
 

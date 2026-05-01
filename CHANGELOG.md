@@ -5,6 +5,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+
+- `nix/setup.sh`: auto-refresh the source repo from upstream at start (`phase_bootstrap_refresh_repo` in `nix/lib/phases/bootstrap.sh`), mirroring `wsl/wsl_setup.ps1`'s `Update-GitRepository`. Uses the same cheap `ls-remote` pre-check (no fetch when remote tip already matches the local tracking ref). On a successful update, the script exits 0 with `repository updated to <upstream> - run the script again`. Skips silently when the working tree has uncommitted changes or HEAD has diverged from upstream (protects feature-branch dev work), when not in a git work tree (tarball install), when `git` is unavailable, or when no upstream tracking branch is configured (e.g. detached HEAD on CI).
+- `nix/setup.sh --skip-repo-update`: opt-out flag for the auto-refresh, intended for repo-developer iteration ("test my uncommitted changes to setup.sh") and for callers that already refreshed the repo themselves. Wired into bash/zsh/PowerShell completers for `nx setup`. `wsl/wsl_setup.ps1` now passes it to `nix/setup.sh` since it already runs `Update-GitRepository` at script start.
+
 ### Changed
 
 - `Update-GitRepository` (`modules/InstallUtils/Functions/git.ps1`): added a `git ls-remote --heads` pre-check that skips the always-on `git fetch --tags --prune --prune-tags --force` when the remote tip already matches the local tracking ref. Cuts several seconds off `wsl/wsl_setup.ps1`'s startup repo-freshness check on lower-end systems with slow disks (fetch always rewrites `FETCH_HEAD`/packed-refs even on a no-op). Upstream resolution is now a single `rev-parse --abbrev-ref --symbolic-full-name @{upstream}` call (replaces the `git remote` + `git branch --show-current` pair) and the post-fetch HEAD/upstream comparison is collapsed into one `rev-parse HEAD upstream`. The 0/1/2 return contract, retry loop, and `--prune-tags --force` semantics on the fetch path are unchanged.
