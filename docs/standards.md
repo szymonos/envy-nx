@@ -6,19 +6,19 @@ This tool provisions developer environments - if it breaks, developers cannot wo
 
 | Metric                       | Value                                                                       |
 | ---------------------------- | --------------------------------------------------------------------------- |
-| Unit test files              | 25 (17 bats + 8 Pester)                                                     |
-| Individual test cases        | 442 (354 bats + 88 Pester)                                                  |
-| Test code                    | 6,000+ lines                                                                |
-| Custom pre-commit hooks      | 9 Python scripts                                                            |
+| Unit test files              | 26 (18 bats + 8 Pester)                                                     |
+| Individual test cases        | 466 (378 bats + 88 Pester)                                                  |
+| Test code                    | 8,000+ lines                                                                |
+| Custom pre-commit hooks      | 12 Python scripts                                                           |
 | CI matrix axes               | 5 (Linux daemon, Linux rootless, Linux tarball, macOS Sequoia, macOS Tahoe) |
 | Platforms validated per PR   | macOS (bash 3.2 + BSD), Ubuntu (bash 5 + GNU)                               |
-| Pre-commit checks per commit | 21 hooks                                                                    |
+| Pre-commit checks per commit | 24 hooks                                                                    |
 
 ## Test infrastructure
 
 ### Unit tests - bash (bats)
 
-17 bats test files cover the core logic: scope dependency resolution, `nx` CLI commands (pin, rollback, scope, install, remove), managed block injection and removal, profile migration, overlay system, health checks, and certificate handling.
+18 bats test files cover the core logic: scope dependency resolution, `nx` CLI commands (pin, rollback, scope, install, remove), managed block injection and removal, profile migration, overlay system, health checks, certificate handling, and runtime-zsh smoke tests.
 
 Phase functions from `nix/lib/phases/` are tested by sourcing them directly and overriding side-effect wrappers:
 
@@ -89,7 +89,7 @@ Each CI run validates:
 
 ## Pre-commit hooks
 
-Every commit passes through 21 hooks. 9 are custom Python scripts purpose-built for this codebase:
+Every commit passes through 24 hooks. 12 are custom Python scripts purpose-built for this codebase:
 
 | Hook                          | What it enforces                                                                                                                                                                                                                                        |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -100,6 +100,9 @@ Every commit passes through 21 hooks. 9 are custom Python scripts purpose-built 
 | `check-bash32`                | Nix-path scripts contain no bash 4+ constructs - 15 rules covering mapfile, associative arrays, namerefs, GNU sed/grep extensions                                                                                                                       |
 | `check-zsh-compat`            | Files sourced into the user's interactive shell (`shell_cfg/*.sh`, `lib/{nx,profile_block}.sh`) work under zsh - flags bare `name() {` defs, for-loops over unquoted globs (zsh `nomatch` aborts), and unguarded `BASH_SOURCE` / `compgen` / `complete` |
 | `check-changelog`             | Runtime file changes (`nix/`, `.assets/`, `wsl/`) require a CHANGELOG entry under `[Unreleased]` - bypass via `skip-changelog` label                                                                                                                    |
+| `check-nx-completions`        | Generated tab completers (bash, zsh, PS) and `_nx_lifecycle_help` body match `nx_surface.json` - regenerate via `python3 -m tests.hooks.gen_nx_completions`                                                                                             |
+| `check-nx-dispatch-parity`    | Bash `nx_main` case arms (verbs + aliases) match `nx_surface.json` - closes the drift loop where the dispatcher silently accepts undeclared aliases                                                                                                     |
+| `check-nx-profile-parity`     | PowerShell `nx profile` subverbs match `nx_surface.json` - the bash and PS dispatchers operate on different files, but the user-facing surface stays in sync                                                                                            |
 | `bats-tests` / `pester-tests` | Smart test runners that parse `source` directives to map changed files to their tests - only runs relevant tests, not the full suite                                                                                                                    |
 
 Documentation build validation (`mkdocs build --strict`) runs in the CI pipeline rather than as a pre-commit hook, since it requires the full docs dependency set.

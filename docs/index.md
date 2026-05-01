@@ -102,14 +102,14 @@ See [Customization](customization.md) for the full guide.
 
 ## Engineering quality
 
-| Metric                  | Value                                                                     |
-| ----------------------- | ------------------------------------------------------------------------- |
-| Unit tests              | Bats (bash) and Pester (PowerShell) suites across 22 test files           |
-| Custom pre-commit hooks | 8 (bash 3.2 enforcer, scope validator, smart test runner, and more)       |
-| CI matrix               | Ubuntu (daemon, rootless, tarball), macOS (Sequoia default, Tahoe opt-in) |
-| Idempotency             | Verified on every PR - second run produces identical results              |
-| Install provenance      | Every run writes `install.json` with version, scopes, status              |
-| Uninstall               | Two-phase cleanup with dry-run mode                                       |
+| Metric                  | Value                                                                       |
+| ----------------------- | --------------------------------------------------------------------------- |
+| Unit tests              | Bats (bash) and Pester (PowerShell) suites across 26 test files             |
+| Custom pre-commit hooks | 12 (bash 3.2 enforcer, scope validator, manifest-drift defenders, and more) |
+| CI matrix               | Ubuntu (daemon, rootless, tarball), macOS (Sequoia default, Tahoe opt-in)   |
+| Idempotency             | Verified on every PR - second run produces identical results                |
+| Install provenance      | Every run writes `install.json` with version, scopes, status                |
+| Uninstall               | Two-phase cleanup with dry-run mode                                         |
 
 See [Quality & Testing](standards.md) for the full breakdown.
 
