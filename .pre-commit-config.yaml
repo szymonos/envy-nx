@@ -36,6 +36,12 @@ repos:
         language: system
         files: (\.assets/config/shell_cfg/.*\.sh$|\.assets/lib/(nx|profile_block)\.sh$)
         types: [file]
+      - id: check-nx-completions
+        name: Check nx completers match nx_surface.json
+        entry: python3 -m tests.hooks.check_nx_completions
+        language: system
+        pass_filenames: false
+        files: (\.assets/lib/nx_surface\.json|\.assets/config/shell_cfg/completions\.(bash|zsh)|\.assets/config/pwsh_cfg/_aliases_nix\.ps1|tests/hooks/(gen|check)_nx_completions\.py)
       - id: bats-tests
         name: Run bats unit tests
         entry: python3 -m tests.hooks.run_bats
