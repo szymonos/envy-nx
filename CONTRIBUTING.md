@@ -1,7 +1,6 @@
 # Contributing
 
-Development workflow, tooling, and conventions for working on this repo. For architecture and runtime layout, see
-`ARCHITECTURE.md`.
+Workflow guide for developing on this repo. For architecture, file classification, constraints, hook reference, runtime layout, and recipes ("how to add X"), see `ARCHITECTURE.md` - that is the single source of truth.
 
 ## Prerequisites
 
@@ -33,204 +32,63 @@ make help        # list all targets
 3. Fix any failures. Re-run `make lint` until clean.
 4. Commit.
 
-`make lint` runs `git add --all && prek run`, so it always checks the current working tree. Use `make lint-all` to
-check every file in the repo, or `make lint-diff` to check only files changed since `main`.
+`make lint` runs `git add --all && prek run`, so it always checks the current working tree. Use `make lint-all` to check every file in the repo, or `make lint-diff` to check only files changed since `main`.
 
-All `lint*` targets accept `HOOK=<id>` to run a single hook (e.g. `make lint-all HOOK=check-zsh-compat`) - seconds
-instead of minutes when verifying one hook's scope or rule changes across the whole tree. Run `make hooks` to list
-the available IDs.
+All `lint*` targets accept `HOOK=<id>` to run a single hook (e.g. `make lint-all HOOK=check-zsh-compat`) - seconds instead of minutes when verifying one hook's scope or rule changes across the whole tree. Run `make hooks` to list the available IDs.
 
-## Pre-commit hooks
+## Before you commit
 
-Configured in `.pre-commit-config.yaml`, run via `prek`.
+- **CHANGELOG entry.** Every PR that changes runtime files (`nix/`, `.assets/`, `wsl/`) must add an entry under `## [Unreleased]` in `CHANGELOG.md`. Enforced by `check-changelog`. Doc-only / test-only PRs can use the `skip-changelog` PR label.
+- **Lint clean.** `make lint` must pass. Don't `--no-verify` - fix the underlying issue.
+- **Tests pass.** `make test-unit` must pass. The smart test runners (`bats-tests`, `pester-tests`) auto-run relevant tests on changed files.
+- **Constraints respected.** Bash 3.2 / zsh-compat / file-shebang rules are enforced by hooks; if one fires, see `ARCHITECTURE.md` §7 for the rule and the rationale.
 
-### Local hooks (`tests/hooks/`)
+## Where things live
 
-| Hook               | Script                | What it checks                                                                                                                                                                          |
-| ------------------ | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `gremlins-check`   | `gremlins.py`         | Unwanted Unicode characters (zero-width spaces, smart quotes)                                                                                                                           |
-| `align-tables`     | `align_tables.py`     | Auto-aligns markdown tables on save                                                                                                                                                     |
-| `validate-scopes`  | `validate_scopes.py`  | `scopes.json` and `nix/scopes/*.nix` are consistent                                                                                                                                     |
-| `check-bash32`     | `check_bash32.py`     | Nix-path `.sh` files avoid bash 4+ constructs                                                                                                                                           |
-| `check-zsh-compat` | `check_zsh_compat.py` | Shell-sourced files (`shell_cfg/*.sh`, `lib/{nx,profile_block}.sh`) work under zsh: `function` keyword for defs, no for-loops over unquoted globs, no unguarded bash-only builtins/vars |
-| `bats-tests`       | `run_bats.py`         | Runs bats unit tests when relevant files change                                                                                                                                         |
-| `pester-tests`     | `run_pester.py`       | Runs Pester unit tests when relevant files change                                                                                                                                       |
+| For                                                  | See                          |
+| ---------------------------------------------------- | ---------------------------- |
+| File classification (nix-path vs linux-only vs ps)   | `ARCHITECTURE.md` §12        |
+| Bash 3.2 + BSD constraints (and which files)         | `ARCHITECTURE.md` §7.1, §7.2 |
+| Zsh sourcing constraints                             | `ARCHITECTURE.md` §7.3       |
+| Bash / PowerShell style guides                       | `ARCHITECTURE.md` §7.6, §7.7 |
+| Runnable examples block (`: '...'`) format           | `ARCHITECTURE.md` §7.5       |
+| ShellCheck global excludes                           | `ARCHITECTURE.md` §7.8       |
+| Pre-commit hook reference (what each one does)       | `ARCHITECTURE.md` §8         |
+| Test infrastructure (bats / Pester / zsh runtime)    | `ARCHITECTURE.md` §9         |
+| CI workflow scenarios                                | `ARCHITECTURE.md` §10        |
+| CHANGELOG discipline + SemVer policy                 | `ARCHITECTURE.md` §11        |
+| Recipes ("how to add a scope / verb / hook / check") | `ARCHITECTURE.md` §6         |
+| Runtime file layout (`~/.config/nix-env/` etc.)      | `ARCHITECTURE.md` §13        |
 
-### External hooks
+## Adding things - quick map
 
-| Hook                                   | What it checks                             |
-| -------------------------------------- | ------------------------------------------ |
-| `check-executables-have-shebangs`      | Executable files have a shebang line       |
-| `check-shebang-scripts-are-executable` | Files with shebangs are `chmod +x`         |
-| `end-of-file-fixer`                    | Files end with exactly one newline         |
-| `mixed-line-ending`                    | No mixed LF/CRLF                           |
-| `trailing-whitespace`                  | No trailing whitespace (except `.md`)      |
-| `ruff-check` / `ruff-format`           | Python lint + format (`tests/` only)       |
-| `markdownlint-cli2`                    | Markdown lint                              |
-| `shellcheck`                           | Shell static analysis (severity: warning+) |
+These are the most common contribution shapes. Each links to the full recipe in `ARCHITECTURE.md` §6.
 
-ShellCheck global excludes: `SC1090` (non-constant source), `SC2139` (expand at define time), `SC2148` (missing
-shebang on sourced files), `SC2155` (declare and assign separately), `SC2174` (mkdir mode).
+| You want to add...      | Recipe                 |
+| ----------------------- | ---------------------- |
+| A new scope             | `ARCHITECTURE.md` §6.1 |
+| A new phase function    | `ARCHITECTURE.md` §6.2 |
+| A new `nx` verb         | `ARCHITECTURE.md` §6.3 |
+| A new `nx` family file  | `ARCHITECTURE.md` §6.4 |
+| A new `nx doctor` check | `ARCHITECTURE.md` §6.5 |
+| A new flag              | `ARCHITECTURE.md` §6.6 |
+| A new pre-commit hook   | `ARCHITECTURE.md` §6.7 |
+| A new dynamic completer | `ARCHITECTURE.md` §6.8 |
 
-## File rules
+## Tooling notes
 
-### Which bash version?
-
-| Files matching                                                                                                                                                                                                                       | Bash version | `set` flags         |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------ | ------------------- |
-| `nix/**/*.sh`, `.assets/lib/{scopes,profile_block,nx_doctor,helpers}.sh`, `.assets/config/shell_cfg/{aliases_nix,aliases_git,aliases_kubectl,functions}.sh`, `.assets/setup/setup_common.sh`, `.assets/provision/install_copilot.sh` | 3.2          | `set -eo pipefail`  |
-| `.assets/provision/*.sh` (except `install_copilot.sh`), `.assets/scripts/*.sh`, `.assets/check/*.sh`                                                                                                                                 | 5.x (Linux)  | `set -euo pipefail` |
-
-Nix-path files must avoid: `mapfile`, `declare -A`, `declare -n`, `${var,,}`, negative array indices, `sed -i ''`,
-`sed -r`, `grep -P`. Full list in `ARCHITECTURE.md` under "Bash 3.2 / BSD sed constraints". Enforced by the
-`check-bash32` pre-commit hook (file scope is the regex in `.pre-commit-config.yaml`, not a shell glob).
-
-### Zsh sourcing constraints
-
-`.assets/config/shell_cfg/*.sh`, `.assets/lib/nx.sh`, and `.assets/lib/profile_block.sh` get sourced into the user's
-interactive shell. They must work under both bash and zsh: use `function name() {` for definitions, avoid for-loops
-over unquoted globs (zsh's `nomatch` aborts on no-match), and guard bash-only builtins/vars (`BASH_SOURCE`,
-`compgen`, `complete -F`/`-W`, `COMP_*`) with `[ -n "$BASH_VERSION" ]`. The hook auto-recognizes safe
-`BASH_SOURCE` forms (default-value `${BASH_SOURCE[0]:-...}`, `||` fallback, equality tests, code inside
-`[ -n "$BASH_SOURCE..." ]` guards) and skips matches inside single-quoted string literals; inline `# zsh-ok`
-is the rarely-needed escape hatch. Enforced by `check-zsh-compat`; full rules in `ARCHITECTURE.md` under "Zsh
-compatibility constraints".
-
-### Sourced libraries vs executable scripts
-
-Sourced library files (e.g. `nix/lib/io.sh`, `nix/lib/phases/*.sh`, `.assets/lib/*.sh`) must **not** have a shebang
-and must **not** be executable. They are loaded via `source` by the calling script.
-
-Executable scripts must have `#!/usr/bin/env bash` and be `chmod +x`. The `check-executables-have-shebangs` and
-`check-shebang-scripts-are-executable` hooks enforce this.
-
-### Runnable examples block
-
-Every executable `.sh` and `.zsh` script must have a `: '...'` block immediately after the shebang. This lets the user run any example with the IDE "run current line" shortcut. Rules:
-
-- Use `# comment` lines to describe what the next example does
-- The following line must be the bare runnable command - no `Usage:`, `Example:`, or any other prefix
-- Never put prose descriptions or text with embedded single quotes inside the block (single quotes cannot be escaped inside `'...'`; move such text to `#` comments before the block)
-
-```bash
-#!/usr/bin/env bash
-: '
-# run as current user
-.assets/setup/setup_foo.sh
-# run with a specific option
-.assets/setup/setup_foo.sh --option value
-'
-set -euo pipefail
-```
-
-Run `make egsave` to regenerate the example scripts from these blocks (requires `pwsh`). Each PowerShell script also has a `.NOTES` section with the `scripts_egsave.ps1` invocation - run it directly from an existing `pwsh` session to avoid process startup overhead.
-
-## Testing
-
-### Unit tests (bats)
-
-Test files live in `tests/bats/*.bats`. Run with `bats tests/bats/` or `make test-unit`.
-
-Phase functions from `nix/lib/phases/` are tested by sourcing them directly and overriding `_io_*` wrappers from
-`nix/lib/io.sh`:
-
-```bash
-setup() {
-  # source libraries
-  source "$REPO_ROOT/nix/lib/io.sh"
-  source "$REPO_ROOT/nix/lib/phases/nix_profile.sh"
-  source "$REPO_ROOT/.assets/lib/scopes.sh"
-
-  # override side effects AFTER sourcing
-  _io_nix() { echo "nix $*" >>"$BATS_TEST_TMPDIR/nix.log"; }
-  _io_run() { echo "run $*" >>"$BATS_TEST_TMPDIR/run.log"; }
-}
-
-@test "nix_profile: apply runs profile add and upgrade" {
-  phase_nix_profile_apply
-  grep -q 'nix profile add' "$BATS_TEST_TMPDIR/nix.log"
-  grep -q 'nix profile upgrade nix-env' "$BATS_TEST_TMPDIR/nix.log"
-}
-```
-
-The `_io_*` convention: phases call `_io_nix`, `_io_nix_eval`, `_io_curl_probe`, `_io_run` instead of the raw
-commands. Tests redefine these to capture calls without executing them. Define stubs **after** sourcing `io.sh`
-(sourcing redefines the defaults).
-
-### Unit tests (Pester)
-
-Test files live in `tests/pester/*.Tests.ps1`. Run with `make test-unit` or invoke Pester directly:
-
-```powershell
-$pesterCfg = @{
-    Run    = @{ Path = 'tests/pester/'; Exit = $true }
-    Output = @{ Verbosity = 'Detailed' }
-}
-Invoke-Pester -Configuration @pesterCfg
-```
-
-### Smoke tests (Docker)
-
-`make test-nix` builds a throwaway Docker image that runs a full nix provisioning pass and verifies key binaries.
-Slower but catches integration issues that unit tests miss.
-
-### CI workflows
-
-| Workflow          | What it tests                                            |
-| ----------------- | -------------------------------------------------------- |
-| `test_linux.yml`  | `setup.sh` on Linux: daemon + no-daemon (Coder) mode     |
-| `test_macos.yml`  | `setup.sh` on macOS 15/26 (bash 3.2 + BSD sed)           |
-| `repo_checks.yml` | Pre-commit hooks (same as `make lint-diff`)              |
-| `release.yml`     | Full test matrix + build tarball + SBOM + sign + publish |
-
-Trigger CI via PR labels `test:integration` or `workflow_dispatch` for manual runs.
-Release workflow triggers automatically on `v*` tags.
+- When `cspell` fails on a new word, add it to `project-words.txt` (sorted alphabetically) - that's the project dictionary. The `validate-docs-words` hook removes stale entries automatically.
+- Pre-commit runner is `prek` (not `pre-commit`).
+- Use `pwsh` for PowerShell 7.4+ (not `powershell`).
+- Use `gh` CLI for GitHub operations.
+- Before fixing a pattern globally, run `rg <pattern> .` or `git grep <pattern>` to find **all** occurrences. For bulk renames across many files, use `sed -i` instead of editing one by one. Verify with another grep afterwards.
+- After a manifest change, regenerate completers: `python3 -m tests.hooks.gen_nx_completions`. The `check-nx-completions` hook will fail otherwise.
 
 ## Release process
 
-### Versioning
-
-This project follows [Semantic Versioning](https://semver.org/):
-
-- **MAJOR**: breaking `config.nix` layout, removed `nx` subcommand, removed scope.
-- **MINOR**: new scope, new `nx` subcommand, new flag.
-- **PATCH**: bug fix, internal refactor, dependency bump, doc change.
-
-### Cutting a release
-
-1. Ensure all changes have CHANGELOG entries under `## [Unreleased]`.
+1. Ensure all `## [Unreleased]` CHANGELOG entries are present and accurate.
 2. Run `make release` - builds the tarball and prints the tag/push commands.
 3. Review the tarball contents, then run the printed commands.
-4. The `release.yml` workflow runs the full test matrix, generates SBOM, signs artifacts, and publishes the GitHub
-   Release.
+4. The `release.yml` workflow runs the full test matrix, generates SBOM, signs artifacts, and publishes the GitHub Release.
 
-### CHANGELOG discipline
-
-Every PR that changes runtime files (`nix/`, `.assets/`, `wsl/`) must add an entry under `## [Unreleased]` in
-`CHANGELOG.md`. The `check-changelog` pre-commit hook enforces this.
-
-## Adding a new scope
-
-1. Create `nix/scopes/<name>.nix` with the package list and a `# bins:` comment.
-2. Add the scope to `.assets/lib/scopes.json` (`valid_scopes`, `install_order`, and `dependency_rules` if needed).
-3. Add a `--<name>` case to `phase_bootstrap_parse_args` in `nix/lib/phases/bootstrap.sh`.
-4. If the scope needs post-install configuration, add `nix/configure/<name>.sh` and a `case` entry in
-   `phase_configure_per_scope` in `nix/lib/phases/configure.sh`.
-5. Run `make lint` (triggers `validate-scopes` + `bats-tests`).
-
-## Adding a new phase function
-
-1. Add the function to the appropriate file in `nix/lib/phases/`.
-2. Document globals in the header comment (`# Reads:` / `# Writes:`).
-3. Call it from `nix/setup.sh` at the right point in the phase sequence.
-4. Use `_io_*` wrappers for any external commands (`nix`, `curl`, script invocations).
-5. Add bats tests that stub `_io_*` and verify behavior.
-
-## Style reference
-
-Bash and PowerShell style guides are in `CLAUDE.md`. Key points:
-
-- **Bash**: 2-space indent, 120-char lines, `snake_case` functions, `UPPERCASE` constants, `local` for function
-  variables.
-- **PowerShell**: 4-space indent, OTBS braces, `Verb-Noun` functions, `PascalCase` parameters, `camelCase` locals.
-- Prefer no comments. Add one only when the *why* is non-obvious.
+See `ARCHITECTURE.md` §11 for the SemVer bump policy.
