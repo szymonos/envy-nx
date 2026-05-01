@@ -48,7 +48,11 @@ Everything sourced or called by `nix/setup.sh`, plus shell config files that get
 | `.assets/lib/profile_block.sh`                | Managed block library (sourced by profiles.sh/.zsh, nx)                       |
 | `.assets/lib/env_block.sh`                    | Generic env block (sourced by setup_profile_user; legacy)                     |
 | `.assets/lib/certs.sh`                        | CA bundle builder + VS Code Server cert setup                                 |
-| `.assets/lib/nx.sh`                           | Standalone nx CLI + profile block rendering (bash/zsh)                        |
+| `.assets/lib/nx.sh`                           | nx CLI entry point: shared helpers + family sourcing + main dispatcher        |
+| `.assets/lib/nx_pkg.sh`                       | nx verbs: search/install/remove/upgrade/list/prune/gc/rollback                |
+| `.assets/lib/nx_scope.sh`                     | nx verbs: scope/overlay/pin                                                   |
+| `.assets/lib/nx_profile.sh`                   | nx profile verb + managed-block rendering (also called from profiles.sh)      |
+| `.assets/lib/nx_lifecycle.sh`                 | nx verbs: setup/self/doctor/version/help                                      |
 | `.assets/lib/nx_doctor.sh`                    | Health check script (`nx doctor`)                                             |
 | `.assets/config/shell_cfg/aliases_nix.sh`     | Shell config - aliases + thin nx wrapper (sources `nx.sh`)                    |
 | `.assets/config/shell_cfg/aliases_git.sh`     | Shell config - git aliases                                                    |
@@ -321,7 +325,7 @@ Persists after the repo is removed. This is the user's nix environment.
 | `nx_doctor.sh`       | `.assets/lib/nx_doctor.sh`                | `nix/setup.sh`               |
 | `profile_block.sh`   | `.assets/lib/profile_block.sh`            | `nix/setup.sh`               |
 
-`nx.sh`, `nx_doctor.sh`, and `profile_block.sh` are installed via `install_atomic` (temp file + same-filesystem rename) rather than plain `cp`. They get sourced/exec'd by user shells on every `nx` invocation, and a setup re-run that overwrites them with `cp` would race against any concurrent reader: the reader sees a half-written file, parses heredoc bodies as commands, and the user gets cryptic `command not found` / `syntax error near unexpected token ;;` errors. The same pattern is used by `_install_cfg_file` in `profiles.sh`/`profiles.zsh` for `~/.config/shell/` files. `flake.nix` and `scopes/*.nix` stay on plain `cp` because nix tooling, not the user's shell, reads them.
+`nx.sh`, the four `nx_<family>.sh` files (`nx_pkg`, `nx_scope`, `nx_profile`, `nx_lifecycle`), `nx_doctor.sh`, and `profile_block.sh` are installed via `install_atomic` (temp file + same-filesystem rename) rather than plain `cp`. They get sourced/exec'd by user shells on every `nx` invocation, and a setup re-run that overwrites them with `cp` would race against any concurrent reader: the reader sees a half-written file, parses heredoc bodies as commands, and the user gets cryptic `command not found` / `syntax error near unexpected token ;;` errors. The same pattern is used by `_install_cfg_file` in `profiles.sh`/`profiles.zsh` for `~/.config/shell/` files. `flake.nix` and `scopes/*.nix` stay on plain `cp` because nix tooling, not the user's shell, reads them.
 
 ### Hook directories (`~/.config/nix-env/hooks/`)
 
@@ -439,21 +443,21 @@ in CI).
 
 **Checks:**
 
-| Check                | Pass                                                                                                       | Fail/Warn                         |
-| -------------------- | ---------------------------------------------------------------------------------------------------------- | --------------------------------- |
-| `nix_available`      | `nix` in PATH                                                                                              | FAIL: nix not found               |
-| `flake_lock`         | `flake.lock` exists, nixpkgs node valid                                                                    | FAIL: missing; WARN: unreadable   |
-| `env_dir_files`      | `flake.nix`, `nx.sh`, `nx_doctor.sh`, `profile_block.sh`, `config.nix` all present in `~/.config/nix-env/` | FAIL: lists missing files         |
-| `install_record`     | `install.json` exists, status=success                                                                      | WARN: missing or last run failed  |
-| `scope_binaries`     | All `# bins:` binaries from scope files found                                                              | WARN: lists missing binaries      |
-| `shell_profile`      | Exactly 1 managed block in the **invoking shell's** rc file (bash → `.bashrc`, zsh → `.zshrc`)             | FAIL: zero or duplicates          |
-| `shell_config_files` | Every `~/.config/shell/<file>` referenced by the rc resolves on disk                                       | FAIL: lists missing files         |
-| `cert_bundle`        | Custom CA bundle + VS Code env OK                                                                          | FAIL: bundle or env missing       |
-| `vscode_server_env`  | `~/.vscode-server/server-env-setup` includes nix PATH (if `~/.nix-profile/bin` exists)                     | WARN: nix PATH missing from setup |
-| `nix_profile`        | `nix-env` in `nix profile list`                                                                            | FAIL: not found                   |
-| `nix_profile_link`   | `~/.nix-profile` is a symlink resolving to a live target                                                   | FAIL: missing or dangling         |
-| `overlay_dir`        | `NIX_ENV_OVERLAY_DIR` readable (if set)                                                                    | FAIL: not a readable directory    |
-| `version_skew`       | Installed version matches latest GitHub release (if `gh` available)                                        | WARN: installed version is older  |
+| Check                | Pass                                                                                                                                     | Fail/Warn                         |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| `nix_available`      | `nix` in PATH                                                                                                                            | FAIL: nix not found               |
+| `flake_lock`         | `flake.lock` exists, nixpkgs node valid                                                                                                  | FAIL: missing; WARN: unreadable   |
+| `env_dir_files`      | `flake.nix`, `nx.sh`, `nx_{pkg,scope,profile,lifecycle,doctor}.sh`, `profile_block.sh`, `config.nix` all present in `~/.config/nix-env/` | FAIL: lists missing files         |
+| `install_record`     | `install.json` exists, status=success                                                                                                    | WARN: missing or last run failed  |
+| `scope_binaries`     | All `# bins:` binaries from scope files found                                                                                            | WARN: lists missing binaries      |
+| `shell_profile`      | Exactly 1 managed block in the **invoking shell's** rc file (bash → `.bashrc`, zsh → `.zshrc`)                                           | FAIL: zero or duplicates          |
+| `shell_config_files` | Every `~/.config/shell/<file>` referenced by the rc resolves on disk                                                                     | FAIL: lists missing files         |
+| `cert_bundle`        | Custom CA bundle + VS Code env OK                                                                                                        | FAIL: bundle or env missing       |
+| `vscode_server_env`  | `~/.vscode-server/server-env-setup` includes nix PATH (if `~/.nix-profile/bin` exists)                                                   | WARN: nix PATH missing from setup |
+| `nix_profile`        | `nix-env` in `nix profile list`                                                                                                          | FAIL: not found                   |
+| `nix_profile_link`   | `~/.nix-profile` is a symlink resolving to a live target                                                                                 | FAIL: missing or dangling         |
+| `overlay_dir`        | `NIX_ENV_OVERLAY_DIR` readable (if set)                                                                                                  | FAIL: not a readable directory    |
+| `version_skew`       | Installed version matches latest GitHub release (if `gh` available)                                                                      | WARN: installed version is older  |
 
 **Binary names** are declared in each scope's `.nix` file via a `# bins:` comment (e.g. `# bins: rg yq fzf`). This
 is the single source of truth - `validate_scopes.py` enforces that every scope file has one.
@@ -723,7 +727,7 @@ These constraints are enforced by the `check-bash32` pre-commit hook (`tests/hoo
 
 ## Zsh compatibility constraints (shell-sourced files)
 
-`.assets/config/shell_cfg/*.sh`, `.assets/lib/nx.sh`, and `.assets/lib/profile_block.sh` get sourced into the
+`.assets/config/shell_cfg/*.sh`, `.assets/lib/nx.sh` (and the four sourced family files: `nx_pkg.sh`, `nx_scope.sh`, `nx_profile.sh`, `nx_lifecycle.sh`), and `.assets/lib/profile_block.sh` get sourced into the
 user's interactive shell - directly from `.bashrc`/`.zshrc` for the shell_cfg files, lazily via the `nx()`
 wrapper for `nx.sh`, and from `nx.sh` at runtime for `profile_block.sh`. They must work under both bash and
 zsh. Constraints:

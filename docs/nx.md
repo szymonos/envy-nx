@@ -206,21 +206,21 @@ nx doctor --strict                      # warnings also exit non-zero (CI use)
 
 Read-only health checks that don't touch state:
 
-| Check                | Verifies                                                                                               |
-| -------------------- | ------------------------------------------------------------------------------------------------------ |
-| `nix_available`      | `nix` resolves on PATH                                                                                 |
-| `flake_lock`         | `flake.lock` exists and the nixpkgs node is valid                                                      |
-| `env_dir_files`      | `flake.nix`, `nx.sh`, `nx_doctor.sh`, `profile_block.sh`, `config.nix` present in `~/.config/nix-env/` |
-| `install_record`     | `install.json` exists and the last run succeeded                                                       |
-| `scope_binaries`     | Every binary declared by a scope's `# bins:` is found                                                  |
-| `shell_profile`      | Exactly one managed block in the **invoking shell's** rc (bash → `.bashrc`, zsh → `.zshrc`)            |
-| `shell_config_files` | Every `~/.config/shell/<file>` referenced by the rc resolves on disk                                   |
-| `cert_bundle`        | Custom CA bundle present and VS Code env wired up                                                      |
-| `vscode_server_env`  | `~/.vscode-server/server-env-setup` includes nix PATH                                                  |
-| `nix_profile`        | `nix-env` entry exists in `nix profile list`                                                           |
-| `nix_profile_link`   | `~/.nix-profile` is a live symlink (not missing or dangling)                                           |
-| `overlay_dir`        | Overlay directory is readable (when `NIX_ENV_OVERLAY_DIR` is set)                                      |
-| `version_skew`       | Installed version matches the latest GitHub release (when `gh` is available)                           |
+| Check                | Verifies                                                                                                                             |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `nix_available`      | `nix` resolves on PATH                                                                                                               |
+| `flake_lock`         | `flake.lock` exists and the nixpkgs node is valid                                                                                    |
+| `env_dir_files`      | `flake.nix`, `nx.sh`, `nx_{pkg,scope,profile,lifecycle,doctor}.sh`, `profile_block.sh`, `config.nix` present in `~/.config/nix-env/` |
+| `install_record`     | `install.json` exists and the last run succeeded                                                                                     |
+| `scope_binaries`     | Every binary declared by a scope's `# bins:` is found                                                                                |
+| `shell_profile`      | Exactly one managed block in the **invoking shell's** rc (bash → `.bashrc`, zsh → `.zshrc`)                                          |
+| `shell_config_files` | Every `~/.config/shell/<file>` referenced by the rc resolves on disk                                                                 |
+| `cert_bundle`        | Custom CA bundle present and VS Code env wired up                                                                                    |
+| `vscode_server_env`  | `~/.vscode-server/server-env-setup` includes nix PATH                                                                                |
+| `nix_profile`        | `nix-env` entry exists in `nix profile list`                                                                                         |
+| `nix_profile_link`   | `~/.nix-profile` is a live symlink (not missing or dangling)                                                                         |
+| `overlay_dir`        | Overlay directory is readable (when `NIX_ENV_OVERLAY_DIR` is set)                                                                    |
+| `version_skew`       | Installed version matches the latest GitHub release (when `gh` is available)                                                         |
 
 The `nx doctor --strict` form is what CI runs after every smoke test. Locally, run it whenever something feels off - it usually points at the broken edge in one line.
 

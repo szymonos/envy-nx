@@ -34,7 +34,7 @@ repos:
         name: Check shell-sourced scripts for zsh compatibility
         entry: python3 -m tests.hooks.check_zsh_compat
         language: system
-        files: (\.assets/config/shell_cfg/.*\.sh$|\.assets/lib/(nx|profile_block)\.sh$)
+        files: (\.assets/config/shell_cfg/.*\.sh$|\.assets/lib/(nx|nx_pkg|nx_scope|nx_profile|nx_lifecycle|profile_block)\.sh$)
         types: [file]
       - id: check-nx-completions
         name: Check nx completers match nx_surface.json

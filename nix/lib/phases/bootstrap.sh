@@ -200,14 +200,16 @@ phase_bootstrap_sync_env_dir() {
   cp "$NIX_SRC/flake.nix" "$ENV_DIR/"
   cp -r "$NIX_SRC/scopes" "$ENV_DIR/"
   # Atomic install for files that user shells may source/exec concurrently:
-  # nx.sh is read on every `nx` invocation; profile_block.sh is sourced by
-  # nx.sh at runtime; nx_doctor.sh is exec'd by `nx doctor`. Plain `cp`
-  # opens the dest with O_TRUNC and writes in chunks - a shell that reads
-  # mid-write sees a half-written file (e.g. heredoc body without its
-  # opening line, body lines then interpreted as commands).
-  install_atomic "$SCRIPT_ROOT/.assets/lib/nx.sh" "$ENV_DIR/nx.sh"
-  install_atomic "$SCRIPT_ROOT/.assets/lib/nx_doctor.sh" "$ENV_DIR/nx_doctor.sh"
-  install_atomic "$SCRIPT_ROOT/.assets/lib/profile_block.sh" "$ENV_DIR/profile_block.sh"
+  # nx.sh is read on every `nx` invocation; nx_pkg/scope/profile/lifecycle.sh
+  # are sourced by nx.sh at startup; profile_block.sh is sourced by
+  # nx_profile.sh at runtime; nx_doctor.sh is exec'd by `nx doctor`. Plain
+  # `cp` opens the dest with O_TRUNC and writes in chunks - a shell that
+  # reads mid-write sees a half-written file (e.g. heredoc body without
+  # its opening line, body lines then interpreted as commands).
+  local _nx_lib
+  for _nx_lib in nx.sh nx_pkg.sh nx_scope.sh nx_profile.sh nx_lifecycle.sh nx_doctor.sh profile_block.sh; do
+    install_atomic "$SCRIPT_ROOT/.assets/lib/$_nx_lib" "$ENV_DIR/$_nx_lib"
+  done
   chmod +x "$ENV_DIR/nx.sh"
   ok "synced nix declarations to $ENV_DIR"
 }

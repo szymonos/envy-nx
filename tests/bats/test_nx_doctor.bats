@@ -198,6 +198,10 @@ EOF
 _write_env_dir_files() {
   : >"$ENV_DIR/flake.nix"
   : >"$ENV_DIR/nx.sh"
+  : >"$ENV_DIR/nx_pkg.sh"
+  : >"$ENV_DIR/nx_scope.sh"
+  : >"$ENV_DIR/nx_profile.sh"
+  : >"$ENV_DIR/nx_lifecycle.sh"
   : >"$ENV_DIR/nx_doctor.sh"
   : >"$ENV_DIR/profile_block.sh"
   : >"$ENV_DIR/config.nix"
