@@ -58,11 +58,31 @@ jobs:
     timeout-minutes: 30
     env:
       NIX_CONFIG: "access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}"
+    # Pin every `run:` block to /bin/bash explicitly. Apple ships /bin/bash
+    # at 3.2.57 (frozen at GPLv2, will never update) - the same bash a real
+    # macOS user gets when they invoke `bash nix/setup.sh` from Terminal.
+    # Without this pin GitHub's default shell resolution could pick up
+    # brewed bash 5 if any prior step or runner image change put it on
+    # PATH, silently testing against the wrong shell. See ARCHITECTURE.md
+    # §5 ("Bash 3.2 + BSD sed compatibility") for why this matters.
+    defaults:
+      run:
+        shell: /bin/bash -e {0}
 
     steps:
       # ---- critical steps (fail-fast) ----------------------------------------
       - name: Checkout code
         uses: actions/checkout@v6
+
+      - name: Confirm /bin/bash is Apple's 3.x (test conditions sanity check)
+        run: |
+          /bin/bash --version
+          ver=$(/bin/bash -c 'echo "${BASH_VERSINFO[0]}"')
+          if [ "$ver" -ne 3 ]; then
+            echo "::error::/bin/bash is bash $ver, expected bash 3 (Apple's frozen build). Workflow assumptions broken."
+            exit 1
+          fi
+          echo "/bin/bash major version: $ver"
 
       - name: Reserve GID 350 (simulate conflict)
         run: |
@@ -72,9 +92,13 @@ jobs:
           dscl . -list /Groups PrimaryGroupID | awk '$NF == 350'
 
       - name: Run setup.sh (auto-installs Nix)
+        # Invoke /bin/bash explicitly - the script's `#!/usr/bin/env bash`
+        # shebang would otherwise resolve to whatever bash is first on
+        # PATH, which on macos-15 may be brewed bash 5. We need bash 3.2
+        # to honor the constraint everyone's first-time setup runs under.
         run: |
-          nix/setup.sh \
-            ${{ github.event.inputs.scopes || '--shell --omp-theme base' }} \
+          /bin/bash nix/setup.sh \
+            ${{ github.event.inputs.scopes || '--shell --pwsh --k8s-base --conda --omp-theme base' }} \
             --unattended --quiet-summary
 
       - name: Source nix profile for subsequent steps
@@ -125,7 +149,7 @@ jobs:
         run: |
           echo "--- Verifying scope binaries ---"
           failed=0
-          scopes="${{ github.event.inputs.scopes || '--shell --omp-theme base' }}"
+          scopes="${{ github.event.inputs.scopes || '--shell --pwsh --k8s-base --conda --omp-theme base' }}"
           bins=""
           # map scopes to expected binaries
           [[ "$scopes" == *"--shell"* ]] && bins="$bins fzf eza bat rg yq"
@@ -144,22 +168,34 @@ jobs:
               failed=1
             fi
           done
+          # conda's binary lives under ~/miniforge3/ rather than nix-profile
+          # because miniforge isn't a nix package - configure/conda.sh runs
+          # the official installer. Verify the install dir + the binary.
+          if [[ "$scopes" == *"--conda"* ]]; then
+            if [[ -x "$HOME/miniforge3/bin/conda" ]]; then
+              printf "\e[32m%-20s %s\e[0m\n" "conda" "$HOME/miniforge3/bin/conda"
+            else
+              printf "\e[31m%-20s MISSING (expected at ~/miniforge3/bin/conda)\e[0m\n" "conda"
+              failed=1
+            fi
+          fi
           [ "$failed" -eq 0 ] || exit 1
 
       - name: Run nx doctor
         id: nx-doctor
         continue-on-error: true
-        run: bash "$HOME/.config/nix-env/nx_doctor.sh" --strict
+        # /bin/bash for parity with the user's first-run experience.
+        run: /bin/bash "$HOME/.config/nix-env/nx_doctor.sh" --strict
 
       - name: Verify managed block in shell profile
         id: managed-block
         continue-on-error: true
         run: |
           echo "--- Checking managed block in ~/.bashrc ---"
-          if grep -c '# >>> nix-env managed >>>' ~/.bashrc; then
+          if grep -qF '# >>> nix:managed >>>' ~/.bashrc; then
             echo "managed block present"
           else
-            echo "ERROR: managed block not found in ~/.bashrc"
+            echo "ERROR: nix:managed block not found in ~/.bashrc"
             exit 1
           fi
 
@@ -168,11 +204,11 @@ jobs:
         continue-on-error: true
         run: |
           echo "--- Running setup.sh a second time (idempotency check) ---"
-          nix/setup.sh --unattended --quiet-summary
-          # managed block should appear exactly once
-          count=$(grep -c '# >>> nix-env managed >>>' ~/.bashrc)
+          /bin/bash nix/setup.sh --unattended --quiet-summary
+          # nix:managed block should appear exactly once
+          count=$(grep -cF '# >>> nix:managed >>>' ~/.bashrc)
           if [ "$count" -ne 1 ]; then
-            echo "ERROR: expected 1 managed block, found $count"
+            echo "ERROR: expected 1 nix:managed block, found $count"
             exit 1
           fi
           echo "idempotency check passed"
@@ -186,29 +222,63 @@ jobs:
           jq -e '.status == "success"' "$HOME/.config/dev-env/install.json"
           echo "install.json check passed"
 
-      - name: Run bats unit tests
+      - name: Run full bats suite
         id: bats
         continue-on-error: true
+        # Parallelize across files via xargs -P 4 (mirrors `make test-unit`).
+        # Now that bats is parallel + ~30s for the full suite, running every
+        # file in integration is basically free and catches drift the
+        # changed-file-scoped Preflight Checks workflow would miss.
         run: |
-          echo "--- Running bats tests ---"
-          bats tests/bats/test_nix_setup.bats
+          echo "--- Running full bats suite (parallel) ---"
+          printf '%s\0' tests/bats/*.bats | xargs -0 -P 4 -n 1 bats
+
+      - name: Install Pester module
+        id: pester-install
+        continue-on-error: true
+        # `--pwsh` scope installs the runtime but not Pester itself. The
+        # version is pinned to match repo_checks.yml + CONTRIBUTING.
+        shell: pwsh
+        run: |
+          Install-Module -Name Pester -RequiredVersion 5.6.0 -Repository PSGallery -Scope CurrentUser -Force -SkipPublisherCheck
+
+      - name: Run full Pester suite
+        id: pester
+        continue-on-error: true
+        # Pester runs via the same helper used by `make test-unit` -
+        # ForEach-Object -Parallel inside one pwsh session with
+        # ConcurrentBag for thread-safe result aggregation. ~11s on a
+        # warm pwsh. Requires --pwsh in the install scope (default
+        # macOS scopes include it) and the Pester module installed
+        # by the previous step.
+        run: |
+          echo "--- Running full Pester suite (parallel) ---"
+          if ! command -v pwsh >/dev/null 2>&1; then
+            echo "pwsh not on PATH - install with --pwsh scope to enable Pester in CI"
+            exit 1
+          fi
+          pwsh -nop -File tests/hooks/pester_parallel.ps1
 
       - name: Verify uninstaller (env-only)
         id: uninstaller
         continue-on-error: true
         run: |
           echo "--- Running nix/uninstall.sh --env-only ---"
-          nix/uninstall.sh --env-only
+          /bin/bash nix/uninstall.sh --env-only
 
-          echo "--- Checking nix-env managed block removed ---"
+          echo "--- Checking nix:managed block removed (and legacy too) ---"
+          if grep -qF '# >>> nix:managed >>>' ~/.bashrc; then
+            echo "ERROR: nix:managed block still present"
+            exit 1
+          fi
           if grep -qF '# >>> nix-env managed >>>' ~/.bashrc; then
-            echo "ERROR: nix-env managed block still present"
+            echo "ERROR: legacy nix-env managed block still present"
             exit 1
           fi
 
-          echo "--- Checking managed env block preserved ---"
-          if ! grep -qF '# >>> managed env >>>' ~/.bashrc; then
-            echo "ERROR: managed env block missing"
+          echo "--- Checking env:managed block preserved ---"
+          if ! grep -qF '# >>> env:managed >>>' ~/.bashrc; then
+            echo "ERROR: env:managed block missing"
             exit 1
           fi
 
@@ -229,6 +299,22 @@ jobs:
 
           echo "--- Checking Nix still installed ---"
           test -d /nix/store
+
+          # The uninstaller's phase 1g removes ~/miniforge3/ and the conda
+          # init block from the rc. Verify both - this is the only
+          # integration-time check that conda cleanup actually fires.
+          if [[ "${{ github.event.inputs.scopes || '--shell --pwsh --k8s-base --conda --omp-theme base' }}" == *"--conda"* ]]; then
+            echo "--- Checking conda cleanup (miniforge3 + conda init block) ---"
+            if [ -d "$HOME/miniforge3" ]; then
+              echo "ERROR: ~/miniforge3 still exists after uninstall"
+              exit 1
+            fi
+            if grep -qF '# >>> conda initialize >>>' ~/.bashrc; then
+              echo "ERROR: conda initialize block still in ~/.bashrc"
+              exit 1
+            fi
+            echo "conda cleanup verified"
+          fi
           echo "uninstall checks passed"
 
       # ---- summary -----------------------------------------------------------
@@ -264,6 +350,7 @@ jobs:
               idempotency)   outcome="${{ steps.idempotency.outcome }}" ;;
               provenance)    outcome="${{ steps.provenance.outcome }}" ;;
               bats)          outcome="${{ steps.bats.outcome }}" ;;
+              pester)        outcome="${{ steps.pester.outcome }}" ;;
               uninstaller)   outcome="${{ steps.uninstaller.outcome }}" ;;
             esac
             echo "$(gh_to_emoji "$outcome") $label : $outcome"
@@ -276,6 +363,7 @@ jobs:
             idempotency:Idempotency
             provenance:Install provenance
             bats:Bats unit tests
+            pester:Pester unit tests
             uninstaller:Uninstaller
           STEPS
 
