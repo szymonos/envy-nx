@@ -190,3 +190,46 @@ gh_login_user() {
 
   return 0
 }
+
+# Run a command with a wall-clock timeout, falling back to direct invocation
+# when no timeout binary is available. `timeout(1)` ships with GNU coreutils
+# (Linux distros, WSL) but is NOT in stock macOS userland; brewed coreutils
+# installs it as `gtimeout`. Defensive callers should use this helper so the
+# timeout is best-effort - "bound the wait if the OS gives us a way to" -
+# rather than a hard requirement that breaks on macOS.
+#
+# Usage:
+#   _with_timeout 5 gh api repos/foo/bar/releases/latest
+#
+# Returns the wrapped command's exit code, or 124 when the timeout fires
+# (matching `timeout(1)`'s convention). When neither timeout binary is
+# present, the wrapped command runs unbounded - acceptable for the
+# best-effort case; callers that need a hard upper bound must implement
+# it themselves.
+function _with_timeout() {
+  local _wt_seconds="$1"
+  shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$_wt_seconds" "$@"
+  elif command -v gtimeout >/dev/null 2>&1; then
+    gtimeout "$_wt_seconds" "$@"
+  else
+    "$@"
+  fi
+}
+
+# Mark a step within a configure script for structured failure reporting.
+# Writes a marker to stderr that _io_run (in nix/lib/io.sh) recognizes and
+# surfaces in the failure output - so when configure/conda.sh dies, the user
+# sees "failed at step: install miniforge" instead of just conda's raw error
+# stream. Markers are silent on success (captured stderr is discarded by
+# _io_run when the command succeeds) and stripped from the user-visible
+# error output on failure (they're just routing metadata, not user info).
+#
+# Usage (inside any configure script):
+#   _io_step "downloading miniforge installer"
+#   curl -fsSL ... | bash
+_IO_STEP_PREFIX="__IO_STEP__::"
+_io_step() {
+  printf '%s%s\n' "$_IO_STEP_PREFIX" "$*" >&2
+}

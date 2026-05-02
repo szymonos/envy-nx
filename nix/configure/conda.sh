@@ -34,6 +34,7 @@ find_conda() {
 
 # install miniforge if not present
 if ! find_conda &>/dev/null; then
+  _io_step "detecting platform for miniforge installer"
   info "installing Miniforge..."
   OS_NAME="$(uname -s)"
   ARCH="$(uname -m)"
@@ -48,13 +49,16 @@ if ! find_conda &>/dev/null; then
   MINIFORGE_URL="https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-${os_label}-${ARCH}.sh"
   TMP_DIR="$(mktemp -d)"
   trap 'rm -rf "$TMP_DIR"' EXIT
+  _io_step "downloading miniforge installer"
   download_file --uri "$MINIFORGE_URL" --target_dir "$TMP_DIR"
+  _io_step "running miniforge installer (~/miniforge3)"
   bash "$TMP_DIR/$(basename "$MINIFORGE_URL")" -b -p "$HOME/miniforge3"
 fi
 
 # miniforge post-install
 conda_bin="$(find_conda || true)"
 if [[ -n "$conda_bin" ]]; then
+  _io_step "initializing conda shell hook"
   # initialize conda shell function so `conda activate` works inside this script
   eval "$("$conda_bin" shell.bash hook 2>/dev/null)"
 
@@ -66,12 +70,17 @@ if [[ -n "$conda_bin" ]]; then
     conda deactivate
   }
 
+  _io_step "patching conda's certifi for MITM proxy"
   _fix_conda_certs
+  _io_step "updating conda packages"
   info "updating conda..."
   "$conda_bin" update --name base --channel conda-forge conda --yes --update-all 2>/dev/null || warn "conda update failed"
   # update may replace cacert.pem - re-patch
+  _io_step "re-patching certifi after conda update"
   _fix_conda_certs
+  _io_step "cleaning conda package cache"
   "$conda_bin" clean --yes --all 2>/dev/null || true
+  _io_step "initializing conda shell integration (init bash zsh)"
   # initialize shell integration and disable auto-activate
   "$conda_bin" init bash zsh 2>/dev/null || warn "conda shell init failed - run 'conda init bash zsh' manually"
   "$conda_bin" config --set auto_activate_base false
