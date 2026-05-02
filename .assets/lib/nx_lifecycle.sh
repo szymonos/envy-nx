@@ -7,7 +7,9 @@
 function _nx_self_sync() {
   local repo_path="$1"
   local f
-  for f in nx.sh nx_pkg.sh nx_scope.sh nx_profile.sh nx_lifecycle.sh nx_doctor.sh profile_block.sh; do
+  # >>> nx-libs generated >>> (regenerate: python3 -m tests.hooks.gen_nx_completions)
+  for f in nx.sh nx_lifecycle.sh nx_pkg.sh nx_profile.sh nx_scope.sh nx_doctor.sh profile_block.sh; do
+    # <<< nx-libs generated <<<
     if [ -f "$repo_path/.assets/lib/$f" ]; then
       command cp -f "$repo_path/.assets/lib/$f" "$_NX_ENV_DIR/$f"
       [ "$f" = "nx.sh" ] && chmod +x "$_NX_ENV_DIR/$f"
@@ -31,7 +33,7 @@ function _nx_lifecycle_version() {
     cat "$install_json"
     return 0
   fi
-  local ver entry src src_ref scopes installed_at mode status phase plat nix_ver err_msg
+  local ver entry src src_ref scopes installed_at mode status phase plat nix_ver bash_ver err_msg
   ver="$(jq -r '.version // "unknown"' "$install_json")"
   entry="$(jq -r '.entry_point // "unknown"' "$install_json")"
   src="$(jq -r '.source // "unknown"' "$install_json")"
@@ -43,6 +45,7 @@ function _nx_lifecycle_version() {
   phase="$(jq -r '.phase // "unknown"' "$install_json")"
   plat="$(jq -r '"\(.platform // "unknown")/\(.arch // "unknown")"' "$install_json")"
   nix_ver="$(jq -r '.nix_version // ""' "$install_json")"
+  bash_ver="$(jq -r '.bash_version // ""' "$install_json")"
   err_msg="$(jq -r '.error // ""' "$install_json")"
 
   local unfree="false"
@@ -73,6 +76,7 @@ function _nx_lifecycle_version() {
   fi
   printf "  \e[90mInstalled: \e[0m%s\n" "$installed_at"
   [ -n "$nix_ver" ] && printf "  \e[90mNix:       \e[0m%s\n" "$nix_ver"
+  [ -n "$bash_ver" ] && printf "  \e[90mBash:      \e[0m%s\n" "$bash_ver"
   printf "  \e[90mScopes:    \e[0m%s\n" "$scopes"
   if [ "$unfree" = "true" ]; then
     printf "  \e[90mUnfree:    \e[33menabled\e[0m\n"
@@ -127,7 +131,7 @@ function _nx_lifecycle_setup() {
   bash "$_setup_target/nix/setup.sh" "$@"
 }
 
-function _nx_lifecycle_self() {
+function _nx_self_dispatch() {
   case "${1:-help}" in
   update)
     shift

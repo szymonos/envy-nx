@@ -217,7 +217,9 @@ phase_bootstrap_sync_env_dir() {
   # reads mid-write sees a half-written file (e.g. heredoc body without
   # its opening line, body lines then interpreted as commands).
   local _nx_lib
-  for _nx_lib in nx.sh nx_pkg.sh nx_scope.sh nx_profile.sh nx_lifecycle.sh nx_doctor.sh profile_block.sh; do
+  # >>> nx-libs generated >>> (regenerate: python3 -m tests.hooks.gen_nx_completions)
+  for _nx_lib in nx.sh nx_lifecycle.sh nx_pkg.sh nx_profile.sh nx_scope.sh nx_doctor.sh profile_block.sh; do
+    # <<< nx-libs generated <<<
     install_atomic "$SCRIPT_ROOT/.assets/lib/$_nx_lib" "$ENV_DIR/$_nx_lib"
   done
   chmod +x "$ENV_DIR/nx.sh"

@@ -9,37 +9,44 @@
   "verbs": [
     {
       "name": "search",
+      "family": "pkg",
       "summary": "search nixpkgs for a package",
       "args": [{ "name": "query", "required": true }]
     },
     {
       "name": "install",
+      "family": "pkg",
       "aliases": ["add"],
       "summary": "install packages from nixpkgs",
       "args": [{ "name": "packages", "variadic": true, "required": true }]
     },
     {
       "name": "remove",
+      "family": "pkg",
       "aliases": ["uninstall"],
       "summary": "remove installed packages",
       "args": [{ "name": "packages", "variadic": true, "required": true, "completer": "installed_packages" }]
     },
     {
       "name": "upgrade",
+      "family": "pkg",
       "aliases": ["update"],
       "summary": "upgrade all packages"
     },
     {
       "name": "rollback",
+      "family": "pkg",
       "summary": "rollback to previous profile generation"
     },
     {
       "name": "list",
+      "family": "pkg",
       "aliases": ["ls"],
       "summary": "list installed packages"
     },
     {
       "name": "scope",
+      "family": "scope",
       "summary": "manage scopes",
       "subverbs": [
         { "name": "list", "summary": "list all scopes" },
@@ -52,6 +59,7 @@
     },
     {
       "name": "overlay",
+      "family": "scope",
       "summary": "manage overlay directory",
       "subverbs": [
         { "name": "list", "summary": "show overlay directory and contents" },
@@ -60,6 +68,7 @@
     },
     {
       "name": "pin",
+      "family": "scope",
       "summary": "manage nixpkgs revision pin",
       "subverbs": [
         { "name": "set", "summary": "pin nixpkgs to a specific revision", "args": [{ "name": "revision" }] },
@@ -70,6 +79,7 @@
     },
     {
       "name": "profile",
+      "family": "profile",
       "summary": "manage shell profile blocks",
       "subverbs": [
         { "name": "doctor", "summary": "check profile block health" },
@@ -80,6 +90,7 @@
     },
     {
       "name": "setup",
+      "family": "lifecycle",
       "summary": "run nix/setup.sh from anywhere",
       "help_args": "[flags...]",
       "flags": [
@@ -112,6 +123,7 @@
     },
     {
       "name": "self",
+      "family": "lifecycle",
       "summary": "manage the source repository",
       "subverbs": [
         {
@@ -127,6 +139,7 @@
     },
     {
       "name": "doctor",
+      "family": "lifecycle",
       "summary": "run health checks",
       "flags": [
         { "long": "--strict", "summary": "treat warnings as failures" },
@@ -135,19 +148,23 @@
     },
     {
       "name": "prune",
+      "family": "pkg",
       "summary": "remove old profile generations"
     },
     {
       "name": "gc",
+      "family": "pkg",
       "aliases": ["clean"],
       "summary": "run nix garbage collection"
     },
     {
       "name": "version",
+      "family": "lifecycle",
       "summary": "show version information"
     },
     {
       "name": "help",
+      "family": "lifecycle",
       "aliases": ["-h", "--help"],
       "summary": "show help"
     }

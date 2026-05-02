@@ -185,21 +185,22 @@ function nx_main() {
   local cmd="${1:-help}"
   shift 2>/dev/null || true
   case "$cmd" in
+  # >>> nx-main generated >>> (regenerate: python3 -m tests.hooks.gen_nx_completions)
   search) _nx_pkg_search "$@" ;;
   install | add) _nx_pkg_install "$@" ;;
   remove | uninstall) _nx_pkg_remove "$@" ;;
-  upgrade | update) _nx_pkg_upgrade "$@" ;;
-  list | ls) _nx_pkg_list ;;
-  prune) _nx_pkg_prune ;;
-  gc | clean) _nx_pkg_gc ;;
+  upgrade | update) _nx_pkg_upgrade ;;
   rollback) _nx_pkg_rollback ;;
+  list | ls) _nx_pkg_list ;;
   scope) _nx_scope_dispatch "$@" ;;
   overlay) _nx_overlay_dispatch "$@" ;;
   pin) _nx_pin_dispatch "$@" ;;
   profile) _nx_profile_dispatch "$@" ;;
   setup) _nx_lifecycle_setup "$@" ;;
-  self) _nx_lifecycle_self "$@" ;;
+  self) _nx_self_dispatch "$@" ;;
   doctor) _nx_lifecycle_doctor "$@" ;;
+  prune) _nx_pkg_prune ;;
+  gc | clean) _nx_pkg_gc ;;
   version) _nx_lifecycle_version ;;
   help | -h | --help) _nx_lifecycle_help ;;
   *)
@@ -207,6 +208,7 @@ function nx_main() {
     _nx_lifecycle_help
     return 1
     ;;
+  # <<< nx-main generated <<<
   esac
 }
 
