@@ -102,15 +102,54 @@ def main(argv: list[str] | None = None) -> int:
 
     # build Pester invocation with specific test files
     test_paths = sorted(str(f) for f in to_run)
-    paths_arg = ", ".join(f"'{p}'" for p in test_paths)
-    # Use Configuration to enable exit-on-failure without XML report conflicts
-    pester_cmd = (
-        "$cfg = New-PesterConfiguration; "
-        f"$cfg.Run.Path = @({paths_arg}); "
-        "$cfg.Run.Exit = $true; "
-        "$cfg.Output.Verbosity = 'Detailed'; "
-        "Invoke-Pester -Configuration $cfg"
-    )
+    if len(test_paths) <= 1:
+        # Single file: don't bother with parallel runspaces - direct invocation
+        # is faster than the ForEach-Object -Parallel setup overhead.
+        paths_arg = ", ".join(f"'{p}'" for p in test_paths)
+        pester_cmd = (
+            "$cfg = New-PesterConfiguration; "
+            f"$cfg.Run.Path = @({paths_arg}); "
+            "$cfg.Run.Exit = $true; "
+            "$cfg.Output.Verbosity = 'Detailed'; "
+            "Invoke-Pester -Configuration $cfg"
+        )
+    else:
+        # Multiple files: parallelize via ForEach-Object -Parallel inside one
+        # pwsh session - avoids paying ~3s pwsh startup per file. Each runspace
+        # runs Invoke-Pester on one file; results land in a ConcurrentBag for
+        # thread-safe aggregation (ForEach-Object -Parallel's pipeline output
+        # is documented as thread-safe but ConcurrentBag is the more defensive
+        # idiom). ThrottleLimit 4 matches the bats hook's xargs -P 4.
+        # `$errBag` captures runspace crashes (Invoke-Pester throws before
+        # returning a result object). Without this, a worker death leaves
+        # zero entries in `$bag`, FailedCount stays 0, and the hook reports
+        # success despite the crash. Catch + record the file path so the
+        # error message is actionable.
+        paths_arg = ", ".join(f"'{p}'" for p in test_paths)
+        pester_cmd = (
+            f"$paths = @({paths_arg}); "
+            "$bag = [System.Collections.Concurrent.ConcurrentBag[object]]::new(); "
+            "$errBag = [System.Collections.Concurrent.ConcurrentBag[string]]::new(); "
+            "$paths | ForEach-Object -Parallel { "
+            "$localBag = $using:bag; "
+            "$localErrBag = $using:errBag; "
+            "$file = $_; "
+            "try { "
+            "$cfg = New-PesterConfiguration; "
+            "$cfg.Run.Path = $file; "
+            "$cfg.Run.PassThru = $true; "
+            "$cfg.Output.Verbosity = 'Detailed'; "
+            "$localBag.Add((Invoke-Pester -Configuration $cfg)) "
+            '} catch { $localErrBag.Add("${file}: $_") } '
+            "} -ThrottleLimit 4; "
+            "$errs = $errBag.ToArray(); "
+            "if ($errs.Count -gt 0) { "
+            'Write-Host "`e[31m$($errs.Count) runspace(s) crashed:`e[0m"; '
+            'foreach ($e in $errs) { Write-Host "  $e" }; '
+            "exit 1 } "
+            "$failed = ($bag.ToArray() | Measure-Object -Property FailedCount -Sum).Sum; "
+            "if ($failed -gt 0) { exit 1 }"
+        )
 
     pwsh = Path.home() / ".nix-profile" / "bin" / "pwsh"
     if not pwsh.exists():

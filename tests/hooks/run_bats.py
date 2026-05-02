@@ -11,6 +11,7 @@ python3 -m tests.hooks.run_bats
 python3 -m tests.hooks.run_bats .assets/lib/scopes.sh tests/bats/test_scopes.bats
 """
 
+import os
 import re
 import shutil
 import subprocess
@@ -87,9 +88,82 @@ def main(argv: list[str] | None = None) -> int:
     if not to_run:
         return 0
 
-    cmd = ["bats"] + sorted(str(f) for f in to_run)
-    result = subprocess.run(cmd)
-    return result.returncode
+    # Strip env vars known to make bats children hang on hostile environments:
+    # - HTTP_PROXY / HTTPS_PROXY (corporate proxy unreachable)
+    # - GIT_TERMINAL_PROMPT=1 (forces git to prompt for missing creds)
+    # - NIX_ENV_TLS_PROBE_URL (would trigger MITM probe code paths in some tests)
+    # - NIX_ENV_OVERLAY_DIR (could point at an unreadable corp share)
+    # - GH_TOKEN / GITHUB_TOKEN (bad token can stall `gh` even with our
+    #   NX_DOCTOR_SKIP_NETWORK guard if other tests shell out to gh)
+
+    env = {**os.environ}
+    for var in (
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "NO_PROXY",
+        "ALL_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "no_proxy",
+        "all_proxy",
+        "GH_TOKEN",
+        "GITHUB_TOKEN",
+        "NIX_ENV_TLS_PROBE_URL",
+        "NIX_ENV_OVERLAY_DIR",
+        "GIT_TERMINAL_PROMPT",
+    ):
+        env.pop(var, None)
+    # Defense-in-depth: block any code path that might still want to talk to GH.
+    env["NX_DOCTOR_SKIP_NETWORK"] = "1"
+    # Tell git to never prompt (returns non-zero immediately on missing creds).
+    env["GIT_TERMINAL_PROMPT"] = "0"
+
+    # Best-effort wall-clock timeout per bats invocation. timeout(1) ships
+    # with GNU coreutils (Linux/WSL); macOS userland lacks it but brewed
+    # coreutils installs `gtimeout`. When neither is present, run unbounded -
+    # the timeout is a hang-prevention safety net, not a hard requirement,
+    # and pre-commit users can Ctrl-C if a real hang appears.
+    timeout_prefix: list[str] = []
+    if shutil.which("timeout"):
+        timeout_prefix = ["timeout", "60"]
+    elif shutil.which("gtimeout"):
+        timeout_prefix = ["gtimeout", "60"]
+
+    sorted_files = sorted(str(f) for f in to_run)
+    if len(sorted_files) <= 1:
+        return subprocess.run(
+            timeout_prefix + ["bats"] + sorted_files, env=env
+        ).returncode
+
+    # Multiple files: parallelize one bats process per file. bats's native
+    # -j needs GNU parallel which isn't bootstrapped by this repo; xargs -P
+    # gives ~2-3x wall-time win without the dependency. Capped at 4 - tests
+    # do lots of mktemp/io and disks thrash above that.
+    #
+    # If a timeout binary is available, each child bats gets `timeout 60`;
+    # otherwise children run unbounded. Per-file progress markers go to
+    # stderr so users running outside prek see which file is slow.
+    if timeout_prefix:
+        timeout_invoke = f'{timeout_prefix[0]} {timeout_prefix[1]} bats "$1"'
+        timeout_note = (
+            '[ $rc -eq 124 ] && echo ">>> [bats] TIMEOUT after 60s: $1" >&2; '
+        )
+    else:
+        timeout_invoke = 'bats "$1"'
+        timeout_note = ""
+    sh_cmd = (
+        'echo ">>> [bats] starting $1" >&2; '
+        f"{timeout_invoke}; rc=$?; "
+        f"{timeout_note}"
+        'echo ">>> [bats] done    $1 (rc=$rc)" >&2; '
+        "exit $rc"
+    )
+    proc = subprocess.run(
+        ["xargs", "-0", "-P", "4", "-n", "1", "sh", "-c", sh_cmd, "_"],
+        input="\0".join(sorted_files).encode(),
+        env=env,
+    )
+    return proc.returncode
 
 
 if __name__ == "__main__":

@@ -43,10 +43,19 @@ upgrade: ## Upgrade prek and hooks versions
 .PHONY: test test-unit test-nix
 test: test-unit test-nix ## Run all tests (unit + Docker smoke)
 
-test-unit: ## Run bats unit tests (fast, no Docker)
+test-unit: ## Run bats + Pester unit tests in parallel (fast, no Docker)
 	@printf "\n\033[95;1m== Running unit tests ==\033[0m\n\n"
-	@bats tests/bats/
-	@pwsh -c '$$cfg = New-PesterConfiguration; $$cfg.Run.Path = "tests/pester/"; $$cfg.Run.Exit = $$true; $$cfg.Output.Verbosity = "Detailed"; Invoke-Pester -Configuration $$cfg'
+	@# Bats: parallelize across files via xargs -P. bats's native -j requires
+	@# GNU parallel which isn't bootstrapped by this repo. Capped at 4 workers
+	@# - tests do lots of mktemp/io and disks thrash above that.
+	@# Shell glob (not `find -maxdepth`) for portability: `-maxdepth` is a
+	@# GNU extension that BSD find on stock macOS lacks. The bats dir is
+	@# flat (no subdirs to recurse into), so the glob is sufficient.
+	@printf '%s\0' tests/bats/*.bats | xargs -0 -P 4 -n 1 bats
+	@# Pester: file-level parallelism via ForEach-Object -Parallel inside a
+	@# single pwsh session (avoids paying ~3s pwsh startup per file). The
+	@# helper script is also reusable from CI / hooks / dev shell.
+	@pwsh -nop -File tests/hooks/pester_parallel.ps1
 
 test-nix: ## Run Docker smoke test for nix path
 	@printf "\n\033[95;1m== Testing nix path (nix/setup.sh) ==\033[0m\n\n"
