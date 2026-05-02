@@ -6,10 +6,14 @@ function git_current_branch() {
 function git_resolve_branch() {
   case "$1" in
   '')
-    pattern='(^|/)dev(|el|elop|elopment)$|(^|/)ma(in|ster)$|(^|/)trunk$'
+    # Use `(el|elop|elopment)?` instead of `(|el|elop|elopment)` - BSD grep
+    # on macOS doesn't accept the empty-alternative form and silently fails
+    # to match, so the function returns the literal pattern instead of `dev`
+    # or `development`.
+    pattern='(^|/)dev(el|elop|elopment)?$|(^|/)ma(in|ster)$|(^|/)trunk$'
     ;;
   d)
-    pattern='(^|/)dev(|el|elop|elopment)$'
+    pattern='(^|/)dev(el|elop|elopment)?$'
     ;;
   m)
     pattern='(^|/)ma(in|ster)$'
@@ -51,7 +55,7 @@ alias gb='git branch'
 alias gba='git branch -a'
 alias gbd='git branch -d'
 alias gbd!='git branch -D'
-alias gbda='git branch --format="%(refname:short)" --merged | command grep -vE "^ma(in|ster)$|^dev(|el|elop)$|^qa$|^stage$|^trunk$" | command xargs -n 1 git branch -d'
+alias gbda='git branch --format="%(refname:short)" --merged | command grep -vE "^ma(in|ster)$|^dev(el|elop)?$|^qa$|^stage$|^trunk$" | command xargs -n 1 git branch -d'
 alias gbnm='git branch --no-merged'
 alias gbr='git branch --remote'
 alias gbsu='git branch --set-upstream-to=origin/$(git_current_branch)'
