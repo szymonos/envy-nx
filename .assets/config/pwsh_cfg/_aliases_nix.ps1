@@ -358,6 +358,39 @@ function _NxProfileDoctor {
 
 #endregion
 
+function _NxProfileUninstall {
+    # Remove all nix-managed regions from the user's PowerShell profiles.
+    # Mirrors the bash `nx profile uninstall` (which removes the managed
+    # blocks from .bashrc / .zshrc) - same surface, different file format.
+    $profilePath = $PROFILE.CurrentUserAllHosts
+    $shortPath = _NxShortPath $profilePath
+    if ([IO.File]::Exists($profilePath)) {
+        Write-Host "`e[96mCleaning $shortPath`e[0m"
+        $content = [System.Collections.Generic.List[string]]::new(
+            [IO.File]::ReadAllLines($profilePath)
+        )
+        foreach ($region in @('nix:base', 'nix:path', 'nix:certs', 'nix:starship',
+                'nix:oh-my-posh', 'nix:uv', 'local-path')) {
+            _NxRemoveProfileRegion -Lines $content -RegionName $region | Out-Null
+        }
+        [IO.File]::WriteAllText($profilePath, "$(($content -join "`n").Trim())`n")
+        Write-Host "`e[32m  removed managed regions`e[0m"
+    }
+    $kubectlProfilePath = $PROFILE.CurrentUserCurrentHost
+    $kubectlShortPath = _NxShortPath $kubectlProfilePath
+    if ([IO.File]::Exists($kubectlProfilePath)) {
+        $kContent = [System.Collections.Generic.List[string]]::new(
+            [IO.File]::ReadAllLines($kubectlProfilePath)
+        )
+        if (_NxRemoveProfileRegion -Lines $kContent -RegionName 'nix:kubectl') {
+            Write-Host "`e[96mCleaning $kubectlShortPath`e[0m"
+            [IO.File]::WriteAllText($kubectlProfilePath, "$(($kContent -join "`n").Trim())`n")
+            Write-Host "`e[32m  removed nix:kubectl`e[0m"
+        }
+    }
+    Write-Host "`e[32mProfile regions removed`e[0m"
+}
+
 #region nix package management wrapper (apt/brew-like UX)
 function nx {
     # Profile commands are handled natively in PowerShell
@@ -366,38 +399,12 @@ function nx {
         if ($args.Count -gt 1) { $subArgs = $args[1..($args.Count - 1)] }
         $subCmd = if ($subArgs.Count -gt 0) { $subArgs[0] } else { 'help' }
         switch ($subCmd) {
-            'regenerate' { _NxProfileRegenerate }
+                                    #region nx:dispatch (regenerate: python3 -m tests.hooks.gen_nx_completions)
             'doctor' { _NxProfileDoctor }
-            'uninstall' {
-                $profilePath = $PROFILE.CurrentUserAllHosts
-                $shortPath = _NxShortPath $profilePath
-                if ([IO.File]::Exists($profilePath)) {
-                    Write-Host "`e[96mCleaning $shortPath`e[0m"
-                    $content = [System.Collections.Generic.List[string]]::new(
-                        [IO.File]::ReadAllLines($profilePath)
-                    )
-                    foreach ($region in @('nix:base', 'nix:path', 'nix:certs', 'nix:starship',
-                        'nix:oh-my-posh', 'nix:uv', 'local-path')) {
-                        _NxRemoveProfileRegion -Lines $content -RegionName $region | Out-Null
-                    }
-                    [IO.File]::WriteAllText($profilePath, "$(($content -join "`n").Trim())`n")
-                    Write-Host "`e[32m  removed managed regions`e[0m"
-                }
-                $kubectlProfilePath = $PROFILE.CurrentUserCurrentHost
-                $kubectlShortPath = _NxShortPath $kubectlProfilePath
-                if ([IO.File]::Exists($kubectlProfilePath)) {
-                    $kContent = [System.Collections.Generic.List[string]]::new(
-                        [IO.File]::ReadAllLines($kubectlProfilePath)
-                    )
-                    if (_NxRemoveProfileRegion -Lines $kContent -RegionName 'nix:kubectl') {
-                        Write-Host "`e[96mCleaning $kubectlShortPath`e[0m"
-                        [IO.File]::WriteAllText($kubectlProfilePath, "$(($kContent -join "`n").Trim())`n")
-                        Write-Host "`e[32m  removed nix:kubectl`e[0m"
-                    }
-                }
-                Write-Host "`e[32mProfile regions removed`e[0m"
-            }
+            'regenerate' { _NxProfileRegenerate }
+            'uninstall' { _NxProfileUninstall }
             'help' { _NxProfileHelp }
+            #endregion nx:dispatch
             default { _NxProfileHelp }
         }
         return

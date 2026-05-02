@@ -41,30 +41,12 @@ repos:
         entry: python3 -m tests.hooks.check_no_tty_read
         language: system
         files: ^(\.assets/|nix/|wsl/|modules/).*\.(sh|zsh|bash)$
-      - id: check-nx-completions
-        name: Check nx completers and help text match nx_surface.json
+      - id: check-nx-generated
+        name: Check nx generated artifacts (completers, help, dispatch, lib-files) match nx_surface.json
         entry: python3 -m tests.hooks.check_nx_completions
         language: system
         pass_filenames: false
-        files: (\.assets/lib/nx_surface\.json|\.assets/lib/nx_lifecycle\.sh|\.assets/config/shell_cfg/completions\.(bash|zsh)|\.assets/config/pwsh_cfg/_aliases_nix\.ps1|tests/hooks/(gen|check)_nx_completions\.py)
-      - id: check-nx-profile-parity
-        name: Check nx profile dispatcher parity (bash vs PowerShell)
-        entry: python3 -m tests.hooks.check_nx_profile_parity
-        language: system
-        pass_filenames: false
-        files: (\.assets/lib/nx_surface\.json|\.assets/config/pwsh_cfg/_aliases_nix\.ps1|tests/hooks/check_nx_profile_parity\.py)
-      - id: check-nx-dispatch-parity
-        name: Check nx_main dispatcher parity (bash vs nx_surface.json)
-        entry: python3 -m tests.hooks.check_nx_dispatch_parity
-        language: system
-        pass_filenames: false
-        files: (\.assets/lib/nx_surface\.json|\.assets/lib/nx\.sh|tests/hooks/check_nx_dispatch_parity\.py)
-      - id: check-nx-lib-files-parity
-        name: Check nx lib-file list parity across sync/self-sync/doctor
-        entry: python3 -m tests.hooks.check_nx_lib_files_parity
-        language: system
-        pass_filenames: false
-        files: (nix/lib/phases/bootstrap\.sh|\.assets/lib/nx_lifecycle\.sh|\.assets/lib/nx_doctor\.sh|tests/hooks/check_nx_lib_files_parity\.py)
+        files: (\.assets/lib/nx_surface\.json|\.assets/lib/(nx|nx_lifecycle|nx_doctor)\.sh|\.assets/config/shell_cfg/completions\.(bash|zsh)|\.assets/config/pwsh_cfg/_aliases_nix\.ps1|nix/lib/phases/bootstrap\.sh|tests/hooks/(gen|check)_nx_completions\.py)
       - id: bats-tests
         name: Run bats unit tests
         entry: python3 -m tests.hooks.run_bats

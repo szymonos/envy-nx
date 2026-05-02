@@ -39,12 +39,31 @@ BASH_OUT = REPO_ROOT / ".assets/config/shell_cfg/completions.bash"
 ZSH_OUT = REPO_ROOT / ".assets/config/shell_cfg/completions.zsh"
 PS_FILE = REPO_ROOT / ".assets/config/pwsh_cfg/_aliases_nix.ps1"
 LIFECYCLE_FILE = REPO_ROOT / ".assets/lib/nx_lifecycle.sh"
+NX_FILE = REPO_ROOT / ".assets/lib/nx.sh"
+BOOTSTRAP_FILE = REPO_ROOT / "nix/lib/phases/bootstrap.sh"
+DOCTOR_FILE = REPO_ROOT / ".assets/lib/nx_doctor.sh"
 
 PS_REGION_RE = re.compile(r"#region nx-completer.*?#endregion nx-completer", re.DOTALL)
 HELP_REGION_RE = re.compile(
     r"# >>> nx-help generated >>>.*?# <<< nx-help generated <<<",
     re.DOTALL,
 )
+NX_MAIN_REGION_RE = re.compile(
+    r"# >>> nx-main generated >>>.*?# <<< nx-main generated <<<",
+    re.DOTALL,
+)
+PS_DISPATCH_REGION_RE = re.compile(
+    r"#region nx:dispatch.*?#endregion nx:dispatch", re.DOTALL
+)
+LIB_FILES_REGION_RE = re.compile(
+    r"# >>> nx-libs generated >>>.*?# <<< nx-libs generated <<<",
+    re.DOTALL,
+)
+
+# Files in nx_doctor.sh's _check_env_dir_files loop that are not from
+# .assets/lib/ but are legitimately expected in ENV_DIR (produced by other
+# phases). Appended after the manifest-derived list when generating that site.
+DOCTOR_AUXILIARY_FILES = ("flake.nix", "config.nix")
 
 GEN_NOTICE_SH = (
     "# Generated from .assets/lib/nx_surface.json - DO NOT EDIT\n"
@@ -564,6 +583,166 @@ def _help_summary(verb):
     return summary
 
 
+def _verb_handler(verb):
+    """Resolve the bash handler function for a top-level verb.
+
+    Convention:
+      - verbs with subverbs route to `_nx_<name>_dispatch` (the family file
+        owns the subverb routing internally).
+      - verbs without subverbs route to `_nx_<family>_<name>` and require
+        an explicit `family` field in the manifest. Failing loudly here
+        prevents a silently-broken dispatcher.
+    """
+    if verb.get("subverbs"):
+        return f"_nx_{verb['name']}_dispatch"
+    family = verb.get("family")
+    if not family:
+        raise SystemExit(
+            f"manifest verb {verb['name']!r} has no `family` and no `subverbs` - "
+            'cannot derive the bash handler. Add `"family": "pkg|lifecycle|..."`.'
+        )
+    return f"_nx_{family}_{verb['name']}"
+
+
+def _verb_forwards_args(verb):
+    """A verb forwards `"$@"` to its handler iff it accepts further input:
+    args, flags, or subverbs. Static-payload verbs (`list`, `prune`, `version`,
+    `help`, `gc`, `rollback`) get no forwarding so the dispatcher matches
+    function intent.
+    """
+    return bool(verb.get("args") or verb.get("flags") or verb.get("subverbs"))
+
+
+def _ps_helper_for_subverb(name):
+    """Map a `nx profile <subverb>` name to the PowerShell helper function
+    invoked by the dispatcher. Mirrors the bash convention but PS uses
+    PascalCase. The PS dispatcher is pure routing after the uninstall arm
+    is extracted to its own helper.
+    """
+    return {
+        "regenerate": "_NxProfileRegenerate",
+        "doctor": "_NxProfileDoctor",
+        "uninstall": "_NxProfileUninstall",
+        "help": "_NxProfileHelp",
+    }[name]
+
+
+# ---------------------------------------------------------------------------
+# bash nx_main case-arm emitter (replaces the case body in nx.sh)
+# ---------------------------------------------------------------------------
+
+
+def emit_nx_main(manifest):
+    """Emit the case arms inside `function nx_main`'s `case "$cmd" in ... esac`.
+
+    Output is the marker-wrapped block that NX_MAIN_REGION_RE captures:
+    first line starts at `# >>>` (no leading whitespace - regex anchors
+    on `#`), subsequent lines include their full 2-space indentation.
+    Includes the static `*)` unknown-command fallback so the generator
+    owns the whole case body.
+    """
+    out = [
+        "# >>> nx-main generated >>> (regenerate: python3 -m tests.hooks.gen_nx_completions)"
+    ]
+    for v in manifest["verbs"]:
+        names = " | ".join(all_names(v))
+        handler = _verb_handler(v)
+        if _verb_forwards_args(v):
+            out.append(f'  {names}) {handler} "$@" ;;')
+        else:
+            out.append(f"  {names}) {handler} ;;")
+    out.append("  *)")
+    out.append('    printf "\\e[31mUnknown command: %s\\e[0m\\n" "$cmd" >&2')
+    out.append("    _nx_lifecycle_help")
+    out.append("    return 1")
+    out.append("    ;;")
+    out.append("  # <<< nx-main generated <<<")
+    return "\n".join(out)
+
+
+# ---------------------------------------------------------------------------
+# PowerShell `nx profile` switch emitter (region replacement in _aliases_nix.ps1)
+# ---------------------------------------------------------------------------
+
+
+def emit_ps_profile_dispatch(manifest):
+    """Emit the `switch ($subCmd) { ... }` arms for `nx profile` subverbs.
+
+    Wrapped in `#region nx:dispatch ... #endregion nx:dispatch` so the
+    surrounding switch statement (header + `default` arm) stays hand-written.
+    The dispatcher is pure routing after the inline `'uninstall' { ... }`
+    body is extracted to `_NxProfileUninstall`.
+    """
+    profile = next((v for v in manifest["verbs"] if v["name"] == "profile"), None)
+    if profile is None:
+        raise SystemExit("manifest: 'profile' verb not found - cannot emit PS dispatch")
+    # First line has no leading whitespace (PS_DISPATCH_REGION_RE anchors on
+    # `#region`); subsequent lines carry the 12-space indent that puts the
+    # switch arms under `switch ($subCmd) {` inside the `nx` function body.
+    lines = [
+        "#region nx:dispatch (regenerate: python3 -m tests.hooks.gen_nx_completions)"
+    ]
+    for sv in profile.get("subverbs", []):
+        helper = _ps_helper_for_subverb(sv["name"])
+        # subverb aliases share the helper - emit each as its own arm
+        for n in all_names(sv):
+            lines.append(f"            '{n}' {{ {helper} }}")
+    lines.append("            #endregion nx:dispatch")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# nx lib-file list emitter (3 separate regions across bootstrap/lifecycle/doctor)
+# ---------------------------------------------------------------------------
+
+
+def _lib_files_list(manifest):
+    """The canonical list of files synced into ~/.config/nix-env/.
+
+    nx.sh + family files (from manifest-implied family set) + always-present
+    profile_block.sh. nx_doctor.sh appends DOCTOR_AUXILIARY_FILES (flake.nix,
+    config.nix) to its own list - those are produced by other phases, not
+    sourced from .assets/lib/.
+    """
+    # Every verb in the manifest now declares its `family` (enforced by
+    # _verb_handler). Family files = nx_<family>.sh for each unique family.
+    # nx.sh is the dispatcher entry; nx_doctor.sh and profile_block.sh are
+    # not verb families but are required runtime libs.
+    families = sorted({v["family"] for v in manifest["verbs"] if v.get("family")})
+    files = ["nx.sh"] + [f"nx_{f}.sh" for f in families]
+    files += ["nx_doctor.sh", "profile_block.sh"]
+    # de-dupe while preserving order
+    seen, out = set(), []
+    for f in files:
+        if f not in seen:
+            seen.add(f)
+            out.append(f)
+    return out
+
+
+def emit_lib_files_region(manifest, loop_var, include_aux=False):
+    """Emit the marker-wrapped `for X in <files>; do` line for one call site.
+
+    Each of bootstrap.sh / nx_lifecycle.sh / nx_doctor.sh has its own loop
+    var (`_nx_lib`, `f`, `_f`) and gets its own region wrapping just the
+    for-line. The body of the loop is hand-written (different at each site:
+    install_atomic vs cp -f vs `[ -f ]`). nx_doctor.sh's site appends
+    DOCTOR_AUXILIARY_FILES.
+    """
+    files = list(_lib_files_list(manifest))
+    if include_aux:
+        files = [DOCTOR_AUXILIARY_FILES[0]] + files + [DOCTOR_AUXILIARY_FILES[1]]
+    # First line has no leading whitespace (LIB_FILES_REGION_RE anchors on `#`);
+    # the for-line is at the loop's natural 2-space indent; the closing marker
+    # sits at 4 spaces because shfmt treats it as the first statement inside
+    # the for-loop body and indents accordingly.
+    return (
+        "# >>> nx-libs generated >>> (regenerate: python3 -m tests.hooks.gen_nx_completions)\n"
+        f"  for {loop_var} in {' '.join(files)}; do\n"
+        "    # <<< nx-libs generated <<<"
+    )
+
+
 def emit_lifecycle_help(manifest):
     """Emit the `_nx_lifecycle_help` function body, marker-wrapped.
 
@@ -605,6 +784,21 @@ def emit_lifecycle_help(manifest):
 # ---------------------------------------------------------------------------
 
 
+def _replace_region(path, region_re, new_block, label):
+    """Replace a marker-wrapped region in `path` with `new_block`. Raises
+    SystemExit if the markers are not found (catches "forgot to add markers").
+    """
+    text = path.read_text()
+    if not region_re.search(text):
+        raise SystemExit(f"{label} markers not found in {path.relative_to(REPO_ROOT)}")
+    new_text = region_re.sub(lambda _: new_block, text)
+    if new_text != text:
+        path.write_text(new_text)
+        print(f"updated {label} in {path.relative_to(REPO_ROOT)}")
+    else:
+        print(f"{label} in {path.relative_to(REPO_ROOT)} already current")
+
+
 def main():
     manifest = json.loads(MANIFEST.read_text())
 
@@ -614,36 +808,39 @@ def main():
     ZSH_OUT.write_text(emit_zsh(manifest))
     print(f"wrote {ZSH_OUT.relative_to(REPO_ROOT)}")
 
-    ps_text = PS_FILE.read_text()
-    new_region = emit_ps_region(manifest)
-    if not PS_REGION_RE.search(ps_text):
-        raise SystemExit(
-            f"#region nx-completer ... #endregion nx-completer markers not found in {PS_FILE}"
-        )
-    new_text = PS_REGION_RE.sub(lambda _: new_region, ps_text)
-    if new_text != ps_text:
-        PS_FILE.write_text(new_text)
-        print(f"updated nx-completer region in {PS_FILE.relative_to(REPO_ROOT)}")
-    else:
-        print(
-            f"nx-completer region in {PS_FILE.relative_to(REPO_ROOT)} already current"
-        )
-
-    lifecycle_text = LIFECYCLE_FILE.read_text()
-    new_help = emit_lifecycle_help(manifest)
-    if not HELP_REGION_RE.search(lifecycle_text):
-        raise SystemExit(
-            f"# >>> nx-help generated >>> ... # <<< nx-help generated <<< markers "
-            f"not found in {LIFECYCLE_FILE.relative_to(REPO_ROOT)}"
-        )
-    new_lifecycle = HELP_REGION_RE.sub(lambda _: new_help, lifecycle_text)
-    if new_lifecycle != lifecycle_text:
-        LIFECYCLE_FILE.write_text(new_lifecycle)
-        print(f"updated nx-help region in {LIFECYCLE_FILE.relative_to(REPO_ROOT)}")
-    else:
-        print(
-            f"nx-help region in {LIFECYCLE_FILE.relative_to(REPO_ROOT)} already current"
-        )
+    _replace_region(
+        PS_FILE, PS_REGION_RE, emit_ps_region(manifest), "nx-completer region"
+    )
+    _replace_region(
+        LIFECYCLE_FILE, HELP_REGION_RE, emit_lifecycle_help(manifest), "nx-help region"
+    )
+    _replace_region(
+        NX_FILE, NX_MAIN_REGION_RE, emit_nx_main(manifest), "nx-main region"
+    )
+    _replace_region(
+        PS_FILE,
+        PS_DISPATCH_REGION_RE,
+        emit_ps_profile_dispatch(manifest),
+        "nx:dispatch region",
+    )
+    _replace_region(
+        BOOTSTRAP_FILE,
+        LIB_FILES_REGION_RE,
+        emit_lib_files_region(manifest, "_nx_lib"),
+        "nx-libs region (bootstrap)",
+    )
+    _replace_region(
+        LIFECYCLE_FILE,
+        LIB_FILES_REGION_RE,
+        emit_lib_files_region(manifest, "f"),
+        "nx-libs region (lifecycle)",
+    )
+    _replace_region(
+        DOCTOR_FILE,
+        LIB_FILES_REGION_RE,
+        emit_lib_files_region(manifest, "_f", include_aux=True),
+        "nx-libs region (doctor)",
+    )
 
 
 if __name__ == "__main__":
