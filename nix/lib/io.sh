@@ -65,21 +65,38 @@ _io_pwsh_nop() {
   fi
 }
 
+# Marker prefix written by _io_step (in helpers.sh). _io_run recognizes it
+# in captured stderr and surfaces the LAST one on failure as "failed at step".
+# Kept as a sentinel constant rather than referencing helpers.sh's _IO_STEP_PREFIX
+# so io.sh has no source dependency on helpers.sh.
+_IO_RUN_STEP_PREFIX="__IO_STEP__::"
+
 # Run a command with try/catch semantics: stdout streams to terminal normally.
-# stderr is captured; on failure it is shown on the terminal and logged.
+# stderr is captured; on failure it is shown on the terminal and logged. If
+# the captured stderr contains _io_step markers, the last one is surfaced
+# as "failed at step: <label>" before the cleaned error output (markers
+# stripped). Markers are silently discarded on success.
 _io_run() {
   local _err_file _rc=0
   _err_file="$(mktemp)"
   "$@" 2>"$_err_file" || _rc=$?
   if [[ $_rc -ne 0 && -s "$_err_file" ]]; then
-    cat "$_err_file" >&2
+    local _last_step _stripped_err
+    _last_step="$(grep "^$_IO_RUN_STEP_PREFIX" "$_err_file" 2>/dev/null | tail -1)"
+    _last_step="${_last_step#$_IO_RUN_STEP_PREFIX}"
+    if [[ -n "$_last_step" ]]; then
+      printf '\e[31;1mfailed at step: %s\e[0m\n' "$_last_step" >&2
+    fi
+    _stripped_err="$(grep -v "^$_IO_RUN_STEP_PREFIX" "$_err_file" 2>/dev/null || true)"
+    [[ -n "$_stripped_err" ]] && printf '%s\n' "$_stripped_err" >&2
     if [[ -n "${_SETUP_LOG_FILE:-}" ]]; then
       local _ts
       _ts="$(date +'%Y-%m-%d %H:%M:%S')"
-      printf '%s|ERROR|%s:%s|<%s>%s: %s\n' \
+      printf '%s|ERROR|%s:%s|<%s>%s: failed at step "%s": %s\n' \
         "$_ts" "${BASH_SOURCE[1]##*/}" "${BASH_LINENO[0]}" \
         "${_ir_phase:-main}" "${FUNCNAME[1]:-main}" \
-        "$(tr '\n' ' ' <"$_err_file")" >>"$_SETUP_LOG_FILE"
+        "${_last_step:-<unlabeled>}" \
+        "$(printf '%s' "$_stripped_err" | tr '\n' ' ')" >>"$_SETUP_LOG_FILE"
     fi
   fi
   rm -f "$_err_file"
