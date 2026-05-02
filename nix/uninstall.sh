@@ -122,7 +122,11 @@ done
 SCRIPT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB="$SCRIPT_ROOT/.assets/lib"
 ENV_DIR="$HOME/.config/nix-env"
-BLOCK_MARKER="nix-env managed"
+BLOCK_MARKER="nix:managed"
+# MIGRATION: legacy marker name from <= 1.4.x. The uninstaller removes both
+# so users who never ran `nx profile regenerate` after upgrading still get
+# their nix block cleaned up. Safe to delete after the next major release.
+BLOCK_MARKER_LEGACY="nix-env managed"
 
 printf "\n\e[95;1m>> nix-env uninstaller\e[0m\n\n"
 
@@ -137,43 +141,50 @@ fi
 run_phase1() {
   info "phase 1: removing nix-env managed environment..."
 
-  # 1a. Remove nix-env managed block from shell rc files (leaves certs block)
+  # 1a. Remove nix-managed blocks from shell rc files (leaves certs block).
+  # Two markers handled: BLOCK_MARKER (current name) and BLOCK_MARKER_LEGACY
+  # (the <= 1.4.x name). Removing both covers users who upgraded but never
+  # ran `nx profile regenerate` to migrate.
   info "removing managed blocks from shell profiles..."
   if [[ -f "$LIB/profile_block.sh" ]]; then
     # shellcheck source=../.assets/lib/profile_block.sh
     source "$LIB/profile_block.sh"
     for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
       [[ -f "$rc" ]] || continue
-      if [[ "$DRY_RUN" == "true" ]]; then
-        if manage_block "$rc" "$BLOCK_MARKER" inspect >/dev/null 2>&1; then
-          printf "\e[90m  would remove managed block from %s\e[0m\n" "$rc"
+      for marker in "$BLOCK_MARKER" "$BLOCK_MARKER_LEGACY"; do
+        if [[ "$DRY_RUN" == "true" ]]; then
+          if manage_block "$rc" "$marker" inspect >/dev/null 2>&1; then
+            printf "\e[90m  would remove '%s' block from %s\e[0m\n" "$marker" "$rc"
+          fi
+        else
+          if manage_block "$rc" "$marker" inspect >/dev/null 2>&1; then
+            manage_block "$rc" "$marker" remove
+            ok "  removed '$marker' block from $rc"
+          fi
         fi
-      else
-        if manage_block "$rc" "$BLOCK_MARKER" inspect >/dev/null 2>&1; then
-          manage_block "$rc" "$BLOCK_MARKER" remove
-          ok "  removed managed block from $rc"
-        fi
-      fi
+      done
     done
   else
     warn "profile_block.sh not found - falling back to manual block removal"
     for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
       [[ -f "$rc" ]] || continue
-      if grep -q "# >>> $BLOCK_MARKER >>>" "$rc" 2>/dev/null; then
-        if [[ "$DRY_RUN" == "true" ]]; then
-          printf "\e[90m  would remove managed block from %s\e[0m\n" "$rc"
-        else
-          local tmp
-          tmp="$(mktemp)"
-          awk -v begin="# >>> $BLOCK_MARKER >>>" -v end="# <<< $BLOCK_MARKER <<<" '
-            $0 == begin { skip=1; next }
-            skip && $0 == end { skip=0; next }
-            !skip { print }
-          ' "$rc" >"$tmp"
-          mv -f "$tmp" "$rc"
-          ok "  removed managed block from $rc"
+      for marker in "$BLOCK_MARKER" "$BLOCK_MARKER_LEGACY"; do
+        if grep -q "# >>> $marker >>>" "$rc" 2>/dev/null; then
+          if [[ "$DRY_RUN" == "true" ]]; then
+            printf "\e[90m  would remove '%s' block from %s\e[0m\n" "$marker" "$rc"
+          else
+            local tmp
+            tmp="$(mktemp)"
+            awk -v begin="# >>> $marker >>>" -v end="# <<< $marker <<<" '
+              $0 == begin { skip=1; next }
+              skip && $0 == end { skip=0; next }
+              !skip { print }
+            ' "$rc" >"$tmp"
+            mv -f "$tmp" "$rc"
+            ok "  removed '$marker' block from $rc"
+          fi
         fi
-      fi
+      done
     done
   fi
 

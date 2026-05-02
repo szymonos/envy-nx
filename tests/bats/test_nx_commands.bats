@@ -577,8 +577,8 @@ PBEOF
   run nx profile regenerate
   [ "$status" -eq 0 ]
   [[ "$output" == *"Regenerated"* ]]
-  grep -qF '# >>> managed env >>>' "$HOME/.bashrc"
-  grep -qF '# >>> nix-env managed >>>' "$HOME/.bashrc"
+  grep -qF '# >>> env:managed >>>' "$HOME/.bashrc"
+  grep -qF '# >>> nix:managed >>>' "$HOME/.bashrc"
 }
 
 # -- overlay help -------------------------------------------------------------
@@ -804,6 +804,50 @@ EOF
   run nx version
   [ "$status" -eq 0 ]
   [[ "$output" == *"No install record"* ]]
+}
+
+@test "version shows Bash: line when install.json has bash_version" {
+  mkdir -p "$HOME/.config/dev-env"
+  cat >"$HOME/.config/dev-env/install.json" <<'EOF'
+{
+  "entry_point": "nix",
+  "version": "1.0.0",
+  "source": "git",
+  "scopes": ["shell"],
+  "installed_at": "2026-04-25T12:00:00Z",
+  "mode": "install",
+  "status": "success",
+  "phase": "done",
+  "platform": "Linux",
+  "arch": "x86_64",
+  "bash_version": "3.2"
+}
+EOF
+  run nx version
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Bash:"* ]]
+  [[ "$output" == *"3.2"* ]]
+}
+
+@test "version omits Bash: line when install.json lacks bash_version" {
+  mkdir -p "$HOME/.config/dev-env"
+  cat >"$HOME/.config/dev-env/install.json" <<'EOF'
+{
+  "entry_point": "nix",
+  "version": "1.0.0",
+  "source": "git",
+  "scopes": ["shell"],
+  "installed_at": "2026-04-25T12:00:00Z",
+  "mode": "install",
+  "status": "success",
+  "phase": "done",
+  "platform": "Linux",
+  "arch": "x86_64"
+}
+EOF
+  run nx version
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"Bash:"* ]]
 }
 
 @test "version without jq cats raw JSON" {

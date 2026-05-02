@@ -73,13 +73,14 @@ RUN set -e \
     && echo "=== Running nix/uninstall.sh --env-only ===" \
     && nix/uninstall.sh --env-only \
     #
-    # nix-env managed block must be gone
-    && echo "--- Checking nix-env managed block removed ---" \
+    # nix:managed block must be gone (and the legacy nix-env managed name too)
+    && echo "--- Checking nix:managed block removed ---" \
+    && ! grep -qF '# >>> nix:managed >>>' "$HOME/.bashrc" \
     && ! grep -qF '# >>> nix-env managed >>>' "$HOME/.bashrc" \
     #
-    # managed env block must survive
-    && echo "--- Checking managed env block preserved ---" \
-    && grep -qF '# >>> managed env >>>' "$HOME/.bashrc" \
+    # env:managed block must survive (generic env vars; nix-independent)
+    && echo "--- Checking env:managed block preserved ---" \
+    && grep -qF '# >>> env:managed >>>' "$HOME/.bashrc" \
     #
     # nix-env config dir must be gone
     && echo "--- Checking nix-env config removed ---" \

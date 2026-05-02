@@ -55,6 +55,28 @@ _write_clean_bashrc_with_block() {
 # user content above
 alias ll='ls -la'
 
+# >>> env:managed >>>
+if [ -d "$HOME/.local/bin" ]; then
+  export PATH="$HOME/.local/bin:$PATH"
+fi
+# <<< env:managed <<<
+
+# >>> nix:managed >>>
+export PATH="$HOME/.nix-profile/bin:$PATH"
+. "$HOME/.config/bash/aliases_nix.sh"
+# <<< nix:managed <<<
+
+# user content below
+alias gs='git status'
+RC
+}
+
+# Pre-1.5 marker names; used to test the silent migration in regenerate.
+_write_legacy_marker_bashrc() {
+  cat >"$HOME/.bashrc" <<'RC'
+# pre-existing user content
+alias ll='ls -la'
+
 # >>> managed env >>>
 if [ -d "$HOME/.local/bin" ]; then
   export PATH="$HOME/.local/bin:$PATH"
@@ -63,10 +85,9 @@ fi
 
 # >>> nix-env managed >>>
 export PATH="$HOME/.nix-profile/bin:$PATH"
-. "$HOME/.config/bash/aliases_nix.sh"
 # <<< nix-env managed <<<
 
-# user content below
+# trailing user content
 alias gs='git status'
 RC
 }
@@ -79,7 +100,7 @@ RC
   printf '# just some content\n' >"$HOME/.bashrc"
   run nx profile doctor
   [ "$status" -ne 0 ]
-  [[ "$output" =~ "no 'managed env' block" ]]
+  [[ "$output" =~ "no 'env:managed' block" ]]
 }
 
 @test "profile doctor passes when managed block present" {
@@ -89,8 +110,19 @@ RC
   [[ "$output" =~ "healthy" ]]
 }
 
+@test "profile doctor passes for users with legacy marker names (silent migration)" {
+  # Existing users who upgraded to >=1.5 but haven't run regenerate yet
+  # still have the old "nix-env managed" / "managed env" marker names.
+  # Doctor must not flag this as broken - migration happens automatically
+  # on the next regenerate.
+  _write_legacy_marker_bashrc
+  run nx profile doctor
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "healthy" ]]
+}
+
 @test "profile doctor fails on duplicate managed blocks" {
-  local marker="nix-env managed"
+  local marker="nix:managed"
   cat >"$HOME/.bashrc" <<RC
 # >>> $marker >>>
 export A=1
@@ -123,9 +155,9 @@ fi
 export PATH
 RC
   nx profile regenerate
-  # .local/bin should not appear inside the managed env block
+  # .local/bin should not appear inside the env:managed block
   local inside
-  inside="$(awk '/^# >>> managed env >>>$/{s=1;next} s&&/^# <<< managed env <<<$/{s=0;next} s{print}' "$HOME/.bashrc")"
+  inside="$(awk '/^# >>> env:managed >>>$/{s=1;next} s&&/^# <<< env:managed <<<$/{s=0;next} s{print}' "$HOME/.bashrc")"
   run grep -cF '.local/bin' <<<"$inside"
   [ "$output" -eq 0 ]
   # original content preserved
@@ -136,9 +168,34 @@ RC
   printf '# minimal bashrc\n' >"$HOME/.bashrc"
   nx profile regenerate
   local inside
-  inside="$(awk '/^# >>> managed env >>>$/{s=1;next} s&&/^# <<< managed env <<<$/{s=0;next} s{print}' "$HOME/.bashrc")"
+  inside="$(awk '/^# >>> env:managed >>>$/{s=1;next} s&&/^# <<< env:managed <<<$/{s=0;next} s{print}' "$HOME/.bashrc")"
   run grep -cF '.local/bin' <<<"$inside"
   [ "$output" -ge 1 ]
+}
+
+@test "profile regenerate migrates legacy marker names to nix:managed / env:managed" {
+  _write_legacy_marker_bashrc
+  # sanity: rc starts with legacy markers
+  grep -qF '# >>> nix-env managed >>>' "$HOME/.bashrc"
+  grep -qF '# >>> managed env >>>' "$HOME/.bashrc"
+
+  nx profile regenerate
+
+  # legacy markers gone
+  run grep -cF '# >>> nix-env managed >>>' "$HOME/.bashrc"
+  [ "$output" -eq 0 ]
+  run grep -cF '# >>> managed env >>>' "$HOME/.bashrc"
+  [ "$output" -eq 0 ]
+
+  # new markers present, exactly once each
+  run grep -cF '# >>> nix:managed >>>' "$HOME/.bashrc"
+  [ "$output" -eq 1 ]
+  run grep -cF '# >>> env:managed >>>' "$HOME/.bashrc"
+  [ "$output" -eq 1 ]
+
+  # user content outside the blocks survived the migration
+  grep -q "alias ll='ls -la'" "$HOME/.bashrc"
+  grep -q "alias gs='git status'" "$HOME/.bashrc"
 }
 
 # ---------------------------------------------------------------------------
@@ -149,6 +206,17 @@ RC
   _write_clean_bashrc_with_block
   run nx profile uninstall
   [ "$status" -eq 0 ]
+  run grep -cF "# >>> nix:managed >>>" "$HOME/.bashrc"
+  [ "$output" -eq 0 ]
+  run grep -cF "# >>> env:managed >>>" "$HOME/.bashrc"
+  [ "$output" -eq 0 ]
+}
+
+@test "profile uninstall also removes legacy-named blocks (transitional users)" {
+  _write_legacy_marker_bashrc
+  run nx profile uninstall
+  [ "$status" -eq 0 ]
+  # both legacy markers removed
   run grep -cF "# >>> nix-env managed >>>" "$HOME/.bashrc"
   [ "$output" -eq 0 ]
   run grep -cF "# >>> managed env >>>" "$HOME/.bashrc"

@@ -161,8 +161,14 @@ function _nx_profile_regenerate() {
   }
   source "$_pb_lib_path"
 
-  local _nix_marker="nix-env managed"
-  local _env_marker="managed env"
+  local _nix_marker="nix:managed"
+  local _env_marker="env:managed"
+  # MIGRATION: legacy marker names from <= 1.4.x. Stripped before upserting
+  # so users transitioning to the new names don't end up with duplicate
+  # blocks. Safe to delete after the next major release once the install
+  # base has had a chance to run regenerate at least once.
+  local _legacy_nix_marker="nix-env managed"
+  local _legacy_env_marker="managed env"
   local _rc _shell _tmp
 
   for _rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
@@ -172,6 +178,20 @@ function _nx_profile_regenerate() {
     esac
     command -v "$_shell" &>/dev/null || continue
     [ -f "$_rc" ] || continue
+
+    # MIGRATION: silently strip legacy-named blocks if present. manage_block
+    # remove is a no-op when the marker is absent, so this is free for users
+    # who installed at >=1.5 (no legacy blocks ever existed).
+    local _migrated=false
+    if grep -qF "# >>> $_legacy_nix_marker >>>" "$_rc" 2>/dev/null; then
+      manage_block "$_rc" "$_legacy_nix_marker" remove
+      _migrated=true
+    fi
+    if grep -qF "# >>> $_legacy_env_marker >>>" "$_rc" 2>/dev/null; then
+      manage_block "$_rc" "$_legacy_env_marker" remove
+      _migrated=true
+    fi
+    [ "$_migrated" = true ] && printf "\e[33mMigrated legacy marker names in %s\e[0m\n" "${_rc/#$HOME/\~}"
 
     # check if .local/bin PATH is already handled outside managed blocks
     local _has_local_bin=false
@@ -198,8 +218,13 @@ function _nx_profile_regenerate() {
 }
 
 function _nx_profile_dispatch() {
-  local _pb_marker="nix-env managed"
-  local _pb_env_marker="managed env"
+  local _pb_marker="nix:managed"
+  local _pb_env_marker="env:managed"
+  # MIGRATION: legacy marker names from <= 1.4.x. The doctor arm treats them
+  # as equivalent to the new names (silent migration); the uninstall arm
+  # removes both. Safe to delete after the next major release.
+  local _pb_legacy_marker="nix-env managed"
+  local _pb_legacy_env_marker="managed env"
   local _pb_rc_files=()
   command -v bash &>/dev/null && _pb_rc_files+=("$HOME/.bashrc")
   command -v zsh &>/dev/null && _pb_rc_files+=("$HOME/.zshrc")
@@ -209,6 +234,34 @@ function _nx_profile_dispatch() {
 
   function _pb_short() { printf '%s' "${1/#$HOME/\~}"; }
 
+  # _pb_count_either <rc> <new_marker> <legacy_marker>
+  # Combined count: legacy markers count toward the new-marker total so a
+  # user who upgraded but hasn't run regenerate yet doesn't see false
+  # positives. After regenerate, only the new-marker count is non-zero.
+  function _pb_count_either() {
+    local _rc="$1" _new="$2" _legacy="$3" _n _l
+    _n="$(grep -cF "# >>> $_new >>>" "$_rc" 2>/dev/null || true)"
+    _l="$(grep -cF "# >>> $_legacy >>>" "$_rc" 2>/dev/null || true)"
+    echo "$((_n + _l))"
+  }
+
+  # _pb_doctor_one <rc> <new_marker> <legacy_marker>
+  # Reports a single block's health (warn/fail) and updates _pb_ok globally.
+  # Inlined call (rather than a for-loop over pairs) because legacy marker
+  # names contain a space and would mis-split under unquoted IFS expansion.
+  function _pb_doctor_one() {
+    local _rc="$1" _new="$2" _legacy="$3" _count
+    _count="$(_pb_count_either "$_rc" "$_new" "$_legacy")"
+    if [ "$_count" -eq 0 ] 2>/dev/null; then
+      printf "\e[33m  [warn] no '%s' block - run: nx profile regenerate\e[0m\n" "$_new" >&2
+      _pb_ok=false
+    elif [ "$_count" -gt 1 ] 2>/dev/null; then
+      printf "\e[31m  [fail] %s duplicate '%s' blocks - run: nx profile regenerate\e[0m\n" \
+        "$_count" "$_new" >&2
+      _pb_ok=false
+    fi
+  }
+
   case "${1:-help}" in
   doctor)
     local _pb_ok=true
@@ -216,18 +269,8 @@ function _nx_profile_dispatch() {
     for _pb_rc in "${_pb_rc_files[@]}"; do
       [ -f "$_pb_rc" ] || continue
       printf "\e[96mChecking %s\e[0m\n" "$(_pb_short "$_pb_rc")"
-      local _pb_count _pb_m
-      for _pb_m in "$_pb_env_marker" "$_pb_marker"; do
-        _pb_count="$(grep -cF "# >>> $_pb_m >>>" "$_pb_rc" 2>/dev/null || true)"
-        if [ "$_pb_count" -eq 0 ] 2>/dev/null; then
-          printf "\e[33m  [warn] no '%s' block - run: nx profile regenerate\e[0m\n" "$_pb_m" >&2
-          _pb_ok=false
-        elif [ "$_pb_count" -gt 1 ] 2>/dev/null; then
-          printf "\e[31m  [fail] %s duplicate '%s' blocks - run: nx profile regenerate\e[0m\n" \
-            "$_pb_count" "$_pb_m" >&2
-          _pb_ok=false
-        fi
-      done
+      _pb_doctor_one "$_pb_rc" "$_pb_env_marker" "$_pb_legacy_env_marker"
+      _pb_doctor_one "$_pb_rc" "$_pb_marker" "$_pb_legacy_marker"
     done
     [ "$_pb_ok" = true ] && printf "\e[32m[ok] profiles look healthy\e[0m\n"
     [ "$_pb_ok" = true ] || return 1
@@ -242,6 +285,10 @@ function _nx_profile_dispatch() {
       [ -f "$_pb_rc" ] || continue
       manage_block "$_pb_rc" "$_pb_marker" remove
       manage_block "$_pb_rc" "$_pb_env_marker" remove
+      # MIGRATION: also remove legacy-named blocks for users who never ran
+      # regenerate after upgrading.
+      manage_block "$_pb_rc" "$_pb_legacy_marker" remove
+      manage_block "$_pb_rc" "$_pb_legacy_env_marker" remove
       printf "\e[32mRemoved managed blocks from %s\e[0m\n" "$(_pb_short "$_pb_rc")"
     done
     printf "\e[96mProfile blocks removed. Sourced files in ~/.config/shell/ are untouched.\e[0m\n"
