@@ -9,6 +9,10 @@ setup() {
   export ENV_DIR="$TEST_DIR/nix-env"
   export DEV_ENV_DIR="$TEST_DIR/dev-env"
   export HOME="$TEST_DIR"
+  # Skip network in version_skew - 100s of parallel `gh api` calls under
+  # xargs -P 4 either rate-limit or hang on /dev/tty auth prompts in a
+  # sandbox HOME without gh credentials. Production runs aren't affected.
+  export NX_DOCTOR_SKIP_NETWORK=1
   mkdir -p "$ENV_DIR/scopes" "$DEV_ENV_DIR"
 }
 
@@ -53,6 +57,61 @@ EOF
 # bins: uv
 { pkgs }: with pkgs; [ uv ]
 EOF
+}
+
+# -- nix_available check ----------------------------------------------------
+
+# Build a fake nix shim that emits a configurable --version string. Returns
+# success for everything else, since downstream checks (nix_profile, etc.)
+# may also call nix and we don't want them to interfere with the assertion.
+_mock_nix_with_version() {
+  local _ver="$1"
+  mkdir -p "$TEST_DIR/bin"
+  cat >"$TEST_DIR/bin/nix" <<EOF
+#!/bin/sh
+if [ "\$1" = "--version" ]; then
+  printf 'nix (Nix) %s\n' '$_ver'
+  exit 0
+fi
+exit 0
+EOF
+  chmod +x "$TEST_DIR/bin/nix"
+}
+
+@test "nix_available fails when nix version is below the 2.18 floor" {
+  _write_flake_lock
+  _write_install_json
+  _mock_nix_with_version "2.4.1"
+  PATH="$TEST_DIR/bin:$PATH" run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"FAIL  nix_available"* ]]
+  [[ "$output" == *"below the supported floor"* ]]
+  [[ "$output" == *"Fix:"* ]]
+}
+
+@test "nix_available passes when nix version meets the floor" {
+  _write_flake_lock
+  _write_install_json
+  _mock_nix_with_version "2.18.0"
+  PATH="$TEST_DIR/bin:$PATH" run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"PASS  nix_available"* ]]
+}
+
+@test "nix_available parses Determinate Nix wrapper format (trailing version wins)" {
+  _write_flake_lock
+  _write_install_json
+  # mimic: "nix (Determinate Nix 3.6.5) 2.34.1" - the trailing 2.34.1 is the floor we care about
+  mkdir -p "$TEST_DIR/bin"
+  cat >"$TEST_DIR/bin/nix" <<'EOF'
+#!/bin/sh
+if [ "$1" = "--version" ]; then
+  printf 'nix (Determinate Nix 3.6.5) 2.34.1\n'
+  exit 0
+fi
+exit 0
+EOF
+  chmod +x "$TEST_DIR/bin/nix"
+  PATH="$TEST_DIR/bin:$PATH" run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"PASS  nix_available"* ]]
 }
 
 # -- flake_lock check --------------------------------------------------------
@@ -112,6 +171,82 @@ EOF
   run bash "$DOCTOR_SCRIPT"
   [[ "$output" == *"WARN  scope_binaries"* ]]
   [[ "$output" == *"_nx_doctor_test_nonexistent_bin_"* ]]
+}
+
+# -- scope_bins_in_profile check --------------------------------------------
+
+# Set up a fake ~/.nix-profile/bin with the given binaries present (created
+# as empty executable files). Skips creation when the array is empty.
+_write_nix_profile_bins() {
+  mkdir -p "$HOME/.nix-profile/bin"
+  local _bin
+  for _bin in "$@"; do
+    : >"$HOME/.nix-profile/bin/$_bin"
+    chmod +x "$HOME/.nix-profile/bin/$_bin"
+  done
+}
+
+@test "scope_bins_in_profile passes when all scope bins are under ~/.nix-profile/bin" {
+  _write_flake_lock
+  _write_install_json
+  _write_scope_files
+  _write_nix_profile_bins fzf bat uv
+  run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"PASS  scope_bins_in_profile"* ]]
+}
+
+@test "scope_bins_in_profile fails when a scope bin is on PATH but not in nix-profile" {
+  _write_flake_lock
+  _write_install_json
+  _write_scope_files
+  # only fzf + uv land in nix-profile; bat is "missing" from the nix-managed set
+  _write_nix_profile_bins fzf uv
+  run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"FAIL  scope_bins_in_profile"* ]]
+  [[ "$output" == *"shell/bat"* ]]
+  [[ "$output" == *"Fix:"* ]]
+}
+
+@test "scope_bins_in_profile is skipped when ~/.nix-profile is absent" {
+  _write_flake_lock
+  _write_install_json
+  _write_scope_files
+  # do NOT call _write_nix_profile_bins - no ~/.nix-profile/bin/ exists
+  run bash "$DOCTOR_SCRIPT"
+  # check should be silent (skip), so neither PASS nor FAIL line appears
+  [[ "$output" != *"scope_bins_in_profile"* ]]
+}
+
+@test "scope_binaries + scope_bins_in_profile skip scopes with (external-installer) sentinel" {
+  # Regression: scopes installed by an external installer (e.g. conda via
+  # miniforge) live outside ~/.nix-profile/bin/ and are not on PATH in
+  # non-interactive shells. The `# bins: (external-installer)` sentinel
+  # opts them out of both binary audits.
+  _write_flake_lock
+  cat >"$DEV_ENV_DIR/install.json" <<'EOF'
+{
+  "status": "success",
+  "phase": "complete",
+  "scopes": ["shell", "conda"]
+}
+EOF
+  cat >"$ENV_DIR/scopes/shell.nix" <<'EOF'
+# Shell tools
+# bins: fzf
+{ pkgs }: with pkgs; [ fzf ]
+EOF
+  cat >"$ENV_DIR/scopes/conda.nix" <<'EOF'
+# Miniforge conda - external installer
+# bins: (external-installer)
+{ pkgs }: [ ]
+EOF
+  _write_nix_profile_bins fzf
+  run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"PASS  scope_binaries"* ]]
+  [[ "$output" == *"PASS  scope_bins_in_profile"* ]]
+  # Confirm conda is NOT mentioned as missing in either check.
+  [[ "$output" != *"conda/conda"* ]]
+  [[ "$output" != *"conda/(external-installer)"* ]]
 }
 
 # -- shell_profile check ----------------------------------------------------
@@ -336,16 +471,41 @@ EOF
   [[ "$output" == *"ca-bundle.crt missing"* ]]
 }
 
-# -- JSON output -------------------------------------------------------------
-
-@test "--json produces valid JSON with status field" {
+@test "cert_bundle remediation covers both bundle and vscode-server when both fail" {
+  # Regression: when both ca-bundle.crt is missing AND server-env-setup is
+  # missing/lacks NODE_EXTRA_CA_CERTS, the Fix line must list both
+  # remediations. The earlier `${_fix:-...}` pattern silently dropped the
+  # nix/setup.sh hint whenever the bundle hint was set first.
   _write_flake_lock
   _write_install_json
+  mkdir -p "$HOME/.config/certs"
+  touch "$HOME/.config/certs/ca-custom.crt"
+  # No ~/.vscode-server/server-env-setup -> the second branch fires too.
+  run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"FAIL  cert_bundle"* ]]
+  [[ "$output" == *"ca-bundle.crt missing"* ]]
+  [[ "$output" == *"NODE_EXTRA_CA_CERTS not in server-env-setup"* ]]
+  [[ "$output" == *"cert_intercept"* ]]
+  [[ "$output" == *"re-run nix/setup.sh"* ]]
+}
+
+# -- JSON output -------------------------------------------------------------
+
+@test "--json produces valid JSON with status, pass, checks fields and reports failure count" {
+  # Combined: structural validity + failure-count semantics. Originally two
+  # tests, but they invoke the same `bash $DOCTOR_SCRIPT --json` and just run
+  # different jq queries on the output - merging them halves the subprocess
+  # cost without losing coverage.
+  _write_install_json
+  # no flake.lock -> flake_lock FAIL guarantees fail_count > 0 and status="broken"
   run bash "$DOCTOR_SCRIPT" --json
-  # verify it's parseable JSON with the expected fields
   echo "$output" | jq -e '.status' >/dev/null
   echo "$output" | jq -e '.pass' >/dev/null
   echo "$output" | jq -e '.checks' >/dev/null
+  local fail_count
+  fail_count="$(echo "$output" | jq -r '.fail')"
+  [ "$fail_count" -gt 0 ]
+  [[ "$(echo "$output" | jq -r '.status')" == "broken" ]]
 }
 
 # -- exit code ---------------------------------------------------------------
@@ -357,11 +517,99 @@ EOF
   [ "$status" -eq 1 ]
 }
 
-@test "json output reports failure count" {
+# -- Fix: hints --------------------------------------------------------------
+
+@test "Fix: hint rendered under failing shell_profile check" {
+  _write_flake_lock
+  _write_install_json
+  cat >"$HOME/.bashrc" <<'EOF'
+# legacy bashrc, no managed block
+EOF
+  run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"FAIL  shell_profile"* ]]
+  [[ "$output" == *"Fix: run nx profile regenerate"* ]]
+}
+
+@test "Fix: hint rendered under warning install_record check" {
+  _write_flake_lock
+  # no install.json -> install_record warns with a Fix
+  run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"WARN  install_record"* ]]
+  [[ "$output" == *"Fix: re-run nix/setup.sh to record install provenance"* ]]
+}
+
+@test "no Fix: line for passing checks" {
+  _write_flake_lock
+  _write_install_json
+  _write_env_dir_files
+  cat >"$HOME/.bashrc" <<'EOF'
+# >>> nix-env managed >>>
+some content
+# <<< nix-env managed <<<
+EOF
+  run bash "$DOCTOR_SCRIPT"
+  # flake_lock passes -> must not have a Fix line for it
+  ! grep -q 'PASS.*flake_lock.*Fix:' <<<"$output"
+}
+
+# -- doctor.log file ---------------------------------------------------------
+
+@test "writes plain-text doctor.log to DEV_ENV_DIR by default" {
+  _write_flake_lock
+  _write_install_json
+  run bash "$DOCTOR_SCRIPT"
+  [ -f "$DEV_ENV_DIR/doctor.log" ]
+  # header present
+  grep -q '^nx doctor diagnostics$' "$DEV_ENV_DIR/doctor.log"
+  grep -q '^date:' "$DEV_ENV_DIR/doctor.log"
+  grep -q '^env_dir:' "$DEV_ENV_DIR/doctor.log"
+  # per-check lines present
+  grep -q 'PASS  flake_lock' "$DEV_ENV_DIR/doctor.log"
+  # no ANSI escape codes in the log
+  ! grep -q $'\x1b\\[' "$DEV_ENV_DIR/doctor.log"
+}
+
+@test "log file includes Fix: lines when checks fail" {
+  _write_install_json
+  # missing flake.lock -> failure with remediation
+  run bash "$DOCTOR_SCRIPT"
+  [ -f "$DEV_ENV_DIR/doctor.log" ]
+  grep -q 'FAIL  flake_lock' "$DEV_ENV_DIR/doctor.log"
+  grep -q 'Fix: re-run nix/setup.sh to generate' "$DEV_ENV_DIR/doctor.log"
+}
+
+@test "Full log: path printed only when there are failures or warnings" {
+  _write_install_json
+  # missing flake.lock -> failure
+  run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"Full log:"* ]]
+  [[ "$output" == *"$DEV_ENV_DIR/doctor.log"* ]]
+}
+
+@test "--json does not write doctor.log and does not print Full log:" {
   _write_install_json
   run bash "$DOCTOR_SCRIPT" --json
-  local fail_count
-  fail_count="$(echo "$output" | jq -r '.fail')"
-  [ "$fail_count" -gt 0 ]
-  [[ "$(echo "$output" | jq -r '.status')" == "broken" ]]
+  [ ! -f "$DEV_ENV_DIR/doctor.log" ]
+  [[ "$output" != *"Full log:"* ]]
+}
+
+# -- JSON remediation field --------------------------------------------------
+
+@test "--json includes remediation field on failing checks" {
+  _write_install_json
+  # missing flake.lock -> fail with remediation
+  run bash "$DOCTOR_SCRIPT" --json
+  local rem
+  rem="$(echo "$output" | jq -r '.checks[] | select(.name=="flake_lock") | .remediation')"
+  [ -n "$rem" ]
+  [[ "$rem" == *"re-run nix/setup.sh"* ]]
+}
+
+@test "--json remediation field is empty string for passing checks" {
+  _write_flake_lock
+  _write_install_json
+  run bash "$DOCTOR_SCRIPT" --json
+  local rem
+  rem="$(echo "$output" | jq -r '.checks[] | select(.name=="flake_lock") | .remediation')"
+  [ "$rem" = "" ]
 }

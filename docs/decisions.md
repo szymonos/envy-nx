@@ -10,14 +10,14 @@ Every tool makes architectural choices that shape what it can and cannot do. Thi
 
 Homebrew is an excellent macOS package manager. It is not a cross-platform environment provisioning tool. The differences matter at scale:
 
-| Capability               | Homebrew                         | Nix                                       |
-| ------------------------ | -------------------------------- | ----------------------------------------- |
-| Atomic rollback          | No                               | Yes (`nix profile rollback`)              |
-| Reproducible pins        | No lock file, no version pinning | `flake.lock` + `nx pin set <rev>`         |
-| Cross-platform           | macOS-first, Linux second-class  | macOS, Linux, WSL, containers - identical |
-| User-scope after install | Requires sudo for updates        | No root after initial install             |
-| Package composition      | Flat list, no grouping           | `buildEnv` merges scopes atomically       |
-| Binary cache             | Bottles (limited arch coverage)  | 100k+ cached packages, multi-arch         |
+| Capability               | Homebrew                         | Nix                                                                          |
+| ------------------------ | -------------------------------- | ---------------------------------------------------------------------------- |
+| Atomic rollback          | No                               | Yes (`nix profile rollback`)                                                 |
+| Reproducible pins        | No lock file, no version pinning | per-user `flake.lock` (per-machine); `nx pin set <rev>` (cross-machine/team) |
+| Cross-platform           | macOS-first, Linux second-class  | macOS, Linux, WSL, containers - identical                                    |
+| User-scope after install | Requires sudo for updates        | No root after initial install                                                |
+| Package composition      | Flat list, no grouping           | `buildEnv` merges scopes atomically                                          |
+| Binary cache             | Bottles (limited arch coverage)  | 100k+ cached packages, multi-arch                                            |
 
 Beyond the feature comparison, Nix provides a structural advantage: **store-based isolation**. Every package is installed into a content-addressed path (`/nix/store/<hash>-<name>-<version>/`), so multiple versions of the same tool coexist without conflict and upgrades never leave the system in a half-updated state. Homebrew mutates shared prefixes in-place - an interrupted `brew upgrade` can leave broken symlinks that require manual cleanup. Nix's immutable store makes rollback a pointer swap, not a repair job.
 
@@ -115,6 +115,23 @@ nix/setup.sh on macOS (no root available)
 
 The callers (`linux_setup.sh`, `wsl_setup.ps1`) handle the system-wide installs with `sudo`. They pass all scope flags through to `nix/setup.sh`, which decides whether to install or skip the nix scope based on platform detection. This keeps the decision centralized - a new entry point does not need to know which scopes are system-prefer.
 
+### Why two Linux entry points (`linux_setup.sh` and `nix/setup.sh`)
+
+**The objection:** "Three setup entry points (`nix/setup.sh`, `linux_setup.sh`, `wsl/wsl_setup.ps1`) is one too many. Collapse `linux_setup.sh` into a `--system-prep` phase inside `setup.sh` so there's a single entry point on Linux."
+
+The split is intentional and load-bearing for the **root vs user-scope boundary**:
+
+- `nix/setup.sh` is the user-scope path. It explicitly **rejects root** (`phase_bootstrap_check_root`) because nix is a user-scope package manager and running it as root would create state owned by root that the user can't manage afterward. Its operational contract is: "I run as you, I touch only your home directory and your nix profile."
+- `linux_setup.sh` is the system-prep wrapper. It runs as the user but invokes `sudo` for system-wide installs (base packages, nix bootstrap itself, root-required scope installers like docker/distrobox/zsh). Its operational contract is: "I orchestrate the bits that need root, then hand off to `nix/setup.sh` for the rest."
+
+Combining them would put `sudo` elevation inside `nix/setup.sh` - violating the user-scope contract. Or alternatively keep `nix/setup.sh` user-scope but add a `--system-prep` flag that triggers root-only behavior, which means the same script has two fundamentally different execution models depending on a flag - a confusing surface for the same script.
+
+**Maintenance cost is bounded.** `linux_setup.sh` is ~150 lines of mostly mechanical delegation: parse flags, call `install_base.sh` / `install_nix.sh` / `install_zsh.sh` etc., delegate the remainder to `nix/setup.sh`. Most edits to the broader codebase don't touch it - the file changes maybe twice a year.
+
+**Real-world usage is rare.** Bare-metal Linux dev workstations are a niche path - most users come in via `wsl_setup.ps1` (which has its own Windows-host orchestration the bash script can't replace) or directly via `nix/setup.sh` on macOS / Coder / containers (where Nix is already installed and no system prep is needed). The split would be worth collapsing only if `linux_setup.sh` were churning frequently or causing maintenance friction; it isn't.
+
+The same logic applies to `wsl/wsl_setup.ps1`: it must run on the Windows host (PowerShell, before any WSL distro exists), so it's structurally incompatible with `nix/setup.sh` (which runs inside the WSL distro after provisioning). Three entry points is the right number for three structurally distinct contexts.
+
 ### Why unfree packages are opt-in, not default
 
 **The objection:** "Nix already has `allowUnfree`. Just set it to `true` globally and stop worrying about it."
@@ -183,6 +200,22 @@ The constraint is real and affects daily development:
 This is not enforced by convention. A custom pre-commit hook (`check_bash32.py`) scans every nix-path file for bash 4+ constructs and blocks the commit if any are found. The macOS CI workflow validates the constraint on every pull request by running the full setup on a macOS runner with the system bash.
 
 Linux-only scripts (provisioning, system checks) use bash 5 features freely - the constraint applies only to files that run on macOS.
+
+### Why nix gc runs in post-install by default
+
+**The objection:** "Garbage-collecting old generations on every successful setup means `nx rollback` only works *within* a single setup run, not *across* completed runs. That's a reliability regression - keep the history and let users opt into GC."
+
+The trade-off is real, and it is the right trade-off for the platforms this tool targets. `phase_post_install_gc` runs `nix profile wipe-history` + `nix store gc` on every successful setup completion. The reasoning:
+
+**WSL VHD growth is a one-way ratchet.** WSL2 stores each distro in a virtual hard disk that grows on demand and never auto-shrinks. Reclaiming space requires `wsl --shutdown` followed by `diskpart` and `compact vdisk` - ceremony that most users will not perform. Nix profile generations accumulate fast: every `nx upgrade` produces a new generation that pins its full closure (~hundreds of MB to several GB depending on installed scopes). Without GC at setup time, weeks of normal use balloon the WSL VHD permanently. This is the dominant cost on the platform that drives the most adoption.
+
+**Setup runs are tested releases, not arbitrary state mutations.** `nix/setup.sh` and `nx setup` invocations correspond to maintainer-tested released versions of the tool. The recovery path for "the latest setup broke something" is "re-run the prior released version", which reapplies the prior config from scratch - not "roll back to a previous on-disk generation". Aggressive cross-run rollback would be load-bearing if setup were a frequent ad-hoc mutation; for a versioned bootstrapper, it is not.
+
+**Rollback within a run is preserved.** GC runs at the end of `phase_post_install_*`, after the new generation is in place. The current generation (and any generations created earlier in the same setup invocation, e.g. if `--upgrade` was used) remain available for `nx rollback` until the next successful setup run. The capability that matters in practice - "I just ran setup, something looks off, undo it" - works.
+
+**Explicit trade-off, not an oversight.** Cross-run rollback is sacrificed in exchange for bounded store size on the most disk-constrained target platform. Users who genuinely need cross-run rollback on macOS or Coder (where disk pressure is less acute) can: (a) run `nix profile rollback` directly against `nix-env` before the next `nx setup`, or (b) re-run the prior tagged release of the tool, which reproduces the prior environment from declarative inputs.
+
+A `--keep-history` opt-out flag could be added if non-WSL users request it. Not added by default - it adds CLI surface for marginal value, and the maintainer-trust assumption holds across all platforms.
 
 ### Why oh-my-posh and starship, not oh-my-zsh
 
