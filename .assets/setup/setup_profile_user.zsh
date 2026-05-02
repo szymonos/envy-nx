@@ -101,6 +101,11 @@ fi
 # -- managed env block (local path + MITM proxy cert env vars) --------------
 source "${0:A:h}/../lib/profile_block.sh"
 source "${0:A:h}/../lib/env_block.sh"
+# MIGRATION: strip legacy-named block before upserting the new one to avoid
+# duplicates for users transitioning from the old marker convention.
+if grep -qF "# >>> $ENV_BLOCK_LEGACY_MARKER >>>" "$HOME/.zshrc" 2>/dev/null; then
+  manage_block "$HOME/.zshrc" "$ENV_BLOCK_LEGACY_MARKER" remove
+fi
 _env_tmp="$(mktemp)"
 render_env_block >"$_env_tmp"
 manage_block "$HOME/.zshrc" "$ENV_BLOCK_MARKER" upsert "$_env_tmp"

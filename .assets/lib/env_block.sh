@@ -10,7 +10,12 @@
 # Requires: profile_block.sh must be sourced first (for manage_block).
 
 # shellcheck disable=SC2034  # used by sourcing scripts
-ENV_BLOCK_MARKER="managed env"
+ENV_BLOCK_MARKER="env:managed"
+# MIGRATION: legacy marker name from <= 1.4.x. Sourcing scripts can use
+# this constant to strip the old block before upserting the new one.
+# Safe to delete after the next major release.
+# shellcheck disable=SC2034
+ENV_BLOCK_LEGACY_MARKER="managed env"
 
 # render_env_block
 # Prints the managed env block content to stdout.

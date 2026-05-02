@@ -2,7 +2,7 @@
 # Unit tests for manage_block in .assets/lib/profile_block.sh
 bats_require_minimum_version 1.5.0
 
-MARKER="nix-env managed"
+MARKER="nix:managed"
 
 setup() {
   TEST_DIR="$(mktemp -d)"
