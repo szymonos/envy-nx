@@ -33,9 +33,19 @@ if [ "${#envs[@]}" -gt 0 ]; then
 fi
 
 if [ "$unattended" != "true" ]; then
+  # `[ -t 0 ]` short-circuits when stdin isn't a terminal (CI, prek hooks,
+  # cron, `bash $0 </dev/null`, etc.). Without this guard the read below
+  # would block forever in those contexts: `</dev/tty` opens the SESSION's
+  # controlling terminal, ignoring stdin redirects, so a "headless"
+  # invocation with `</dev/null` doesn't actually prevent the prompt.
+  # See ARCHITECTURE.md §7.9.
+  if [ ! -t 0 ]; then
+    info "Non-interactive shell. Skipped: $CONDA_DIR retained. Remove manually with: rm -rf $CONDA_DIR"
+    exit 0
+  fi
   printf "Remove %s and all conda environments? [y/N] " "$CONDA_DIR"
   reply=""
-  read -r reply </dev/tty || reply=""
+  read -r reply </dev/tty || reply="" # tty-ok
   case "$reply" in
   [yY]*) ;;
   *)

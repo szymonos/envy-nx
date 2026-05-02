@@ -36,6 +36,11 @@ repos:
         language: system
         files: (\.assets/config/shell_cfg/.*\.sh$|\.assets/lib/(nx|nx_pkg|nx_scope|nx_profile|nx_lifecycle|profile_block)\.sh$)
         types: [file]
+      - id: check-no-tty-read
+        name: Forbid `read ... </dev/tty` without `# tty-ok` marker
+        entry: python3 -m tests.hooks.check_no_tty_read
+        language: system
+        files: ^(\.assets/|nix/|wsl/|modules/).*\.(sh|zsh|bash)$
       - id: check-nx-completions
         name: Check nx completers and help text match nx_surface.json
         entry: python3 -m tests.hooks.check_nx_completions
