@@ -177,7 +177,6 @@ function _NxProfileRegenerate {
     }
 
     # -- nix:base - profile dot-source ---
-    $baseProfileDst = [IO.Path]::Combine($envDir, 'profile_base.ps1')
     $baseRegion = [string[]]@(
         '#region nix:base'
         'if (Test-Path "$HOME/.config/nix-env/profile_base.ps1" -PathType Leaf) { . "$HOME/.config/nix-env/profile_base.ps1" }'
@@ -260,7 +259,6 @@ function _NxProfileRegenerate {
 
     # -- nix:uv - uv / uvx completion ---
     $nixBinUv = [IO.Path]::Combine($nixBin, 'uv')
-    $nixBinUvx = [IO.Path]::Combine($nixBin, 'uvx')
     if ([IO.File]::Exists($nixBinUv)) {
         $uvRegion = [string[]]@(
             '#region nix:uv'

@@ -90,19 +90,19 @@ Implications for any change you make:
 
 `nix/setup.sh` is a slim orchestrator (~110 lines). All logic lives in phase libraries; the orchestrator only sequences them.
 
-| Phase file                       | Responsibility                                                                 |
-| -------------------------------- | ------------------------------------------------------------------------------ |
-| `nix/lib/io.sh`                  | Output helpers + side-effect wrappers (`_io_nix`, `_io_curl_probe`, `_io_run`) |
-| `nix/lib/phases/bootstrap.sh`    | Repo auto-refresh, root guard, paths, nix detect/install, jq bootstrap, args   |
-| `nix/lib/phases/platform.sh`     | OS detection, overlay discovery, pre/post-setup hook runners                   |
-| `nix/lib/phases/scopes.sh`       | Load/merge scopes, resolve deps, write `config.nix`, apply removes             |
-| `nix/lib/phases/nix_profile.sh`  | Flake update, `nix profile add/upgrade`, MITM probe                            |
-| `nix/lib/phases/configure.sh`    | gh/git/per-scope `configure/*.sh` dispatch (via `_io_run`)                     |
-| `nix/lib/phases/profiles.sh`     | bash/zsh/pwsh profile setup (delegates block rendering to `nx.sh`)             |
-| `nix/lib/phases/post_install.sh` | `setup_common.sh` + nix GC                                                     |
-| `nix/lib/phases/summary.sh`      | Mode detection + final output                                                  |
+| Phase file                       | Responsibility                                                                               |
+| -------------------------------- | -------------------------------------------------------------------------------------------- |
+| `nix/lib/io.sh`                  | Output helpers + side-effect wrappers (`_io_nix`, `_io_curl_probe`, `_io_run`)               |
+| `nix/lib/phases/bootstrap.sh`    | Repo auto-refresh, root guard, paths, nix detect/install, jq bootstrap, args                 |
+| `nix/lib/phases/platform.sh`     | OS detection, overlay discovery, pre/post-setup hook runners                                 |
+| `nix/lib/phases/scopes.sh`       | Load/merge scopes, resolve deps, write `config.nix`, apply removes                           |
+| `nix/lib/phases/nix_profile.sh`  | Flake update, `nix profile add/upgrade`, MITM probe                                          |
+| `nix/lib/phases/configure.sh`    | gh/git/per-scope `configure/*.sh` dispatch (via `_io_run`)                                   |
+| `nix/lib/phases/profiles.sh`     | bash/zsh/pwsh profile setup (delegates block rendering to `nx.sh`)                           |
+| `nix/lib/phases/post_install.sh` | `setup_common.sh` + nix GC (bounded store, not cross-run rollback - see `docs/decisions.md`) |
+| `nix/lib/phases/summary.sh`      | Mode detection + final output                                                                |
 
-**Wrapper boundary.** Phase functions call `_io_nix`, `_io_curl_probe`, `_io_run` instead of raw commands. Tests redefine these to capture calls without executing them. `_io_run` provides try/catch semantics: stdout streams normally, stderr is captured to a temp file and only surfaced on failure (terminal + log). Configure scripts (`nix/configure/*.sh`) are themselves invoked via `_io_run`, so their internal `gh`/`git`/`curl` commands are already wrapped at the call site - adding `_io_*` *inside* configure scripts gives no test benefit.
+**Wrapper boundary.** Phase functions call `_io_nix`, `_io_curl_probe`, `_io_run` instead of raw commands. Tests redefine these to capture calls without executing them. `_io_run` provides try/catch semantics: stdout streams normally, stderr is captured to a temp file and only surfaced on failure (terminal + log). Configure scripts (`nix/configure/*.sh`) are themselves invoked via `_io_run`, so their internal `gh`/`git`/`curl` commands are already wrapped at the call site - adding `_io_*` *inside* configure scripts gives no test benefit. Configure scripts opt into structured failure labels via `_io_step "<label>"` (in `helpers.sh`); on failure `_io_run` extracts the LAST step marker from captured stderr and prepends `failed at step: <label>` so users see *which* part of the configure script died, not just the raw error stream. Markers are silent on success.
 
 **Configure dispatch table** (in `phase_configure_per_scope`):
 
@@ -229,57 +229,69 @@ Implemented in `resolve_scope_deps` (`.assets/lib/scopes.sh`). `--omp-theme <the
 
 `nx.sh` is sourced into the user's interactive shell lazily via the `nx()` wrapper in `.assets/config/shell_cfg/aliases_nix.sh`. **All five files** (`nx.sh` + the four family files) are subject to zsh-compat constraints (§7).
 
-**`nx_doctor.sh` registry.** Each check is a `_check_<name>` function returning `pass|warn|fail<TAB><detail>` (or empty for skip). A single `_run_check` runner iterates the `CHECKS` list. The `shell_profile` check audits only the invoking shell - not every shell that happens to exist on PATH. The shell is resolved by `_invoking_rc()` in this order: `NX_INVOKING_SHELL` env var (set by the `nx` shell wrapper from `$BASH_VERSION`/`$ZSH_VERSION`) → in-script `$ZSH_VERSION` (only set if invoked as `zsh nx_doctor.sh`) → `basename $SHELL` (the user's login shell - handles direct `bash nx_doctor.sh` invocations) → bash. By default only FAILs produce a non-zero exit; `--strict` treats warnings as failures too (used in CI).
+**`nx_doctor.sh` registry.** Each check is a `_check_<name>` function returning one of: empty (skip), `pass`, `warn<TAB><detail>[<TAB><remediation>]`, or `fail<TAB><detail>[<TAB><remediation>]`. The optional 3rd tab field is rendered as a `Fix: <text>` line indented under the check, included in the JSON output as `.checks[].remediation`, and written to the log file (see below). A single `_run_check` runner iterates the `CHECKS` list. The `shell_profile` check audits only the invoking shell - not every shell that happens to exist on PATH. The shell is resolved by `_invoking_rc()` in this order: `NX_INVOKING_SHELL` env var (set by the `nx` shell wrapper from `$BASH_VERSION`/`$ZSH_VERSION`) → in-script `$ZSH_VERSION` (only set if invoked as `zsh nx_doctor.sh`) → `basename $SHELL` (the user's login shell - handles direct `bash nx_doctor.sh` invocations) → bash. By default only FAILs produce a non-zero exit; `--strict` treats warnings as failures too (used in CI).
+
+**`doctor.log`.** Every non-`--json` run writes a plain-text log to `$DEV_ENV_DIR/doctor.log` (default `~/.config/dev-env/doctor.log`, overwritten per run, atomic via temp + rename). Header carries date, host, invoking shell, and resolved `ENV_DIR`/`DEV_ENV_DIR`; body mirrors the terminal output without ANSI codes. The path is printed at the end of the human-readable summary only when `fail + warn > 0`, so a clean run leaves no on-screen noise. `--json` skips the log write entirely (consumers get all the data in JSON).
 
 **`_nx_find_lib` resolution.** Looks for sibling library files (`profile_block.sh`, family files when sourced standalone). Order: `NX_LIB_DIR` env var override → `BASH_SOURCE`-derived script directory (bash) → `$HOME/.config/nix-env` (zsh fallback, where `BASH_SOURCE[0]` is empty). `NX_LIB_DIR` lets `tests/bats/test_nx_zsh.bats` point at the source repo's `.assets/lib/` instead of copying files into the test's mock ENV_DIR.
 
 **Doctor checks:**
 
-| Check                | Pass                                                                                                                                     | Fail/Warn                        |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
-| `nix_available`      | `nix` in PATH                                                                                                                            | FAIL: nix not found              |
-| `flake_lock`         | `flake.lock` exists, nixpkgs node valid                                                                                                  | FAIL: missing; WARN: unreadable  |
-| `env_dir_files`      | `flake.nix`, `nx.sh`, `nx_{pkg,scope,profile,lifecycle,doctor}.sh`, `profile_block.sh`, `config.nix` all present in `~/.config/nix-env/` | FAIL: lists missing files        |
-| `install_record`     | `install.json` exists, status=success                                                                                                    | WARN: missing or last run failed |
-| `scope_binaries`     | All `# bins:` binaries from scope files found                                                                                            | WARN: lists missing binaries     |
-| `shell_profile`      | Exactly 1 managed block in the **invoking shell's** rc file (bash → `.bashrc`, zsh → `.zshrc`)                                           | FAIL: zero or duplicates         |
-| `shell_config_files` | Every `~/.config/shell/<file>` referenced by the rc resolves on disk                                                                     | FAIL: lists missing files        |
-| `cert_bundle`        | Custom CA bundle + VS Code env OK                                                                                                        | FAIL: bundle or env missing      |
-| `vscode_server_env`  | `~/.vscode-server/server-env-setup` includes nix PATH (if `~/.nix-profile/bin` exists)                                                   | WARN: nix PATH missing           |
-| `nix_profile`        | `nix-env` in `nix profile list`                                                                                                          | FAIL: not found                  |
-| `nix_profile_link`   | `~/.nix-profile` is a symlink resolving to a live target                                                                                 | FAIL: missing or dangling        |
-| `overlay_dir`        | `NIX_ENV_OVERLAY_DIR` readable (if set)                                                                                                  | FAIL: not a readable directory   |
-| `version_skew`       | Installed version matches latest GitHub release (if `gh` available)                                                                      | WARN: installed version is older |
+| Check                   | Pass                                                                                                                                     | Fail/Warn                                                                        |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `nix_available`         | `nix` in PATH and version ≥ 2.18                                                                                                         | FAIL: nix not found OR version below floor; WARN: version not parseable          |
+| `flake_lock`            | `flake.lock` exists, nixpkgs node valid                                                                                                  | FAIL: missing; WARN: unreadable                                                  |
+| `env_dir_files`         | `flake.nix`, `nx.sh`, `nx_{pkg,scope,profile,lifecycle,doctor}.sh`, `profile_block.sh`, `config.nix` all present in `~/.config/nix-env/` | FAIL: lists missing files                                                        |
+| `install_record`        | `install.json` exists, status=success                                                                                                    | WARN: missing or last run failed                                                 |
+| `scope_binaries`        | All `# bins:` binaries from scope files found anywhere on `$PATH`                                                                        | WARN: lists missing binaries                                                     |
+| `scope_bins_in_profile` | Same `# bins:`, but tighter: each binary must be under `~/.nix-profile/bin/` (proves nix actually provided it, not a system shadow)      | FAIL: lists bins absent from nix-profile (skipped if `~/.nix-profile` is absent) |
+| `shell_profile`         | Exactly 1 managed block in the **invoking shell's** rc file (bash → `.bashrc`, zsh → `.zshrc`)                                           | FAIL: zero or duplicates                                                         |
+| `shell_config_files`    | Every `~/.config/shell/<file>` referenced by the rc resolves on disk                                                                     | FAIL: lists missing files                                                        |
+| `cert_bundle`           | Custom CA bundle + VS Code env OK                                                                                                        | FAIL: bundle or env missing                                                      |
+| `vscode_server_env`     | `~/.vscode-server/server-env-setup` includes nix PATH (if `~/.nix-profile/bin` exists)                                                   | WARN: nix PATH missing                                                           |
+| `nix_profile`           | `nix-env` in `nix profile list`                                                                                                          | FAIL: not found                                                                  |
+| `nix_profile_link`      | `~/.nix-profile` is a symlink resolving to a live target                                                                                 | FAIL: missing or dangling                                                        |
+| `overlay_dir`           | `NIX_ENV_OVERLAY_DIR` readable (if set)                                                                                                  | FAIL: not a readable directory                                                   |
+| `version_skew`          | Installed version matches latest GitHub release (if `gh` available)                                                                      | WARN: installed version is older                                                 |
 
-**PowerShell `nx` wrapper.** `.assets/config/pwsh_cfg/_aliases_nix.ps1` defines a PS `nx` function that proxies almost every verb to `bash $ENV_DIR/nx.sh "$@"`. The single exception is `nx profile *`, handled natively because **the bash and PS profile dispatchers operate on structurally different files** (`~/.bashrc`/`~/.zshrc` with `# >>> nix-env managed >>>` blocks vs `$PROFILE.CurrentUserAllHosts` with `#region nix:* ... #endregion` regions). The `$PROFILE` path is resolved by the .NET runtime per host and cannot be derived from bash; the region syntax is PowerShell-specific. This is **symmetric implementation, not duplicated logic** - but the user-facing subverb surface must stay in sync (enforced by `check-nx-profile-parity`, see §3d).
+**PowerShell `nx` wrapper.** `.assets/config/pwsh_cfg/_aliases_nix.ps1` defines a PS `nx` function that proxies almost every verb to `bash $ENV_DIR/nx.sh "$@"`. The single exception is `nx profile *`, handled natively because **the bash and PS profile dispatchers operate on structurally different files** (`~/.bashrc`/`~/.zshrc` with `# >>> nix:managed >>>` blocks vs `$PROFILE.CurrentUserAllHosts` with `#region nix:* ... #endregion` regions). The `$PROFILE` path is resolved by the .NET runtime per host and cannot be derived from bash; the region syntax is PowerShell-specific. This is **symmetric implementation, not duplicated logic** - both the bash dispatcher and the PS `switch ($subCmd)` arms are generated from the same manifest (see §3d), so the user-facing subverb surface stays in sync by construction.
 
-### 3d. Manifest-driven completions and help (`.assets/lib/nx_surface.json` + `tests/hooks/gen_nx_completions.py`)
+### 3d. Manifest-driven completions, dispatchers, and help (`.assets/lib/nx_surface.json` + `tests/hooks/gen_nx_completions.py`)
 
-The user-facing surface of `nx` (verbs, subverbs, aliases, flags, dynamic completer references, summaries) is declared once in `.assets/lib/nx_surface.json`. Four artifacts are **generated** from it:
+The user-facing surface of `nx` (verbs, subverbs, aliases, flags, dynamic completer references, summaries, family/handler hints) is declared once in `.assets/lib/nx_surface.json`. **Nine artifacts** are generated from it:
 
-| Generated artifact                                        | Generator                           | Replacement scope                                       |
-| --------------------------------------------------------- | ----------------------------------- | ------------------------------------------------------- |
-| `.assets/config/shell_cfg/completions.bash`               | `tests/hooks/gen_nx_completions.py` | full file                                               |
-| `.assets/config/shell_cfg/completions.zsh`                | same                                | full file                                               |
-| `.assets/config/pwsh_cfg/_aliases_nix.ps1`                | same                                | only `#region nx-completer ... #endregion` block        |
-| `.assets/lib/nx_lifecycle.sh` (`_nx_lifecycle_help` body) | same                                | between `# >>> nx-help generated >>>` / `# <<< ... <<<` |
+| # | Generated artifact                                             | Replacement scope                                        |
+| - | -------------------------------------------------------------- | -------------------------------------------------------- |
+| 1 | `.assets/config/shell_cfg/completions.bash`                    | full file                                                |
+| 2 | `.assets/config/shell_cfg/completions.zsh`                     | full file                                                |
+| 3 | `.assets/config/pwsh_cfg/_aliases_nix.ps1` nx-completer region | between `#region nx-completer ... #endregion`            |
+| 4 | `.assets/lib/nx_lifecycle.sh` `_nx_lifecycle_help` body        | between `# >>> nx-help generated >>>` / `# <<< ... <<<`  |
+| 5 | `.assets/lib/nx.sh` `nx_main` case body                        | between `# >>> nx-main generated >>>` / `# <<< ... <<<`  |
+| 6 | `.assets/config/pwsh_cfg/_aliases_nix.ps1` nx:dispatch region  | between `#region nx:dispatch ... #endregion nx:dispatch` |
+| 7 | `nix/lib/phases/bootstrap.sh` lib-files for-loop               | between `# >>> nx-libs generated >>>` / `# <<< ... <<<`  |
+| 8 | `.assets/lib/nx_lifecycle.sh` lib-files for-loop               | (same markers, separate site)                            |
+| 9 | `.assets/lib/nx_doctor.sh` lib-files for-loop (+ aux files)    | (same markers, separate site)                            |
 
-Adding a verb, subverb, or flag is a **one-file edit** to `nx_surface.json` followed by `python3 -m tests.hooks.gen_nx_completions`. Before this manifest existed, every flag addition was a four-file change (parser in `nx.sh` + bash/zsh/pwsh completers); verb summaries lived twice (heredoc in `nx_lifecycle.sh` + manifest `summary` field).
+Adding a verb, subverb, or flag is a **one-file edit** to `nx_surface.json` followed by `python3 -m tests.hooks.gen_nx_completions`. Adding a new lib family file = add the `family` to one verb in the manifest; the generator computes the file list (`nx.sh + nx_<family>.sh + nx_doctor.sh + profile_block.sh`) and emits it to all 3 sync/audit sites.
 
 **Schema** (intentionally narrow):
 
-- `verbs[]` - top-level commands (`name`, `summary`, optional `aliases`, `subverbs`, `args`, `flags`, `help_args`).
+- `verbs[]` - top-level commands (`name`, `family`, `summary`, optional `aliases`, `subverbs`, `args`, `flags`, `help_args`). `family` is required for *every* verb (used by `nx_main` to derive the bash handler `_nx_<family>_<verb>` for non-subverb verbs, and by the lib-files emitter to derive the family-file list).
 - `subverbs[]` - same shape as a verb, no further nesting (current `nx` has no depth-3 verbs).
 - `args[]` - positional shape: `name`, `required`, `variadic`, optional `completer` reference.
 - `flags[]` - `long`, optional `short`, `summary`, optional `takes_value` + `value_completer`.
 - `help_args` - optional override for the `nx help` args column. Used by `setup` to render `[flags...]` since its primary surface is passthrough flags, not positional args.
 - `completers{}` - registry of named dynamic completers (`installed_packages`, `all_scopes`, `theme_omp`, `theme_starship`). Implementation lives in the generator as per-shell snippets so shell-native idioms (zsh `(@f)`, bash `compgen -W`, PS `Where-Object`) stay readable.
 
-**Drift defenders** (pre-commit hooks):
+**Handler convention** (used by `_verb_handler` in the generator):
 
-- `check-nx-completions` (`tests/hooks/check_nx_completions.py`) imports the generator's `emit_*` functions and diffs against the committed completer files **and** the `nx-help generated` region in `nx_lifecycle.sh`. Fails with `Regenerate with: python3 -m tests.hooks.gen_nx_completions`. Triggers on changes to the manifest, any generated file, or the generator/checker scripts.
-- `check-nx-profile-parity` (`tests/hooks/check_nx_profile_parity.py`) parses the PowerShell `switch ($subCmd)` block in `_aliases_nix.ps1` and asserts the subverbs match `nx_surface.json`'s `profile.subverbs`.
-- `check-nx-dispatch-parity` (`tests/hooks/check_nx_dispatch_parity.py`) parses `nx_main`'s `case "$cmd" in` block in `nx.sh` and asserts every verb (and alias) matches `nx_surface.json`. Closes the third drift loop: completers, PS profile dispatcher, and the bash dispatcher itself all stay in sync.
+- Verbs **with** `subverbs` route to `_nx_<name>_dispatch` (the family file owns the subverb routing internally).
+- Verbs **without** `subverbs` route to `_nx_<family>_<name>` and require the `family` field.
+- Args forwarding (`"$@"`) is emitted iff the verb has `args`, `flags`, or `subverbs`.
+
+**Drift defender** (one pre-commit hook):
+
+- `check-nx-generated` (`tests/hooks/check_nx_completions.py`) imports the generator's `emit_*` functions and diffs every generated artifact against what's checked in. Fails with `Regenerate with: python3 -m tests.hooks.gen_nx_completions`. Triggers on changes to the manifest, any generated file, or the generator/checker scripts. Replaces four earlier hooks (`check-nx-completions`, `check-nx-profile-parity`, `check-nx-dispatch-parity`, `check-nx-lib-files-parity`) - generation is strictly more powerful than parsing-and-diffing; the same correctness guarantee with one mental model and ~600 fewer lines of regex.
 
 This is the third instance of "single JSON manifest consumed by bash/PowerShell/Python" in the repo, joining `scopes.json` and `flake.lock`. See *Bootstrap dependency* under §5 for why JSON.
 
@@ -289,20 +301,20 @@ Shell profile injection (`~/.bashrc`, `~/.zshrc`, PowerShell `$PROFILE`) uses a 
 
 **Bash/Zsh** - `nx_profile.sh` renders blocks; `profile_block.sh` provides `manage_block` (insert/upsert/remove). Two blocks per rc file:
 
-- `nix-env managed` - nix-specific (PATH, nix aliases, completions, prompt init). Removed by `nix/uninstall.sh`.
-- `managed env` - generic env (local PATH, cert env vars, generic aliases/functions). Survives uninstall.
+- `nix:managed` - nix-specific (PATH, nix aliases, completions, prompt init). Removed by `nix/uninstall.sh`. Legacy name `nix-env managed` (<= 1.4.x) is auto-migrated on the next `nx profile regenerate` and still removed by the uninstaller.
+- `env:managed` - generic env (local PATH, cert env vars, generic aliases/functions). Survives uninstall. Legacy name: `managed env`.
 
 Block rendering lives in `nx_profile.sh` (`_nx_render_env_block`, `_nx_render_nix_block`). The `nix/configure/profiles.sh` / `.zsh` scripts handle provisioning (file copy, CA certs, zsh plugins) then delegate block management to `nx profile regenerate`. This means `nx profile regenerate` works standalone after the repo is removed.
 
 Alias files are routed to the correct block by install source:
 
-- `functions.sh` - always in `managed env` (purely generic).
-- `aliases_git.sh` - `nix-env managed` if git is from nix (`~/.nix-profile/bin/git` exists), else `managed env`.
+- `functions.sh` - always in `env:managed` (purely generic).
+- `aliases_git.sh` - `nix:managed` if git is from nix (`~/.nix-profile/bin/git` exists), else `env:managed`.
 - `aliases_kubectl.sh` - same logic for kubectl.
-- `aliases_nix.sh` - always `nix-env managed` (nix-specific by definition).
+- `aliases_nix.sh` - always `nix:managed` (nix-specific by definition).
 
 ```bash
-# >>> nix-env managed >>>
+# >>> nix:managed >>>
 # :path
 . $HOME/.nix-profile/etc/profile.d/nix.sh
 export PATH="$HOME/.nix-profile/bin:$PATH"
@@ -311,16 +323,16 @@ export NIX_SSL_CERT_FILE="$HOME/.config/certs/ca-bundle.crt"
 . "$HOME/.config/shell/aliases_nix.sh"
 # :oh-my-posh
 [ -x "$HOME/.nix-profile/bin/oh-my-posh" ] && eval "$(oh-my-posh init bash ...)"
-# <<< nix-env managed <<<
+# <<< nix:managed <<<
 
-# >>> managed env >>>
+# >>> env:managed >>>
 # :local path
 if [ -d "$HOME/.local/bin" ]; then
   export PATH="$HOME/.local/bin:$PATH"
 fi
 # :certs
 export NODE_EXTRA_CA_CERTS="$HOME/.config/certs/ca-custom.crt"
-# <<< managed env <<<
+# <<< env:managed <<<
 ```
 
 **PowerShell** - `_aliases_nix.ps1` provides `_NxProfileRegenerate` + region helpers. Nix-managed regions use the `nix:` prefix (`#region nix:base`, `#region nix:path`, `#region nix:certs`). Generic regions (certs, conda, make completer) use unprefixed names and are written by `setup_profile_user.ps1`. The uninstaller only removes `nix:`-prefixed regions.
@@ -337,7 +349,9 @@ Properties:
 
 See the table in §3c. Implementation is `.assets/lib/nx_doctor.sh`, copied to `~/.config/nix-env/nx_doctor.sh` during setup so it remains available after the repo is removed. By default only FAILs cause non-zero exit; `--strict` treats warnings as failures too (used in CI).
 
-**Adding a check** is a §6 recipe: write `_check_<name>`, append `<name>` to `CHECKS`, document in §3c table.
+Each failing/warning check that supports it prints a `Fix: <command-or-pointer>` hint indented under the check line, so the common remediation (e.g. `nx self sync`, `nx profile regenerate`, `nx upgrade`) is one read away. The full plain-text output is also written to `~/.config/dev-env/doctor.log` (overwritten per run); the path is printed only when there are failures or warnings, and never under `--json`.
+
+**Adding a check** is a §6 recipe: write `_check_<name>`, append `<name>` to `CHECKS`, document in §3c table. Provide a remediation in the 3rd tab field whenever a clear fix exists.
 
 ### 3g. Certificate handling (`.assets/lib/certs.sh`, `nix/lib/phases/nix_profile.sh:phase_nix_profile_mitm_probe`)
 
@@ -396,9 +410,9 @@ These choices are load-bearing - changing one cascades. Each entry is a *constra
 
 **Atomic file install for runtime files.** Files copied into `~/.config/nix-env/` and `~/.config/shell/` use `install_atomic` (temp file + same-filesystem rename). A plain `cp` races against any concurrent shell sourcing the file → cryptic `command not found` / `syntax error` errors. `flake.nix` and `scopes/*.nix` stay on plain `cp` (read by nix tooling, not the user's shell).
 
-**Symmetric (not duplicated) profile dispatchers.** Bash and PowerShell `nx profile` operate on structurally different files (rc with sentinel blocks vs `$PROFILE` with `#region`). Implementations must stay independent; surface stays in sync via `check-nx-profile-parity`. **Do not** try to "deduplicate" by shelling PS to bash - `$PROFILE` resolution and region syntax are PS-specific.
+**Symmetric (not duplicated) profile dispatchers.** Bash and PowerShell `nx profile` operate on structurally different files (rc with sentinel blocks vs `$PROFILE` with `#region`). Implementations must stay independent; surface stays in sync because both dispatchers' arms are generated from the same manifest (see §3d). **Do not** try to "deduplicate" by shelling PS to bash - `$PROFILE` resolution and region syntax are PS-specific.
 
-**Manifest-driven completions.** Adding/changing a verb, subverb, or flag goes through `nx_surface.json`. Hand-editing `completions.bash`, `completions.zsh`, or the `#region nx-completer` block in `_aliases_nix.ps1` will be reverted by the next `gen_nx_completions` run and rejected by `check-nx-completions`.
+**Manifest-driven everything.** Adding/changing a verb, subverb, flag, or family file goes through `nx_surface.json`. Hand-editing any generated artifact (completers, `_nx_lifecycle_help`, `nx_main` case body, PS `nx:dispatch` region, lib-file for-loops) will be reverted by the next `gen_nx_completions` run and rejected by `check-nx-generated`.
 
 **Wrapper boundary at the phase level.** Side-effect wrappers (`_io_nix`, `_io_curl_probe`, `_io_run`) are called from `nix/lib/phases/*.sh`. Configure scripts (`nix/configure/*.sh`) are themselves invoked via `_io_run`, so their internal commands are already wrapped. Adding `_io_*` *inside* configure scripts would force tests to stub at two levels for no gain.
 
@@ -430,34 +444,30 @@ Follow these exact steps. They are built from real change sets.
 
 1. Edit `.assets/lib/nx_surface.json` - add the verb (or subverb) under the appropriate parent. Include `name`, `summary`, optional `aliases`, `subverbs`, `args`, `flags`.
 2. Implement the verb in the matching family file (`nx_pkg.sh`, `nx_scope.sh`, `nx_profile.sh`, or `nx_lifecycle.sh`). Use `function name() {` (zsh-compat).
-3. Wire the dispatcher in `.assets/lib/nx.sh`'s `nx_main` if the verb is top-level - every manifest verb name and alias must have a matching `case` arm, otherwise `check-nx-dispatch-parity` will fail.
-4. Regenerate completers and `nx help`: `python3 -m tests.hooks.gen_nx_completions` (also rewrites the `_nx_lifecycle_help` body from the manifest).
-5. If the verb is `nx profile *`: also add the case to PowerShell `_aliases_nix.ps1`'s `switch ($subCmd)` block, otherwise `check-nx-profile-parity` will fail.
-6. Add bats tests in `tests/bats/test_nx_*.bats` (and Pester tests under `tests/pester/` for any PS-side change).
-7. Update the user-facing summary in `docs/nx.md`.
-8. Add a CHANGELOG entry.
-9. Run `make lint` (triggers `check-nx-completions`, `check-nx-profile-parity`, `check-nx-dispatch-parity`, `bats-tests`).
+3. Regenerate everything: `python3 -m tests.hooks.gen_nx_completions`. This rewrites the bash/zsh/PS completers, `_nx_lifecycle_help` body, `nx_main` case body in `nx.sh`, and (if the verb is `nx profile *`) the PS `nx:dispatch` region in `_aliases_nix.ps1`. **No hand-editing of the dispatcher.**
+4. Add bats tests in `tests/bats/test_nx_*.bats` (and Pester tests under `tests/pester/` for any PS-side native helper change like `_NxProfileUninstall`).
+5. Update the user-facing summary in `docs/nx.md`.
+6. Add a CHANGELOG entry.
+7. Run `make lint` (triggers `check-nx-generated`, `bats-tests`).
 
 ### 6.4. Add a new nx family file
 
-Rare - only when an existing family becomes too large or a new domain emerges. The lib-file list lives in 3 places that `check-nx-lib-files-parity` enforces in sync - update all three.
+Rare - only when an existing family becomes too large or a new domain emerges. The lib-file list is now derived from the manifest's `family` fields and **generated** into all 3 sync/audit sites - no manual list-editing.
 
 1. Create `.assets/lib/nx_<family>.sh`. No shebang (sourced library). Every function definition uses `function name() {` (zsh-compat). Use private `_nx_<family>_*` names.
 2. Add `nx_<family>.sh` to the loop in `nx.sh` that sources family files.
-3. Add `nx_<family>.sh` to the **three** lib-file lists (parity-enforced):
-   - `nix/lib/phases/bootstrap.sh:phase_bootstrap_sync_env_dir` (`install_atomic` loop, line ~210)
-   - `.assets/lib/nx_lifecycle.sh:_nx_self_sync` (cp loop, line ~10)
-   - `.assets/lib/nx_doctor.sh:_check_env_dir_files` (existence check, line ~78)
-4. Update §1 directory tree, §3c family table, and §13 runtime layout in this file.
-5. `tests/bats/test_nx_zsh.bats` uses `NX_LIB_DIR` pointing at `.assets/lib/`, so the new family file is picked up automatically - no test-setup change needed.
-6. Run `make lint` (triggers `check-nx-lib-files-parity`) and `make test-unit`.
+3. Set `"family": "<family>"` on at least one verb (or subverb-verb) in `nx_surface.json`. The generator picks up unique families and emits `nx_<family>.sh` to all 3 sync/audit sites.
+4. Regenerate: `python3 -m tests.hooks.gen_nx_completions`. This rewrites the for-loops in `bootstrap.sh:phase_bootstrap_sync_env_dir`, `nx_lifecycle.sh:_nx_self_sync`, and `nx_doctor.sh:_check_env_dir_files` (plus `nx_main` case arms if you added new verbs).
+5. Update §1 directory tree, §3c family table, and §13 runtime layout in this file.
+6. `tests/bats/test_nx_zsh.bats` uses `NX_LIB_DIR` pointing at `.assets/lib/`, so the new family file is picked up automatically - no test-setup change needed.
+7. Run `make lint` (triggers `check-nx-generated`) and `make test-unit`.
 
 ### 6.5. Add a new doctor check
 
-1. Implement `_check_<name>` in `.assets/lib/nx_doctor.sh`. Return one of: empty (skip), `pass`, `warn<TAB><detail>`, `fail<TAB><detail>`.
+1. Implement `_check_<name>` in `.assets/lib/nx_doctor.sh`. Return one of: empty (skip), `pass`, `warn<TAB><detail>[<TAB><remediation>]`, `fail<TAB><detail>[<TAB><remediation>]`. The optional remediation renders as `Fix: <text>` under the check; supply one whenever there's a clear command or pointer that fixes the root cause.
 2. Append `<name>` to the `CHECKS` list at the bottom of the file.
 3. Add a row to the doctor table in §3c of this file (and `docs/nx.md` if user-facing).
-4. Add bats tests in `tests/bats/test_nx_doctor.bats` covering pass + at least one fail/warn path.
+4. Add bats tests in `tests/bats/test_nx_doctor.bats` covering pass + at least one fail/warn path. If you supplied a remediation, also assert that the `Fix:` line and JSON `.remediation` field are emitted.
 5. Run `make lint`.
 
 ### 6.6. Add a new flag (no behavior change to surface schema)
@@ -581,27 +591,43 @@ Rules: use `# comment` lines to describe what the next example does; the followi
 
 `SC1090` (non-constant source), `SC2139` (expand at define time), `SC2148` (missing shebang on sourced files), `SC2155` (declare and assign separately), `SC2174` (mkdir mode).
 
+### 7.9. Never use `read </dev/tty` in scripts that have unit tests
+
+`read -r <var> </dev/tty` opens the **session's controlling terminal** directly. It ignores stdin redirects entirely - `</dev/null`, `printf 'n\n' |`, none of it works. So a "headless" test wrapper like `bash -c "printf 'n\n' | bash $SCRIPT </dev/null"` does NOT make `/dev/tty` unavailable to the script: if the runner has a controlling tty (interactive shell, prek invoked from a terminal), the script blocks on `read` waiting for input from the developer's keyboard.
+
+This trap has bitten the codebase repeatedly. The bug only appears in some environments:
+
+- **CI / docker exec without `-t` / claude code agents**: no controlling tty, `open("/dev/tty")` fails immediately, the `|| reply=""` fallback fires, test passes - **silently misleading the author into thinking the pattern is safe**.
+- **Developer terminal / prek under interactive shell**: controlling tty exists, read blocks, test hangs forever.
+
+**Rules:**
+
+1. **Prefer an `--unattended` / `-y` flag or env var (e.g. `<NAME>_NON_INTERACTIVE=1`)** over `read </dev/tty`. Flags are testable without tty trickery; CI / unattended runs use them explicitly.
+2. **If you must read from a tty** (rare - usually for password input where echo-suppression matters): pair every `read </dev/tty` with `[ -t 0 ] || { echo "non-interactive, skipping" >&2; exit 0; }` earlier in the script so headless runs short-circuit before the read attempt.
+3. **When testing a script that already uses `read </dev/tty`**: prefix the invocation with `setsid` (Linux) to detach the child from the session's controlling tty. Skip the test on systems without `setsid` (e.g., bare macOS) - `command -v setsid >/dev/null 2>&1 || skip "setsid required"`. **`bash $SCRIPT </dev/null` is NOT enough** - that only changes fd 0, not /dev/tty.
+4. **Reviewing test files**: any `printf '...\n' | bash $SCRIPT` pattern that's trying to mock interactive input is a smell - it almost never works. Audit with `grep -rE 'read.*</dev/tty|read -r.*<.*tty' .assets/ nix/ scripts/`; any hit on a script that has bats coverage is suspicious.
+
+**Enforced by `check-no-tty-read`** (`tests/hooks/check_no_tty_read.py`): forbids `read ... </dev/tty` outright in `.assets/`, `nix/`, `wsl/`, `modules/`. Suppress on a case-by-case basis with a `# tty-ok` marker on the same line - the marker is a self-attestation that you've added the `[ -t 0 ]` guard (or equivalent) earlier in the code path. Reference examples: `nix/configure/conda_remove.sh` and `.assets/lib/nx_lifecycle.sh:_nx_self_dispatch` both have the guard + `# tty-ok` annotation.
+
 ## 8. Pre-commit hooks
 
 Configured in `.pre-commit-config.yaml`, run via `prek` (not `pre-commit`).
 
 ### Local hooks (`tests/hooks/`)
 
-| Hook                        | Script                         | What it checks                                                                                                                                    |
-| --------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `gremlins-check`            | `gremlins.py`                  | Unwanted Unicode (zero-width spaces, smart quotes); auto-fixes common substitutions                                                               |
-| `validate-docs-words`       | `validate_docs_words.py`       | `project-words.txt` contains only words that appear in docs (removes stale entries automatically)                                                 |
-| `align-tables`              | `align_tables.py`              | Auto-aligns markdown tables on save                                                                                                               |
-| `validate-scopes`           | `validate_scopes.py`           | `scopes.json` and `nix/scopes/*.nix` consistent; every scope has `# bins:`                                                                        |
-| `check-bash32`              | `check_bash32.py`              | Nix-path `.sh` files avoid bash 4+ constructs                                                                                                     |
-| `check-zsh-compat`          | `check_zsh_compat.py`          | Shell-sourced files work under zsh                                                                                                                |
-| `check-changelog`           | `check_changelog.py`           | Runtime file changes require CHANGELOG entry under `[Unreleased]` (bypass via `skip-changelog` label)                                             |
-| `check-nx-completions`      | `check_nx_completions.py`      | Generated completers + `_nx_lifecycle_help` body match `nx_surface.json` (regenerate via `python3 -m tests.hooks.gen_nx_completions`)             |
-| `check-nx-profile-parity`   | `check_nx_profile_parity.py`   | PowerShell `nx profile` subverbs match `nx_surface.json`                                                                                          |
-| `check-nx-dispatch-parity`  | `check_nx_dispatch_parity.py`  | Bash `nx_main` case arms (verbs + aliases) match `nx_surface.json`                                                                                |
-| `check-nx-lib-files-parity` | `check_nx_lib_files_parity.py` | nx lib-file list matches across `bootstrap.sh:phase_bootstrap_sync_env_dir`, `nx_lifecycle.sh:_nx_self_sync`, `nx_doctor.sh:_check_env_dir_files` |
-| `bats-tests`                | `run_bats.py`                  | Runs bats unit tests when relevant files change (parses `source` directives to map files to tests)                                                |
-| `pester-tests`              | `run_pester.py`                | Runs Pester unit tests when relevant files change                                                                                                 |
+| Hook                  | Script                    | What it checks                                                                                                                                                                                                                                                                           |
+| --------------------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gremlins-check`      | `gremlins.py`             | Unwanted Unicode (zero-width spaces, smart quotes); auto-fixes common substitutions                                                                                                                                                                                                      |
+| `validate-docs-words` | `validate_docs_words.py`  | `project-words.txt` contains only words that appear in docs (removes stale entries automatically)                                                                                                                                                                                        |
+| `align-tables`        | `align_tables.py`         | Auto-aligns markdown tables on save                                                                                                                                                                                                                                                      |
+| `validate-scopes`     | `validate_scopes.py`      | `scopes.json` and `nix/scopes/*.nix` consistent; every scope has `# bins:`                                                                                                                                                                                                               |
+| `check-bash32`        | `check_bash32.py`         | Nix-path `.sh` files avoid bash 4+ constructs                                                                                                                                                                                                                                            |
+| `check-zsh-compat`    | `check_zsh_compat.py`     | Shell-sourced files work under zsh                                                                                                                                                                                                                                                       |
+| `check-no-tty-read`   | `check_no_tty_read.py`    | Forbids `read ... </dev/tty` without a `# tty-ok` marker - the pattern silently hangs in interactive shells (see §7.9)                                                                                                                                                                   |
+| `check-changelog`     | `check_changelog.py`      | Runtime file changes require CHANGELOG entry under `[Unreleased]` (bypass via `skip-changelog` label)                                                                                                                                                                                    |
+| `check-nx-generated`  | `check_nx_completions.py` | All generated artifacts match `nx_surface.json`: bash/zsh/PS completers, `_nx_lifecycle_help` body, `nx_main` case arms, PS `nx:dispatch` region, lib-file for-loops in 3 sync/audit sites. Regenerate via `python3 -m tests.hooks.gen_nx_completions`. Replaces 4 earlier parity hooks. |
+| `bats-tests`          | `run_bats.py`             | Runs bats unit tests when relevant files change (parses `source` directives to map files to tests)                                                                                                                                                                                       |
+| `pester-tests`        | `run_pester.py`           | Runs Pester unit tests when relevant files change                                                                                                                                                                                                                                        |
 
 ### External hooks
 
@@ -684,15 +710,15 @@ GitHub Actions workflows under `.github/workflows/` encode validated deployment 
 
 **Test-per-run assertions** (both integration workflows):
 
-- `setup.sh` completes with requested scope flags. Label-triggered runs use a fast smoke test (`--shell` plus a prompt theme); `workflow_dispatch` defaults to the full scope set (`--shell --python --pwsh --k8s-dev --terraform` plus a prompt engine) with an input override for custom scopes.
+- `setup.sh` completes with requested scope flags. Label-triggered runs and matrix defaults use a representative scope set (`--shell --pwsh --k8s-base --conda` + prompt engine) so conda's external installer + the Pester runtime are exercised on every PR; `workflow_dispatch` defaults to the full scope set (`--shell --python --pwsh --k8s-dev --terraform` plus a prompt engine) with an input override for custom scopes.
 - Core binaries (`git`, `gh`, `jq`, `curl`, `openssl`) resolve on PATH.
-- Scope-specific binaries resolve (mapped from scope flags).
+- Scope-specific binaries resolve (mapped from scope flags). For `--conda`, the check looks at `~/miniforge3/bin/conda` since conda lives outside `~/.nix-profile/bin/`.
 - `nx doctor --strict` passes (warnings and failures both break the build).
-- `# >>> nix-env managed >>>` block exists in `~/.bashrc` exactly once.
+- `# >>> nix:managed >>>` block exists in `~/.bashrc` exactly once.
 - Second `setup.sh` invocation produces exactly one managed block (idempotency).
 - `install.json` written with `status = "success"`.
-- `bats tests/bats/test_nix_setup.bats` passes.
-- `nix/uninstall.sh --env-only` removes nix-env state, preserves generic `managed env` block, leaves `/nix/store` intact.
+- Full bats + Pester suites pass (parallel via `xargs -P 4` for bats and `ForEach-Object -Parallel` for Pester - same helpers `make test-unit` uses).
+- `nix/uninstall.sh --env-only` removes the `nix:managed` block (and the legacy `nix-env managed` block during the migration window), preserves the `env:managed` block, leaves `/nix/store` intact, and (when `--conda` was in scope) removes `~/miniforge3/` plus the `conda initialize` rc block.
 
 **Triggers:** manual (`workflow_dispatch` with scope override), PR label (`test:integration`), or push to an already-labeled PR.
 
@@ -721,42 +747,42 @@ This project follows [Keep a Changelog](https://keepachangelog.com) format and [
 
 ### 12.1. nix-path (bash 3.2 + BSD compatible required)
 
-| File                                                                                  | Role                                                               |
-| ------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| `nix/setup.sh`                                                                        | Main entry point (slim orchestrator, sources phase libraries)      |
-| `nix/lib/io.sh`                                                                       | Structured logging + side-effect wrappers (tests override)         |
-| `nix/lib/phases/bootstrap.sh`                                                         | Repo auto-refresh, root guard, paths, nix detect/install, jq, args |
-| `nix/lib/phases/platform.sh`                                                          | OS detection, overlay discovery, hook runner                       |
-| `nix/lib/phases/scopes.sh`                                                            | Load/merge scopes, resolve deps, write config.nix                  |
-| `nix/lib/phases/nix_profile.sh`                                                       | Flake update, nix profile upgrade, MITM probe                      |
-| `nix/lib/phases/configure.sh`                                                         | gh/git/per-scope configure dispatch                                |
-| `nix/lib/phases/profiles.sh`                                                          | bash/zsh/PowerShell shell profile setup                            |
-| `nix/lib/phases/post_install.sh`                                                      | Common post-install + nix garbage collection                       |
-| `nix/lib/phases/summary.sh`                                                           | Mode detection + final status output                               |
-| `nix/configure/{gh,git,docker,conda,az,terraform,omp,starship,profiles}.{sh,zsh,ps1}` | Per-scope post-install hooks                                       |
-| `nix/configure/conda_remove.sh`                                                       | Removal hook for conda scope                                       |
-| `nix/uninstall.sh`                                                                    | Removes nix-env environment, optionally Nix itself                 |
-| `.assets/lib/scopes.{json,sh}`                                                        | Scope catalog (json) + helpers (sh)                                |
-| `.assets/lib/nx_surface.json`                                                         | nx CLI verb/flag/subverb manifest                                  |
-| `.assets/lib/install_record.sh`                                                       | Install provenance writer                                          |
-| `.assets/lib/setup_log.sh`                                                            | Log file lifecycle                                                 |
-| `.assets/lib/helpers.sh`                                                              | `download_file`, `gh_login_user`, `install_atomic`                 |
-| `.assets/lib/profile_block.sh`                                                        | Managed-block library (sourced by profiles.sh/.zsh, nx)            |
-| `.assets/lib/env_block.sh`                                                            | Generic env block (sourced by setup_profile_user; legacy)          |
-| `.assets/lib/certs.sh`                                                                | CA bundle builder + VS Code Server cert setup                      |
-| `.assets/lib/vscode.sh`                                                               | VS Code Server env helpers                                         |
-| `.assets/lib/nx.sh`                                                                   | nx CLI entry point: helpers + family sourcing + dispatcher         |
-| `.assets/lib/nx_pkg.sh`                                                               | nx verbs: search/install/remove/upgrade/list/prune/gc/rollback     |
-| `.assets/lib/nx_scope.sh`                                                             | nx verbs: scope/overlay/pin                                        |
-| `.assets/lib/nx_profile.sh`                                                           | nx profile verb + managed-block rendering                          |
-| `.assets/lib/nx_lifecycle.sh`                                                         | nx verbs: setup/self/doctor/version/help                           |
-| `.assets/lib/nx_doctor.sh`                                                            | Health-check registry (`nx doctor`)                                |
-| `.assets/config/shell_cfg/aliases_{nix,git,kubectl}.sh`                               | Shell aliases (sourced into managed blocks)                        |
-| `.assets/config/shell_cfg/functions.sh`                                               | Shared shell functions (cert_intercept, fixcertpy)                 |
-| `.assets/config/shell_cfg/completions.{bash,zsh}`                                     | Tab completions for nx (**generated** from `nx_surface.json`)      |
-| `.assets/setup/setup_common.sh`                                                       | Post-install setup (called via `nix/setup.sh`)                     |
-| `.assets/setup/setup_profile_user.ps1`                                                | PowerShell user profile (certs, local-path, etc.)                  |
-| `.assets/provision/install_copilot.sh`                                                | Post-install: GitHub Copilot CLI                                   |
+| File                                                                                  | Role                                                                  |
+| ------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `nix/setup.sh`                                                                        | Main entry point (slim orchestrator, sources phase libraries)         |
+| `nix/lib/io.sh`                                                                       | Structured logging + side-effect wrappers (tests override)            |
+| `nix/lib/phases/bootstrap.sh`                                                         | Repo auto-refresh, root guard, paths, nix detect/install, jq, args    |
+| `nix/lib/phases/platform.sh`                                                          | OS detection, overlay discovery, hook runner                          |
+| `nix/lib/phases/scopes.sh`                                                            | Load/merge scopes, resolve deps, write config.nix                     |
+| `nix/lib/phases/nix_profile.sh`                                                       | Flake update, nix profile upgrade, MITM probe                         |
+| `nix/lib/phases/configure.sh`                                                         | gh/git/per-scope configure dispatch                                   |
+| `nix/lib/phases/profiles.sh`                                                          | bash/zsh/PowerShell shell profile setup                               |
+| `nix/lib/phases/post_install.sh`                                                      | Common post-install + nix GC (bounded store; see `docs/decisions.md`) |
+| `nix/lib/phases/summary.sh`                                                           | Mode detection + final status output                                  |
+| `nix/configure/{gh,git,docker,conda,az,terraform,omp,starship,profiles}.{sh,zsh,ps1}` | Per-scope post-install hooks                                          |
+| `nix/configure/conda_remove.sh`                                                       | Removal hook for conda scope                                          |
+| `nix/uninstall.sh`                                                                    | Removes nix-env environment, optionally Nix itself                    |
+| `.assets/lib/scopes.{json,sh}`                                                        | Scope catalog (json) + helpers (sh)                                   |
+| `.assets/lib/nx_surface.json`                                                         | nx CLI verb/flag/subverb manifest                                     |
+| `.assets/lib/install_record.sh`                                                       | Install provenance writer                                             |
+| `.assets/lib/setup_log.sh`                                                            | Log file lifecycle                                                    |
+| `.assets/lib/helpers.sh`                                                              | `download_file`, `gh_login_user`, `install_atomic`                    |
+| `.assets/lib/profile_block.sh`                                                        | Managed-block library (sourced by profiles.sh/.zsh, nx)               |
+| `.assets/lib/env_block.sh`                                                            | Generic env block (sourced by setup_profile_user; legacy)             |
+| `.assets/lib/certs.sh`                                                                | CA bundle builder + VS Code Server cert setup                         |
+| `.assets/lib/vscode.sh`                                                               | VS Code Server env helpers                                            |
+| `.assets/lib/nx.sh`                                                                   | nx CLI entry point: helpers + family sourcing + dispatcher            |
+| `.assets/lib/nx_pkg.sh`                                                               | nx verbs: search/install/remove/upgrade/list/prune/gc/rollback        |
+| `.assets/lib/nx_scope.sh`                                                             | nx verbs: scope/overlay/pin                                           |
+| `.assets/lib/nx_profile.sh`                                                           | nx profile verb + managed-block rendering                             |
+| `.assets/lib/nx_lifecycle.sh`                                                         | nx verbs: setup/self/doctor/version/help                              |
+| `.assets/lib/nx_doctor.sh`                                                            | Health-check registry (`nx doctor`)                                   |
+| `.assets/config/shell_cfg/aliases_{nix,git,kubectl}.sh`                               | Shell aliases (sourced into managed blocks)                           |
+| `.assets/config/shell_cfg/functions.sh`                                               | Shared shell functions (cert_intercept, fixcertpy)                    |
+| `.assets/config/shell_cfg/completions.{bash,zsh}`                                     | Tab completions for nx (**generated** from `nx_surface.json`)         |
+| `.assets/setup/setup_common.sh`                                                       | Post-install setup (called via `nix/setup.sh`)                        |
+| `.assets/setup/setup_profile_user.ps1`                                                | PowerShell user profile (certs, local-path, etc.)                     |
+| `.assets/provision/install_copilot.sh`                                                | Post-install: GitHub Copilot CLI                                      |
 
 ### 12.2. linux-only (bash 4+ OK)
 
@@ -863,9 +889,15 @@ Extension convention: `.sh` (shared), `.bash` (bash-only), `.zsh` (zsh-only).
 | -------------------------- | ------------------------------------------ |
 | `Scripts/_aliases_nix.ps1` | `.assets/config/pwsh_cfg/_aliases_nix.ps1` |
 
-### 13.6. Provenance (`~/.config/dev-env/install.json`)
+### 13.6. Provenance and diagnostics (`~/.config/dev-env/`)
 
-Written on every setup run (success or failure) by an EXIT trap (bash) or `clean` block (PowerShell).
+| File           | Written by                                                                           | Lifecycle                                                  | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| -------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `install.json` | `setup.sh` per-phase via `_ir_flush` + EXIT trap (bash) / `clean` block (PowerShell) | Incremental during run + final at exit, success or failure | Install provenance: version, scopes, phase, status, timestamp, bash_version. `_ir_flush` writes the *currently-running* phase as `in_progress` between phase transitions so the on-disk record reflects where the script died if it's killed before the EXIT trap fires (SIGKILL/OOM); the EXIT trap then overwrites with the final `success`/`failed` status. `installed_at` is captured once per run and reused across all flushes (cached in `_IR_INSTALLED_AT`). |
+| `setup.log`    | `setup_log.sh`                                                                       | Every setup run                                            | Full setup transcript - inspect when `install_record` reports a failed status                                                                                                                                                                                                                                                                                                                                                                                        |
+| `doctor.log`   | `nx_doctor.sh`                                                                       | Every non-`--json` doctor run, overwritten                 | Plain-text diagnostics with `Fix:` hints; path printed at end of `nx doctor` when fail/warn>0                                                                                                                                                                                                                                                                                                                                                                        |
+
+`install.json` `entry_point` field:
 
 | `entry_point` | Meaning                                         |
 | ------------- | ----------------------------------------------- |
@@ -896,11 +928,12 @@ Written on every setup run (success or failure) by an EXIT trap (bash) or `clean
 
 These are read, not set, by `nx*.sh`. Useful for tests, dev iteration, and overriding default behavior.
 
-| Variable              | Read by                | Purpose                                                                                                                                                                                                                             |
-| --------------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `NX_LIB_DIR`          | `_nx_find_lib`         | Override library lookup path (highest priority); used by `test_nx_zsh.bats` to point at the source repo without copying files                                                                                                       |
-| `NX_INVOKING_SHELL`   | `nx_doctor.sh`         | Shell name (`bash`/`zsh`) the `nx` wrapper detected from `$BASH_VERSION`/`$ZSH_VERSION`; routes the `shell_profile` check to the right rc file. Falls back to `$ZSH_VERSION` then `basename $SHELL` when unset (direct invocations) |
-| `NIX_ENV_OVERLAY_DIR` | `nx_scope.sh`, `nx.sh` | Overlay directory location override (default: `~/.config/nix-env/local/`)                                                                                                                                                           |
+| Variable                 | Read by                | Purpose                                                                                                                                                                                                                                                                                                                                                                   |
+| ------------------------ | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NX_LIB_DIR`             | `_nx_find_lib`         | Override library lookup path (highest priority); used by `test_nx_zsh.bats` to point at the source repo without copying files                                                                                                                                                                                                                                             |
+| `NX_INVOKING_SHELL`      | `nx_doctor.sh`         | Shell name (`bash`/`zsh`) the `nx` wrapper detected from `$BASH_VERSION`/`$ZSH_VERSION`; routes the `shell_profile` check to the right rc file. Falls back to `$ZSH_VERSION` then `basename $SHELL` when unset (direct invocations)                                                                                                                                       |
+| `NIX_ENV_OVERLAY_DIR`    | `nx_scope.sh`, `nx.sh` | Overlay directory location override (default: `~/.config/nix-env/local/`)                                                                                                                                                                                                                                                                                                 |
+| `NX_DOCTOR_SKIP_NETWORK` | `nx_doctor.sh`         | When set to `1`, skips `_check_version_skew` (which calls `gh api`). Used by `tests/bats/test_nx_doctor.bats` to keep the bats hook deterministic + fast - parallel test runs would otherwise rate-limit GitHub or hang on `gh`'s tty auth prompt when the sandbox HOME has no gh credentials. Production runs always do the network check (with a 5s timeout for safety) |
 
 ## 14. Cross-links
 
