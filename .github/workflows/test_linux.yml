@@ -44,13 +44,13 @@ jobs:
         include:
           - name: daemon     # WSL / bare-metal Linux / managed macOS scenario
             nix-method: determinate
-            default-scopes: "--shell --omp-theme base"
+            default-scopes: "--shell --pwsh --k8s-base --conda --omp-theme base"
           - name: no-daemon  # Coder / rootless container scenario
             nix-method: no-daemon
-            default-scopes: "--shell --starship-theme base"
+            default-scopes: "--shell --pwsh --k8s-base --conda --starship-theme base"
           - name: tarball   # tarball install (no .git)
             nix-method: determinate
-            default-scopes: "--shell --omp-theme base"
+            default-scopes: "--shell --pwsh --k8s-base --conda --omp-theme base"
             tarball: true
 
     name: "nix/setup.sh (${{ matrix.name }})"
@@ -138,6 +138,17 @@ jobs:
               failed=1
             fi
           done
+          # conda's binary lives under ~/miniforge3/ rather than nix-profile
+          # because miniforge isn't a nix package - configure/conda.sh runs
+          # the official installer. Verify the install dir + the binary.
+          if [[ "$scopes" == *"--conda"* ]]; then
+            if [[ -x "$HOME/miniforge3/bin/conda" ]]; then
+              printf "\e[32m%-20s %s\e[0m\n" "conda" "$HOME/miniforge3/bin/conda"
+            else
+              printf "\e[31m%-20s MISSING (expected at ~/miniforge3/bin/conda)\e[0m\n" "conda"
+              failed=1
+            fi
+          fi
           [ "$failed" -eq 0 ] || exit 1
 
       - name: Run nx doctor
@@ -150,10 +161,10 @@ jobs:
         continue-on-error: true
         run: |
           echo "--- Checking managed block in ~/.bashrc ---"
-          if grep -c '# >>> nix-env managed >>>' ~/.bashrc; then
-            echo "managed block present"
+          if grep -qF '# >>> nix:managed >>>' ~/.bashrc; then
+            echo "nix:managed block present"
           else
-            echo "ERROR: managed block not found in ~/.bashrc"
+            echo "ERROR: nix:managed block not found in ~/.bashrc"
             exit 1
           fi
 
@@ -182,19 +193,49 @@ jobs:
         run: |
           echo "--- Running setup.sh a second time (idempotency check) ---"
           nix/setup.sh --unattended --quiet-summary
-          count=$(grep -c '# >>> nix-env managed >>>' ~/.bashrc)
+          count=$(grep -cF '# >>> nix:managed >>>' ~/.bashrc)
           if [ "$count" -ne 1 ]; then
-            echo "ERROR: expected 1 managed block, found $count"
+            echo "ERROR: expected 1 nix:managed block, found $count"
             exit 1
           fi
           echo "idempotency check passed"
 
-      - name: Run bats unit tests
+      - name: Run full bats suite
         id: bats
         continue-on-error: true
+        # Parallelize across files via xargs -P 4 (mirrors `make test-unit`).
+        # Now that bats is parallel + ~30s for the full suite, running every
+        # file in integration is basically free and catches drift the
+        # changed-file-scoped Preflight Checks workflow would miss.
         run: |
-          echo "--- Running bats tests ---"
-          bats tests/bats/test_nix_setup.bats
+          echo "--- Running full bats suite (parallel) ---"
+          printf '%s\0' tests/bats/*.bats | xargs -0 -P 4 -n 1 bats
+
+      - name: Install Pester module
+        id: pester-install
+        continue-on-error: true
+        # `--pwsh` scope installs the runtime but not Pester itself. The
+        # version is pinned to match repo_checks.yml + CONTRIBUTING.
+        shell: pwsh
+        run: |
+          Install-Module -Name Pester -RequiredVersion 5.6.0 -Repository PSGallery -Scope CurrentUser -Force -SkipPublisherCheck
+
+      - name: Run full Pester suite
+        id: pester
+        continue-on-error: true
+        # Pester runs via the same helper used by `make test-unit` -
+        # ForEach-Object -Parallel inside one pwsh session with
+        # ConcurrentBag for thread-safe result aggregation. ~11s on a
+        # warm pwsh. Requires --pwsh in the install scope (default
+        # Linux scopes include it) and the Pester module installed
+        # by the previous step.
+        run: |
+          echo "--- Running full Pester suite (parallel) ---"
+          if ! command -v pwsh >/dev/null 2>&1; then
+            echo "pwsh not on PATH - install with --pwsh scope to enable Pester in CI"
+            exit 1
+          fi
+          pwsh -nop -File tests/hooks/pester_parallel.ps1
 
       - name: Verify uninstaller (env-only)
         id: uninstaller
@@ -203,15 +244,19 @@ jobs:
           echo "--- Running nix/uninstall.sh --env-only ---"
           nix/uninstall.sh --env-only
 
-          echo "--- Checking nix-env managed block removed ---"
+          echo "--- Checking nix:managed block removed (and legacy too) ---"
+          if grep -qF '# >>> nix:managed >>>' ~/.bashrc; then
+            echo "ERROR: nix:managed block still present"
+            exit 1
+          fi
           if grep -qF '# >>> nix-env managed >>>' ~/.bashrc; then
-            echo "ERROR: nix-env managed block still present"
+            echo "ERROR: legacy nix-env managed block still present"
             exit 1
           fi
 
-          echo "--- Checking managed env block preserved ---"
-          if ! grep -qF '# >>> managed env >>>' ~/.bashrc; then
-            echo "ERROR: managed env block missing"
+          echo "--- Checking env:managed block preserved ---"
+          if ! grep -qF '# >>> env:managed >>>' ~/.bashrc; then
+            echo "ERROR: env:managed block missing"
             exit 1
           fi
 
@@ -232,6 +277,22 @@ jobs:
 
           echo "--- Checking Nix still installed ---"
           test -d /nix/store
+
+          # The uninstaller's phase 1g removes ~/miniforge3/ and the conda
+          # init block from the rc. Verify both - this is the only
+          # integration-time check that conda cleanup actually fires.
+          if [[ "${{ github.event.inputs.scopes || matrix.default-scopes }}" == *"--conda"* ]]; then
+            echo "--- Checking conda cleanup (miniforge3 + conda init block) ---"
+            if [ -d "$HOME/miniforge3" ]; then
+              echo "ERROR: ~/miniforge3 still exists after uninstall"
+              exit 1
+            fi
+            if grep -qF '# >>> conda initialize >>>' ~/.bashrc; then
+              echo "ERROR: conda initialize block still in ~/.bashrc"
+              exit 1
+            fi
+            echo "conda cleanup verified"
+          fi
           echo "uninstall checks passed"
 
       # ---- summary -----------------------------------------------------------
@@ -268,6 +329,7 @@ jobs:
               provenance)    outcome="${{ steps.provenance.outcome }}" ;;
               tarball-prov)  outcome="${{ steps.tarball-provenance.outcome }}" ;;
               bats)          outcome="${{ steps.bats.outcome }}" ;;
+              pester)        outcome="${{ steps.pester.outcome }}" ;;
               uninstaller)   outcome="${{ steps.uninstaller.outcome }}" ;;
             esac
             echo "$(gh_to_emoji "$outcome") $label : $outcome"
@@ -281,6 +343,7 @@ jobs:
             provenance:Install provenance
             tarball-prov:Tarball provenance
             bats:Bats unit tests
+            pester:Pester unit tests
             uninstaller:Uninstaller
           STEPS
 
