@@ -1,0 +1,996 @@
+
+<!DOCTYPE html>
+
+<html class="no-js" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width,initial-scale=1" name="viewport"/>
+<meta content="Universal, cross-platform developer environment provisioning with Nix" name="description"/>
+<link href="https://szymonos.github.io/envy-nx/decisions/" rel="canonical"/>
+<link href="../architecture/" rel="prev"/>
+<link href="../standards/" rel="next"/>
+<link href="../assets/images/favicon.png" rel="icon"/>
+<meta content="mkdocs-1.6.1, mkdocs-material-9.7.6" name="generator"/>
+<title>Design Decisions - Dev Environment Setup</title>
+<link href="../assets/stylesheets/main.484c7ddc.min.css" rel="stylesheet"/>
+<link href="../assets/stylesheets/palette.ab4e12ef.min.css" rel="stylesheet"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&amp;display=fallback" rel="stylesheet"/>
+<style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+<link href="../assets/stylesheets/layout-wide-screen.css" rel="stylesheet"/>
+<link href="../assets/stylesheets/mermaid-lightbox.css" rel="stylesheet"/>
+<script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+</head>
+<body data-md-color-accent="blue" data-md-color-primary="indigo" data-md-color-scheme="slate" dir="ltr">
+<input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox"/>
+<input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox"/>
+<label class="md-overlay" for="__drawer"></label>
+<div data-md-component="skip">
+<a class="md-skip" href="#design-decisions">
+          Skip to content
+        </a>
+</div>
+<div data-md-component="announce">
+</div>
+<header class="md-header md-header--shadow" data-md-component="header">
+<nav aria-label="Header" class="md-header__inner md-grid">
+<a aria-label="Dev Environment Setup" class="md-header__button md-logo" data-md-component="logo" href=".." title="Dev Environment Setup">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
+</a>
+<label class="md-header__button md-icon" for="__drawer">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"></path></svg>
+</label>
+<div class="md-header__title" data-md-component="header-title">
+<div class="md-header__ellipsis">
+<div class="md-header__topic">
+<span class="md-ellipsis">
+            Dev Environment Setup
+          </span>
+</div>
+<div class="md-header__topic" data-md-component="header-topic">
+<span class="md-ellipsis">
+            
+              Design Decisions
+            
+          </span>
+</div>
+</div>
+</div>
+<label class="md-header__button md-icon" for="__search">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+</label>
+<div class="md-search" data-md-component="search" role="dialog">
+<label class="md-search__overlay" for="__search"></label>
+<div class="md-search__inner" role="search">
+<form class="md-search__form" name="search">
+<input aria-label="Search" autocapitalize="off" autocomplete="off" autocorrect="off" class="md-search__input" data-md-component="search-query" name="query" placeholder="Search" required="" spellcheck="false" type="text"/>
+<label class="md-search__icon md-icon" for="__search">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
+</label>
+<nav aria-label="Search" class="md-search__options">
+<button aria-label="Clear" class="md-search__icon md-icon" tabindex="-1" title="Clear" type="reset">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
+</button>
+</nav>
+</form>
+<div class="md-search__output">
+<div class="md-search__scrollwrap" data-md-scrollfix="" tabindex="0">
+<div class="md-search-result" data-md-component="search-result">
+<div class="md-search-result__meta">
+            Initializing search
+          </div>
+<ol class="md-search-result__list" role="presentation"></ol>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="md-header__source">
+<a class="md-source" data-md-component="source" href="https://github.com/szymonos/envy-nx" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewbox="0 0 512 512" xmlns="http://www.w3.org/2000/svg"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"></path></svg>
+</div>
+<div class="md-source__repository">
+    szymonos/envy-nx
+  </div>
+</a>
+</div>
+</nav>
+</header>
+<div class="md-container" data-md-component="container">
+<main class="md-main" data-md-component="main">
+<div class="md-main__inner md-grid">
+<div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Navigation" class="md-nav md-nav--primary" data-md-level="0">
+<label class="md-nav__title" for="__drawer">
+<a aria-label="Dev Environment Setup" class="md-nav__button md-logo" data-md-component="logo" href=".." title="Dev Environment Setup">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
+</a>
+    Dev Environment Setup
+  </label>
+<div class="md-nav__source">
+<a class="md-source" data-md-component="source" href="https://github.com/szymonos/envy-nx" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewbox="0 0 512 512" xmlns="http://www.w3.org/2000/svg"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"></path></svg>
+</div>
+<div class="md-source__repository">
+    szymonos/envy-nx
+  </div>
+</a>
+</div>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="..">
+<span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../nx/">
+<span class="md-ellipsis">
+    
+  
+    The nx CLI
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../architecture/">
+<span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item md-nav__item--active">
+<input class="md-nav__toggle md-toggle" id="__toc" type="checkbox"/>
+<label class="md-nav__link md-nav__link--active" for="__toc">
+<span class="md-ellipsis">
+    
+  
+    Design Decisions
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<a class="md-nav__link md-nav__link--active" href="./">
+<span class="md-ellipsis">
+    
+  
+    Design Decisions
+  
+
+    
+  </span>
+</a>
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#architecture-decisions">
+<span class="md-ellipsis">
+      
+        Architecture decisions
+      
+    </span>
+</a>
+<nav aria-label="Architecture decisions" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#why-nix-not-homebrew">
+<span class="md-ellipsis">
+      
+        Why Nix, not Homebrew
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#why-not-golden-images">
+<span class="md-ellipsis">
+      
+        Why not golden images
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#why-a-bootstrapper-not-a-configuration-management-agent">
+<span class="md-ellipsis">
+      
+        Why a bootstrapper, not a configuration management agent
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#why-three-package-tiers-not-everything-via-nix">
+<span class="md-ellipsis">
+      
+        Why three package tiers, not "everything via nix"
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#why-two-linux-entry-points-linux_setupsh-and-nixsetupsh">
+<span class="md-ellipsis">
+      
+        Why two Linux entry points (linux_setup.sh and nix/setup.sh)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#why-unfree-packages-are-opt-in-not-default">
+<span class="md-ellipsis">
+      
+        Why unfree packages are opt-in, not default
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#implementation-decisions">
+<span class="md-ellipsis">
+      
+        Implementation decisions
+      
+    </span>
+</a>
+<nav aria-label="Implementation decisions" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#why-nixpkgs-unstable-not-a-stable-channel">
+<span class="md-ellipsis">
+      
+        Why nixpkgs-unstable, not a stable channel
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#why-bash-32-compatibility">
+<span class="md-ellipsis">
+      
+        Why bash 3.2 compatibility
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#why-nix-gc-runs-in-post-install-by-default">
+<span class="md-ellipsis">
+      
+        Why nix gc runs in post-install by default
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#why-oh-my-posh-and-starship-not-oh-my-zsh">
+<span class="md-ellipsis">
+      
+        Why oh-my-posh and starship, not oh-my-zsh
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#why-managed-blocks-not-append-style-profile-injection">
+<span class="md-ellipsis">
+      
+        Why managed blocks, not append-style profile injection
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#why-phase-based-orchestration-with-side-effect-stubs">
+<span class="md-ellipsis">
+      
+        Why phase-based orchestration with side-effect stubs
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#why-json-as-the-shared-schema-format">
+<span class="md-ellipsis">
+      
+        Why JSON as the shared schema format
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#why-not-checksum-pin-the-nix-installer">
+<span class="md-ellipsis">
+      
+        Why not checksum-pin the Nix installer
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#why-bash-end-to-end-not-bootstrap-in-bash-implement-in-python">
+<span class="md-ellipsis">
+      
+        Why bash end-to-end, not "bootstrap in bash, implement in Python"
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../standards/">
+<span class="md-ellipsis">
+    
+  
+    Quality &amp; Testing
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../enterprise/">
+<span class="md-ellipsis">
+    
+  
+    Enterprise Readiness
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../proxy/">
+<span class="md-ellipsis">
+    
+  
+    Corporate Proxy
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../releasing/">
+<span class="md-ellipsis">
+    
+  
+    Releasing
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../customization/">
+<span class="md-ellipsis">
+    
+  
+    Customization
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#architecture-decisions">
+<span class="md-ellipsis">
+      
+        Architecture decisions
+      
+    </span>
+</a>
+<nav aria-label="Architecture decisions" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#why-nix-not-homebrew">
+<span class="md-ellipsis">
+      
+        Why Nix, not Homebrew
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#why-not-golden-images">
+<span class="md-ellipsis">
+      
+        Why not golden images
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#why-a-bootstrapper-not-a-configuration-management-agent">
+<span class="md-ellipsis">
+      
+        Why a bootstrapper, not a configuration management agent
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#why-three-package-tiers-not-everything-via-nix">
+<span class="md-ellipsis">
+      
+        Why three package tiers, not "everything via nix"
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#why-two-linux-entry-points-linux_setupsh-and-nixsetupsh">
+<span class="md-ellipsis">
+      
+        Why two Linux entry points (linux_setup.sh and nix/setup.sh)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#why-unfree-packages-are-opt-in-not-default">
+<span class="md-ellipsis">
+      
+        Why unfree packages are opt-in, not default
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#implementation-decisions">
+<span class="md-ellipsis">
+      
+        Implementation decisions
+      
+    </span>
+</a>
+<nav aria-label="Implementation decisions" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#why-nixpkgs-unstable-not-a-stable-channel">
+<span class="md-ellipsis">
+      
+        Why nixpkgs-unstable, not a stable channel
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#why-bash-32-compatibility">
+<span class="md-ellipsis">
+      
+        Why bash 3.2 compatibility
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#why-nix-gc-runs-in-post-install-by-default">
+<span class="md-ellipsis">
+      
+        Why nix gc runs in post-install by default
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#why-oh-my-posh-and-starship-not-oh-my-zsh">
+<span class="md-ellipsis">
+      
+        Why oh-my-posh and starship, not oh-my-zsh
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#why-managed-blocks-not-append-style-profile-injection">
+<span class="md-ellipsis">
+      
+        Why managed blocks, not append-style profile injection
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#why-phase-based-orchestration-with-side-effect-stubs">
+<span class="md-ellipsis">
+      
+        Why phase-based orchestration with side-effect stubs
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#why-json-as-the-shared-schema-format">
+<span class="md-ellipsis">
+      
+        Why JSON as the shared schema format
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#why-not-checksum-pin-the-nix-installer">
+<span class="md-ellipsis">
+      
+        Why not checksum-pin the Nix installer
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#why-bash-end-to-end-not-bootstrap-in-bash-implement-in-python">
+<span class="md-ellipsis">
+      
+        Why bash end-to-end, not "bootstrap in bash, implement in Python"
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-content" data-md-component="content">
+<article class="md-content__inner md-typeset">
+<h1 id="design-decisions">Design Decisions<a class="headerlink" href="#design-decisions" title="Permanent link">¤</a></h1>
+<p>Every tool makes architectural choices that shape what it can and cannot do. This page explains the reasoning behind the key decisions in this project - not just what was chosen, but why the obvious alternatives were rejected.</p>
+<h2 id="architecture-decisions">Architecture decisions<a class="headerlink" href="#architecture-decisions" title="Permanent link">¤</a></h2>
+<h3 id="why-nix-not-homebrew">Why Nix, not Homebrew<a class="headerlink" href="#why-nix-not-homebrew" title="Permanent link">¤</a></h3>
+<p><strong>The objection:</strong> "Homebrew works fine, everyone knows it, and it's already installed on most Macs."</p>
+<p>Homebrew is an excellent macOS package manager. It is not a cross-platform environment provisioning tool. The differences matter at scale:</p>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>Homebrew</th>
+<th>Nix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Atomic rollback</td>
+<td>No</td>
+<td>Yes (<code>nix profile rollback</code>)</td>
+</tr>
+<tr>
+<td>Reproducible pins</td>
+<td>No lock file, no version pinning</td>
+<td>per-user <code>flake.lock</code> (per-machine); <code>nx pin set &lt;rev&gt;</code> (cross-machine/team)</td>
+</tr>
+<tr>
+<td>Cross-platform</td>
+<td>macOS-first, Linux second-class</td>
+<td>macOS, Linux, WSL, containers - identical</td>
+</tr>
+<tr>
+<td>User-scope after install</td>
+<td>Requires sudo for updates</td>
+<td>No root after initial install</td>
+</tr>
+<tr>
+<td>Package composition</td>
+<td>Flat list, no grouping</td>
+<td><code>buildEnv</code> merges scopes atomically</td>
+</tr>
+<tr>
+<td>Binary cache</td>
+<td>Bottles (limited arch coverage)</td>
+<td>100k+ cached packages, multi-arch</td>
+</tr>
+</tbody>
+</table>
+<p>Beyond the feature comparison, Nix provides a structural advantage: <strong>store-based isolation</strong>. Every package is installed into a content-addressed path (<code>/nix/store/&lt;hash&gt;-&lt;name&gt;-&lt;version&gt;/</code>), so multiple versions of the same tool coexist without conflict and upgrades never leave the system in a half-updated state. Homebrew mutates shared prefixes in-place - an interrupted <code>brew upgrade</code> can leave broken symlinks that require manual cleanup. Nix's immutable store makes rollback a pointer swap, not a repair job.</p>
+<p>The runtime characteristics reflect the architectural gap. Nix's core is C++ with a purpose-built functional evaluation language - every invocation resolves a dependency graph declaratively and applies the result atomically. Homebrew is a cohesive Ruby codebase, but every <code>brew</code> invocation pays Ruby interpreter startup cost, formula evaluation is interpreted, and <code>brew upgrade</code> processes packages sequentially with per-package overhead. At scale - dozens of packages across scopes - the difference compounds.</p>
+<p>Homebrew installs packages. Nix provisions environments - declaratively, atomically, and reproducibly.</p>
+<p><strong>The enterprise off-ramp:</strong> Nix adoption carries organizational risk. <a href="https://determinate.systems/nix/macos/mdm/">Determinate Systems</a> provides a commercially supported Nix installer with MDM integration (Jamf, Intune), enterprise support contracts, and managed fleet deployment. If the organization decides to formalize Nix adoption, the transition from the open-source installer to the enterprise offering is a configuration change, not a rewrite. The tool is already built on the Determinate Systems installer as its recommended installation method.</p>
+<h3 id="why-not-golden-images">Why not golden images<a class="headerlink" href="#why-not-golden-images" title="Permanent link">¤</a></h3>
+<p><strong>The objection:</strong> "Just bake a VM image or container with everything pre-installed, push it to developers."</p>
+<p>Golden images are the default enterprise answer to environment standardization. They fail in developer workstation contexts for several reasons:</p>
+<p><strong>WSL golden images require disproportionate effort.</strong> Building a custom WSL disk image is technically possible, but it demands a custom build pipeline, manual distribution, and ongoing maintenance - significantly more effort than a bootstrapper that provisions WSL in minutes from a single PowerShell command. WSL is the most popular development environment on enterprise Windows; any solution that cannot provision it easily is incomplete in practice.</p>
+<p><strong>Images go stale immediately.</strong> A golden image is a snapshot. The day after distribution, packages are outdated. Every update requires a new build-test-distribute cycle through the MDM pipeline. Developers either wait for the next image refresh or install tools manually on top - re-creating the inconsistency the image was supposed to prevent.</p>
+<p><strong>Images solve certificates at the wrong layer.</strong> A golden image can ship with corporate CA certificates pre-installed, covering the OS trust store and some frameworks. But certificates expire - when they do, every deployed image needs a rebuild or a separate automation to rotate certs, which is exactly the tooling this solution already provides. More fundamentally, golden images resolve certificate trust at the system level and for some framework-level paths, but not all execution paths. An application not launched via bash will not see environment variables set in a bash profile. Different frameworks consult different certificate stores. This tool resolves MITM certificate issues at runtime, independently of how each framework is launched, covering execution paths that images cannot reach.</p>
+<p><strong>Images cannot handle diverse network environments.</strong> Vendors and contractors typically cannot receive golden images - they work on their own hardware. This solution is far more accessible: clone the repo, run the setup. Additionally, contractors connecting through external networks often encounter different MITM certificate chains than internal employees. A golden image baked against the internal proxy will fail on a contractor's network. Runtime certificate interception handles both scenarios transparently.</p>
+<p><strong>Images are all-or-nothing.</strong> A data scientist and a platform engineer need different toolchains. Golden images either ship everything (bloated, slow to distribute) or require multiple image variants (multiplied maintenance). Scopes solve this: <code>--shell --python</code> for the data scientist, <code>--shell --k8s-dev --terraform</code> for the platform engineer, from the same base.</p>
+<p>This tool takes the opposite approach: a lightweight bootstrapper that runs on the developer's actual machine, detects the actual network environment, installs exactly what's needed, and stays current via <code>nx upgrade</code>. It works on every platform - including WSL - because it provisions rather than snapshots.</p>
+<h3 id="why-a-bootstrapper-not-a-configuration-management-agent">Why a bootstrapper, not a configuration management agent<a class="headerlink" href="#why-a-bootstrapper-not-a-configuration-management-agent" title="Permanent link">¤</a></h3>
+<p><strong>The objection:</strong> "Use Ansible, Chef, or Puppet - that's what configuration management tools are for."</p>
+<p>Configuration management tools are designed for servers: homogeneous fleets, root access, persistent agents, central control planes. Developer workstations are the opposite:</p>
+<table>
+<thead>
+<tr>
+<th>Server fleet</th>
+<th>Developer workstation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Homogeneous OS</td>
+<td>macOS + WSL + Linux + Coder</td>
+</tr>
+<tr>
+<td>Root access guaranteed</td>
+<td>Managed machines restrict root</td>
+</tr>
+<tr>
+<td>Agent runs continuously</td>
+<td>No daemon, no background process</td>
+</tr>
+<tr>
+<td>Central server required</td>
+<td>Works offline after setup</td>
+</tr>
+<tr>
+<td>IT-managed</td>
+<td>Developer-managed</td>
+</tr>
+</tbody>
+</table>
+<p>Ansible requires Python and SSH. Chef requires a server and a Ruby agent. Puppet requires a daemon and a control plane. All three assume root access and target a single OS distribution per playbook/recipe/manifest. None handle the cross-platform, user-scope, rootless requirements of developer workstations.</p>
+<p>This tool is a <strong>bootstrapper</strong>: it runs once, provisions a self-contained environment in <code>~/.config/nix-env/</code>, and exits. No daemon, no server, no runtime dependency. After setup:</p>
+<ul>
+<li><code>nx upgrade</code> updates packages - no central server needed</li>
+<li><code>nx rollback</code> reverts if something breaks - no IT ticket needed</li>
+<li><code>nx doctor</code> runs health checks - no monitoring agent needed</li>
+<li>The repository clone is disposable - all state is local</li>
+</ul>
+<p>The bootstrapper model means zero operational overhead: no agent to monitor, no server to maintain, no network dependency for day-to-day use. The tool provisions the environment and gets out of the way. From there, developers can continue using the repo individually to manage their environment, or teams and organizations can distribute overlays to extend and customize capabilities - without contributing to the upstream repository.</p>
+<h3 id="why-three-package-tiers-not-everything-via-nix">Why three package tiers, not "everything via nix"<a class="headerlink" href="#why-three-package-tiers-not-everything-via-nix" title="Permanent link">¤</a></h3>
+<p><strong>The objection:</strong> "Nix can install anything. Just put every package in the flake and stop maintaining system-level install scripts."</p>
+<p>Nix is a user-scope package manager. It runs without root after the one-time install. That is its greatest strength - and it creates a hard boundary around what it can provide. Some packages require root, setuid, or must exist before nix is available. Others need to live in system paths for <code>sudo</code> or <code>chsh</code> to work. Forcing these into nix creates fragile workarounds that break under real-world conditions.</p>
+<p>Every package in this project belongs to exactly one of three tiers:</p>
+<table>
+<thead>
+<tr>
+<th>Tier</th>
+<th>Installed by</th>
+<th>Managed by</th>
+<th>Example packages</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>System-only</td>
+<td><code>install_base.sh</code> (root)</td>
+<td>System pkg mgr</td>
+<td>ca-certificates, curl, sudo, build tools</td>
+</tr>
+<tr>
+<td>System-prefer</td>
+<td>System on Linux, nix on macOS</td>
+<td>Conditional</td>
+<td>vim, zsh</td>
+</tr>
+<tr>
+<td>Always nix</td>
+<td><code>nix/setup.sh</code> (user-scope)</td>
+<td>Nix flake</td>
+<td>git, ripgrep, fzf, kubectl, uv, pwsh</td>
+</tr>
+</tbody>
+</table>
+<p><strong>System-only</strong> packages cannot be user-scoped by definition. <code>ca-certificates</code> populates the system TLS trust store read by every process. <code>sudo</code> requires setuid root. <code>curl</code> must exist before nix is available - it downloads the nix installer. <code>build-essential</code> provides the C compiler nix needs for flake builds. These are installed once by <code>install_base.sh</code> and never touched by nix.</p>
+<p><strong>System-prefer</strong> packages need to exist in system paths (<code>/usr/bin/</code>) on Linux but have no system package manager on macOS. On macOS (<code>uname -s == Darwin</code>), <code>phase_scopes_skip_system_prefer()</code> skips all checks and nix provides the package. This logic lives in the scopes phase - centralized in <code>nix/setup.sh</code>, not scattered across callers.</p>
+<p>The two system-prefer packages each have a concrete reason they cannot be nix-only on Linux:</p>
+<ul>
+<li><strong>vim</strong> - <code>sudo vim /etc/fstab</code> requires a vim binary accessible to root. Nix vim lives in <code>~/.nix-profile/bin/vim</code>, invisible to <code>sudo</code> without <code>env_keep</code> or explicit PATH forwarding. Every Linux distro ships vim - there is no version consistency benefit to justify the workaround.</li>
+<li><strong>zsh</strong> - <code>chsh -s /usr/bin/zsh</code> requires the shell path to exist in <code>/etc/shells</code>. Nix zsh lives in <code>~/.nix-profile/bin/zsh</code>, which is user-specific, may change on upgrades, and is rejected by PAM on some distributions. The nix <code>zsh.nix</code> scope ships only plugins (autosuggestions, syntax highlighting, completions) - not the zsh binary itself.</li>
+</ul>
+<p><strong>pwsh</strong> was previously in the system-prefer tier because AllUsers profiles and system-wide module paths required <code>/usr/bin/pwsh</code>. This was removed: AllUsers profiles are a server-administration concern, not a developer-workstation concern. On developer workstations, CurrentUser scope is sufficient and consistent with the tool's user-scope architecture. macOS already ran pwsh user-scope via Nix with zero issues - the same model now applies to all platforms.</p>
+<p><strong>Always nix</strong> is everything else. These packages benefit from cross-platform version consistency (same git version on macOS Sonoma and Ubuntu 22.04), atomic upgrades via <code>nx upgrade</code>, and user-scope installation without root. The flake output is deterministic per platform - same scopes produce the same packages.</p>
+<p><strong>How the tiers interact at runtime:</strong></p>
+<div class="highlight"><pre><span></span><code>linux_setup.sh / wsl_setup.ps1 (requires root)
+  ├── sudo install_base.sh          # system-only tier
+  ├── sudo install_nix.sh           # one-time nix bootstrap
+  ├── sudo install_zsh.sh           # system-prefer: zsh on Linux
+  └── nix/setup.sh --pwsh --zsh ... # always-nix tier (pwsh included)
+        └── phase_scopes_skip_system_prefer()
+              └── zsh exists at /usr/bin/zsh → skip nix zsh scope
+
+nix/setup.sh on macOS (no root available)
+  └── phase_scopes_skip_system_prefer()
+        └── uname == Darwin → skip all checks, nix provides everything
+</code></pre></div>
+<p>The callers (<code>linux_setup.sh</code>, <code>wsl_setup.ps1</code>) handle the system-wide installs with <code>sudo</code>. They pass all scope flags through to <code>nix/setup.sh</code>, which decides whether to install or skip the nix scope based on platform detection. This keeps the decision centralized - a new entry point does not need to know which scopes are system-prefer.</p>
+<h3 id="why-two-linux-entry-points-linux_setupsh-and-nixsetupsh">Why two Linux entry points (<code>linux_setup.sh</code> and <code>nix/setup.sh</code>)<a class="headerlink" href="#why-two-linux-entry-points-linux_setupsh-and-nixsetupsh" title="Permanent link">¤</a></h3>
+<p><strong>The objection:</strong> "Three setup entry points (<code>nix/setup.sh</code>, <code>linux_setup.sh</code>, <code>wsl/wsl_setup.ps1</code>) is one too many. Collapse <code>linux_setup.sh</code> into a <code>--system-prep</code> phase inside <code>setup.sh</code> so there's a single entry point on Linux."</p>
+<p>The split is intentional and load-bearing for the <strong>root vs user-scope boundary</strong>:</p>
+<ul>
+<li><code>nix/setup.sh</code> is the user-scope path. It explicitly <strong>rejects root</strong> (<code>phase_bootstrap_check_root</code>) because nix is a user-scope package manager and running it as root would create state owned by root that the user can't manage afterward. Its operational contract is: "I run as you, I touch only your home directory and your nix profile."</li>
+<li><code>linux_setup.sh</code> is the system-prep wrapper. It runs as the user but invokes <code>sudo</code> for system-wide installs (base packages, nix bootstrap itself, root-required scope installers like docker/distrobox/zsh). Its operational contract is: "I orchestrate the bits that need root, then hand off to <code>nix/setup.sh</code> for the rest."</li>
+</ul>
+<p>Combining them would put <code>sudo</code> elevation inside <code>nix/setup.sh</code> - violating the user-scope contract. Or alternatively keep <code>nix/setup.sh</code> user-scope but add a <code>--system-prep</code> flag that triggers root-only behavior, which means the same script has two fundamentally different execution models depending on a flag - a confusing surface for the same script.</p>
+<p><strong>Maintenance cost is bounded.</strong> <code>linux_setup.sh</code> is ~150 lines of mostly mechanical delegation: parse flags, call <code>install_base.sh</code> / <code>install_nix.sh</code> / <code>install_zsh.sh</code> etc., delegate the remainder to <code>nix/setup.sh</code>. Most edits to the broader codebase don't touch it - the file changes maybe twice a year.</p>
+<p><strong>Real-world usage is rare.</strong> Bare-metal Linux dev workstations are a niche path - most users come in via <code>wsl_setup.ps1</code> (which has its own Windows-host orchestration the bash script can't replace) or directly via <code>nix/setup.sh</code> on macOS / Coder / containers (where Nix is already installed and no system prep is needed). The split would be worth collapsing only if <code>linux_setup.sh</code> were churning frequently or causing maintenance friction; it isn't.</p>
+<p>The same logic applies to <code>wsl/wsl_setup.ps1</code>: it must run on the Windows host (PowerShell, before any WSL distro exists), so it's structurally incompatible with <code>nix/setup.sh</code> (which runs inside the WSL distro after provisioning). Three entry points is the right number for three structurally distinct contexts.</p>
+<h3 id="why-unfree-packages-are-opt-in-not-default">Why unfree packages are opt-in, not default<a class="headerlink" href="#why-unfree-packages-are-opt-in-not-default" title="Permanent link">¤</a></h3>
+<p><strong>The objection:</strong> "Nix already has <code>allowUnfree</code>. Just set it to <code>true</code> globally and stop worrying about it."</p>
+<p>Setting <code>allowUnfree = true</code> silently permits installation of proprietary-licensed packages. For a tool targeting enterprise adoption, this creates three concrete risks:</p>
+<ol>
+<li>
+<p><strong>License compliance exposure.</strong> Enterprise software policies typically require explicit approval before deploying proprietary-licensed binaries. A tool that silently permits unfree packages shifts the compliance burden to the user - who may not realize a package is proprietary until an audit flags it.</p>
+</li>
+<li>
+<p><strong>Binary cache misses.</strong> Unfree packages are excluded from the public NixOS binary cache. Every unfree package must be built from source on the user's machine, adding minutes to setup and upgrade times. Users experience degraded performance without understanding why.</p>
+</li>
+<li>
+<p><strong>Reproducibility gap.</strong> Some unfree packages have license-restricted source that cannot be redistributed. If a nixpkgs commit removes or restricts an unfree package, pinned flake revisions may fail to build, breaking the reproducibility guarantee that justifies using Nix in the first place.</p>
+</li>
+</ol>
+<p>The default scope set contains <strong>zero unfree packages</strong>. Terraform - the most common unfree package in developer environments - is handled via <code>tfswitch</code> (MIT-licensed), which downloads the terraform binary to <code>~/.local/bin</code> outside the nix store. This provides the same end result (terraform available in PATH) without requiring unfree in the flake.</p>
+<p>The <code>--allow-unfree</code> flag exists for justified use cases:</p>
+<ul>
+<li><strong><code>nx install &lt;pkg&gt;</code></strong> lets users add ad-hoc packages to <code>packages.nix</code>. Some of these (e.g., <code>vault</code>, <code>1password-cli</code>) are unfree. Without the flag, nix rejects them with a cryptic evaluation error. The flag makes the opt-in explicit and the error message actionable.</li>
+<li><strong>Team overlays</strong> may include proprietary tooling specific to a team's stack. Blocking unfree at the flake level would force teams to maintain a separate flake fork rather than extending the standard one.</li>
+<li><strong>Enterprise contexts</strong> where proprietary packages have been explicitly approved by legal or procurement.</li>
+</ul>
+<p>The flag is <strong>sticky</strong> - once set, it persists in <code>config.nix</code> across reruns. This means a team lead can set <code>--allow-unfree</code> once and all subsequent <code>nx upgrade</code> invocations preserve the setting without repeating the flag. The value is readable in <code>config.nix</code> (<code>allowUnfree = true;</code>) for audit visibility.</p>
+<p>The design follows the principle of least surprise for enterprise environments: the default is restrictive, the override is explicit and auditable, and the mechanism is the same <code>config.nix</code> persistence used for all other configuration.</p>
+<h2 id="implementation-decisions">Implementation decisions<a class="headerlink" href="#implementation-decisions" title="Permanent link">¤</a></h2>
+<h3 id="why-nixpkgs-unstable-not-a-stable-channel">Why nixpkgs-unstable, not a stable channel<a class="headerlink" href="#why-nixpkgs-unstable-not-a-stable-channel" title="Permanent link">¤</a></h3>
+<p><strong>The objection:</strong> "The word 'unstable' is right there in the name. Use a stable release for production tooling."</p>
+<p>The name is misleading. <code>nixpkgs-unstable</code> is not raw <code>main</code> - every commit is validated by Hydra (NixOS's CI system) through build tests before being promoted to the channel. It is a rolling release with quality gates, not a bleeding-edge feed. Compared to Arch Linux (daily builds, minimal testing) or Fedora Rawhide (nightly composes), nixpkgs-unstable is more conservative - updates land days after upstream release, not hours.</p>
+<p>Stable nixpkgs channels (e.g., <code>nixos-24.11</code>) exist but serve a different purpose: they hold back major version updates and apply only security and critical bug fixes. For developer workstations, this creates a maintenance problem. Developers expect reasonably current versions of kubectl, terraform, ripgrep, and Node.js - not versions frozen six months ago. A stable channel means either accepting outdated tools or manually overriding package versions, which defeats the purpose of a curated package set.</p>
+<p>Using <code>nixpkgs-unstable</code> eliminates this version chasing entirely. The channel tracks upstream releases through a validated pipeline of 120,000+ packages, so <code>nx upgrade</code> pulls current, CI-tested versions without per-package version management. The trade-off is explicit: upgrades are never automatic. <code>nix/setup.sh</code> without <code>--upgrade</code> re-applies configuration using existing package versions. <code>nx upgrade</code> is the deliberate action that pulls new versions, and <code>nx rollback</code> reverts if something breaks.</p>
+<p>For teams that need coordinated versions, <code>nx pin set</code> locks the entire nixpkgs input to a specific commit SHA. Everyone on the team resolves the same package versions until the pin is updated. This provides reproducibility without the staleness of a stable channel - the team controls when to advance, and the pin is a single value rather than per-package version overrides.</p>
+<p><strong>The supply-chain objection:</strong> "But what about poisoned nixpkgs commits? Ship a pinned rev by default and require <code>--unstable</code> to opt out."</p>
+<p>A repo-maintained default pin was considered and rejected. The supply-chain concern is real but the mitigation creates more problems than it solves:</p>
+<ul>
+<li><strong>Hydra is the quality gate.</strong> Every nixpkgs commit builds ~120,000 packages across platforms before promotion to the unstable channel. A targeted supply-chain attack would need to survive that CI pipeline undetected. The canonical recent attack (xz-utils, 2024) compromised upstream source tarballs, not nixpkgs itself - pinning nixpkgs to an older rev would not have prevented it, because the compromised tarball was what nixpkgs fetched regardless of revision.</li>
+<li><strong>Stale pins cause real user pain.</strong> A 3-week-old pin means <code>nx install &lt;pkg&gt;</code> fails when the package was added or fixed after the pin date. Users file issues, get told to unpin, and the default becomes a support burden rather than a safety net.</li>
+<li><strong>It contradicts <code>nx upgrade</code>.</strong> The upgrade story is "pull current versions deliberately." A default pin means <code>nx upgrade</code> upgrades to... the same stale pin. Separating "upgrade packages" from "advance the pin" creates two upgrade concepts where one existed before.</li>
+<li><strong>Maintenance cost is ongoing.</strong> Monthly scheduled PRs to bump the pin require running the full scope matrix (all scopes, Linux + macOS) against the candidate rev. That CI cost recurs indefinitely, and every upstream release blocks users until the bump merges.</li>
+</ul>
+<p>The existing <code>nx pin set</code> mechanism serves the users who actually need coordinated versions - team leads pin a rev, distribute it via overlay, and advance it on their schedule. Making pinning the default for solo developers who benefit from current packages solves a problem they don't have while creating one they will notice.</p>
+<h3 id="why-bash-32-compatibility">Why bash 3.2 compatibility<a class="headerlink" href="#why-bash-32-compatibility" title="Permanent link">¤</a></h3>
+<p><strong>The objection:</strong> "It's 2026. Just require bash 5 and use modern features."</p>
+<p>macOS ships bash 3.2 as the system default. Apple will not update it due to GPLv3 licensing. This creates a bootstrapping paradox: <strong>the tool that sets up your environment cannot require you to already have a setup environment.</strong></p>
+<p>If the setup script required bash 5, users would need to install it first - via Homebrew, Nix, or manual compilation. That prerequisite defeats the purpose of a one-command setup tool. The script must work with what the operating system provides out of the box.</p>
+<p>The constraint is real and affects daily development:</p>
+<ul>
+<li>No <code>mapfile</code> or <code>readarray</code> - use <code>while IFS= read -r</code> loops</li>
+<li>No associative arrays (<code>declare -A</code>) - use space-delimited strings with helper functions</li>
+<li>No case modification (<code>${var,,}</code>) - use <code>tr</code></li>
+<li>No namerefs (<code>declare -n</code>) - pass variable names as strings</li>
+<li>BSD <code>sed</code> and <code>grep</code> - no GNU extensions (<code>\s</code>, <code>\w</code>, <code>-P</code>, <code>-r</code>)</li>
+</ul>
+<p>This is not enforced by convention. A custom pre-commit hook (<code>check_bash32.py</code>) scans every nix-path file for bash 4+ constructs and blocks the commit if any are found. The macOS CI workflow validates the constraint on every pull request by running the full setup on a macOS runner with the system bash.</p>
+<p>Linux-only scripts (provisioning, system checks) use bash 5 features freely - the constraint applies only to files that run on macOS.</p>
+<h3 id="why-nix-gc-runs-in-post-install-by-default">Why nix gc runs in post-install by default<a class="headerlink" href="#why-nix-gc-runs-in-post-install-by-default" title="Permanent link">¤</a></h3>
+<p><strong>The objection:</strong> "Garbage-collecting old generations on every successful setup means <code>nx rollback</code> only works <em>within</em> a single setup run, not <em>across</em> completed runs. That's a reliability regression - keep the history and let users opt into GC."</p>
+<p>The trade-off is real, and it is the right trade-off for the platforms this tool targets. <code>phase_post_install_gc</code> runs <code>nix profile wipe-history</code> + <code>nix store gc</code> on every successful setup completion. The reasoning:</p>
+<p><strong>WSL VHD growth is a one-way ratchet.</strong> WSL2 stores each distro in a virtual hard disk that grows on demand and never auto-shrinks. Reclaiming space requires <code>wsl --shutdown</code> followed by <code>diskpart</code> and <code>compact vdisk</code> - ceremony that most users will not perform. Nix profile generations accumulate fast: every <code>nx upgrade</code> produces a new generation that pins its full closure (~hundreds of MB to several GB depending on installed scopes). Without GC at setup time, weeks of normal use balloon the WSL VHD permanently. This is the dominant cost on the platform that drives the most adoption.</p>
+<p><strong>Setup runs are tested releases, not arbitrary state mutations.</strong> <code>nix/setup.sh</code> and <code>nx setup</code> invocations correspond to maintainer-tested released versions of the tool. The recovery path for "the latest setup broke something" is "re-run the prior released version", which reapplies the prior config from scratch - not "roll back to a previous on-disk generation". Aggressive cross-run rollback would be load-bearing if setup were a frequent ad-hoc mutation; for a versioned bootstrapper, it is not.</p>
+<p><strong>Rollback within a run is preserved.</strong> GC runs at the end of <code>phase_post_install_*</code>, after the new generation is in place. The current generation (and any generations created earlier in the same setup invocation, e.g. if <code>--upgrade</code> was used) remain available for <code>nx rollback</code> until the next successful setup run. The capability that matters in practice - "I just ran setup, something looks off, undo it" - works.</p>
+<p><strong>Explicit trade-off, not an oversight.</strong> Cross-run rollback is sacrificed in exchange for bounded store size on the most disk-constrained target platform. Users who genuinely need cross-run rollback on macOS or Coder (where disk pressure is less acute) can: (a) run <code>nix profile rollback</code> directly against <code>nix-env</code> before the next <code>nx setup</code>, or (b) re-run the prior tagged release of the tool, which reproduces the prior environment from declarative inputs.</p>
+<p>A <code>--keep-history</code> opt-out flag could be added if non-WSL users request it. Not added by default - it adds CLI surface for marginal value, and the maintainer-trust assumption holds across all platforms.</p>
+<h3 id="why-oh-my-posh-and-starship-not-oh-my-zsh">Why oh-my-posh and starship, not oh-my-zsh<a class="headerlink" href="#why-oh-my-posh-and-starship-not-oh-my-zsh" title="Permanent link">¤</a></h3>
+<p><strong>The objection:</strong> "Oh-my-zsh works great for me - it has hundreds of themes and plugins."</p>
+<p>Oh-my-zsh is a zsh framework. That is exactly the problem:</p>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>oh-my-zsh</th>
+<th>oh-my-posh / starship</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Shell support</td>
+<td>zsh only</td>
+<td>bash, zsh, PowerShell, fish, cmd, nu</td>
+</tr>
+<tr>
+<td>Platform parity</td>
+<td>Requires zsh setup</td>
+<td>Works on any shell the platform ships</td>
+</tr>
+<tr>
+<td>Startup performance</td>
+<td>Plugin-dependent</td>
+<td>Single binary, sub-50ms prompt render</td>
+</tr>
+<tr>
+<td>Configuration</td>
+<td>~/.zshrc framework</td>
+<td>Standalone config file, no shell lock-in</td>
+</tr>
+</tbody>
+</table>
+<p>A cross-platform tool that standardizes the developer experience cannot anchor its prompt to a single shell. Developers on this tool use bash on Coder, zsh on macOS, and PowerShell on Windows - often all three in the same week. Oh-my-posh and starship render an identical prompt across all of them from a single theme file.</p>
+<p>Both engines are offered as opt-in scopes rather than forcing one choice:</p>
+<ul>
+<li><strong>oh-my-posh</strong> (Go, mature ecosystem, rich themes) - default recommendation for macOS and WSL where startup latency is less critical</li>
+<li><strong>starship</strong> (Rust, faster cold-start) - preferred on Coder where container startup time matters and resource budgets are tighter</li>
+</ul>
+<p>The scopes are mutually exclusive at runtime (<code>--omp-theme</code> removes starship and vice versa) but both remain available. This lets teams standardize on a prompt engine while respecting environment-specific trade-offs.</p>
+<h3 id="why-managed-blocks-not-append-style-profile-injection">Why managed blocks, not append-style profile injection<a class="headerlink" href="#why-managed-blocks-not-append-style-profile-injection" title="Permanent link">¤</a></h3>
+<p><strong>The objection:</strong> "Just append a line to <code>.bashrc</code> - it's simpler."</p>
+<p>The <code>grep -q 'pattern' || echo 'line' &gt;&gt; ~/.bashrc</code> pattern is the most common approach to shell profile configuration. It is also the most fragile:</p>
+<ul>
+<li>Running setup twice appends duplicate entries unless the grep is perfectly maintained</li>
+<li>Removing configuration requires manual editing or fragile <code>sed</code> deletion</li>
+<li>Uninstallation leaves orphaned lines that can cause errors after the tool is removed</li>
+<li>There is no way to update configuration in place - only append more</li>
+</ul>
+<p>This tool uses a <strong>managed block</strong> pattern instead. Configuration is written between sentinel markers (<code># &gt;&gt;&gt; nix-env managed &gt;&gt;&gt;</code> / <code># &lt;&lt;&lt; nix-env managed &lt;&lt;&lt;</code>) and fully regenerated on each run:</p>
+<ul>
+<li><strong>Idempotent</strong> - running setup any number of times produces identical results, validated by CI on every PR</li>
+<li><strong>Updatable</strong> - the block is replaced atomically, not appended to</li>
+<li><strong>Removable</strong> - <code>nix/uninstall.sh</code> deletes the block cleanly, leaving the rest of the profile intact</li>
+<li><strong>Diagnosable</strong> - <code>nx doctor</code> detects duplicate or missing blocks</li>
+</ul>
+<p>The same pattern is implemented for PowerShell via <code>#region</code>/<code>#endregion</code> markers and <code>Update-ProfileRegion</code>. Two block types separate nix-specific config (removed on uninstall) from generic config (certs, local PATH - preserved after uninstall).</p>
+<h3 id="why-phase-based-orchestration-with-side-effect-stubs">Why phase-based orchestration with side-effect stubs<a class="headerlink" href="#why-phase-based-orchestration-with-side-effect-stubs" title="Permanent link">¤</a></h3>
+<p><strong>The objection:</strong> "It's a setup script - just write it top to bottom."</p>
+<p>A 600-line bash script written top-to-bottom is untestable by definition. Functions cannot be sourced in isolation, side effects execute on import, and tests resort to brittle <code>sed</code> extraction to test individual functions.</p>
+<p>This tool uses a <strong>phase library</strong> architecture: <code>nix/setup.sh</code> is a slim ~110-line orchestrator that sources independent phase files from <code>nix/lib/phases/</code>. Each phase exports functions with documented inputs and outputs (<code># Reads:</code> / <code># Writes:</code> header comments). Side-effecting operations (nix commands, curl probes, external script invocations) are routed through thin wrappers in <code>nix/lib/io.sh</code>:</p>
+<div class="highlight"><pre><span></span><code>_io_nix<span class="o">()</span><span class="w">        </span><span class="o">{</span><span class="w"> </span>nix<span class="w"> </span><span class="s2">"</span><span class="nv">$@</span><span class="s2">"</span><span class="p">;</span><span class="w"> </span><span class="o">}</span>
+_io_curl_probe<span class="o">()</span><span class="w"> </span><span class="o">{</span><span class="w"> </span>curl<span class="w"> </span>-sS<span class="w"> </span><span class="s2">"</span><span class="nv">$1</span><span class="s2">"</span><span class="w"> </span>&gt;/dev/null<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="p">;</span><span class="w"> </span><span class="o">}</span>
+_io_run<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">  </span><span class="nb">local</span><span class="w"> </span>_err_file<span class="w"> </span><span class="nv">_rc</span><span class="o">=</span><span class="m">0</span>
+<span class="w">  </span><span class="nv">_err_file</span><span class="o">=</span><span class="s2">"</span><span class="k">$(</span>mktemp<span class="k">)</span><span class="s2">"</span>
+<span class="w">  </span><span class="s2">"</span><span class="nv">$@</span><span class="s2">"</span><span class="w"> </span><span class="m">2</span>&gt;<span class="s2">"</span><span class="nv">$_err_file</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nv">_rc</span><span class="o">=</span><span class="nv">$?</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="o">[[</span><span class="w"> </span><span class="nv">$_rc</span><span class="w"> </span>-ne<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>-s<span class="w"> </span><span class="s2">"</span><span class="nv">$_err_file</span><span class="s2">"</span><span class="w"> </span><span class="o">]]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">    </span>cat<span class="w"> </span><span class="s2">"</span><span class="nv">$_err_file</span><span class="s2">"</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="m">2</span>
+<span class="w">    </span><span class="c1"># append structured error marker to log file if logging is active</span>
+<span class="w">  </span><span class="k">fi</span>
+<span class="w">  </span>rm<span class="w"> </span>-f<span class="w"> </span><span class="s2">"</span><span class="nv">$_err_file</span><span class="s2">"</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nv">$_rc</span>
+<span class="o">}</span>
+</code></pre></div>
+<p><code>_io_run</code> provides try/catch semantics: stdout streams to the terminal normally (preserving nix progress bars and tty detection), stderr is captured to a temp file and only surfaced on failure. Structured logging helpers (<code>info</code>, <code>ok</code>, <code>warn</code>, <code>err</code>) append plain-text markers to the log file without redirecting subprocess output.</p>
+<p>Tests override these wrappers by function redefinition before sourcing the phase under test - three lines per test, zero framework overhead:</p>
+<div class="highlight"><pre><span></span><code>setup<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">  </span>_io_nix<span class="o">()</span><span class="w"> </span><span class="o">{</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"nix </span><span class="nv">$*</span><span class="s2">"</span><span class="w"> </span>&gt;&gt;<span class="s2">"</span><span class="nv">$BATS_TEST_TMPDIR</span><span class="s2">/nix.log"</span><span class="p">;</span><span class="w"> </span><span class="o">}</span>
+<span class="w">  </span><span class="nb">source</span><span class="w"> </span><span class="s2">"</span><span class="nv">$REPO_ROOT</span><span class="s2">/nix/lib/io.sh"</span>
+<span class="w">  </span><span class="nb">source</span><span class="w"> </span><span class="s2">"</span><span class="nv">$REPO_ROOT</span><span class="s2">/nix/lib/phases/nix_profile.sh"</span>
+<span class="o">}</span>
+</code></pre></div>
+<p>This pattern makes bash scripts testable at a level normally associated with compiled languages - without mocking frameworks, without PATH manipulation, without subprocess overhead. It is the reason this project has 412 test cases across 22 test files for what is, at its core, a shell script.</p>
+<h3 id="why-json-as-the-shared-schema-format">Why JSON as the shared schema format<a class="headerlink" href="#why-json-as-the-shared-schema-format" title="Permanent link">¤</a></h3>
+<p><strong>The objection:</strong> "Bash scripts should use bash-native data formats."</p>
+<p>Scope metadata (valid names, install order, dependency rules) lives in a single <code>scopes.json</code> consumed by three runtimes:</p>
+<table>
+<thead>
+<tr>
+<th>Consumer</th>
+<th>Parser</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>bash</td>
+<td><code>jq</code></td>
+</tr>
+<tr>
+<td>PowerShell</td>
+<td><code>ConvertFrom-Json</code></td>
+</tr>
+<tr>
+<td>Python</td>
+<td><code>json</code> stdlib</td>
+</tr>
+</tbody>
+</table>
+<p>JSON is the only format all three parse natively without a custom parser. Alternatives (bash-sourceable data, TSV, INI) would force either a fragile parallel parser in PowerShell/Python or a source-of-truth split between bash-data and JSON-data. A single source of truth means scope definitions are always consistent across <code>nix/setup.sh</code>, <code>wsl/wsl_setup.ps1</code>, and the <code>validate_scopes.py</code> pre-commit hook.</p>
+<p>The only cost is that bash 3.2 on a bare macOS has no JSON parser, so <code>jq</code> must be bootstrapped before scope resolution can run. This is handled by a minimal <code>base_init.nix</code> scope (~13 lines) that installs <code>jq</code> on first run and is skipped on all subsequent runs - a bounded, one-time cost for a permanent architectural benefit.</p>
+<h3 id="why-not-checksum-pin-the-nix-installer">Why not checksum-pin the Nix installer<a class="headerlink" href="#why-not-checksum-pin-the-nix-installer" title="Permanent link">¤</a></h3>
+<p><strong>The objection:</strong> "Piping <code>curl | sh</code> is insecure. Download the installer, verify a SHA-256 checksum against a known-good value, then execute."</p>
+<p>This sounds like a clear security improvement. On closer inspection, it creates maintenance burden without meaningful security gain.</p>
+<p><strong>Determinate Systems does not publish checksums or signatures.</strong> Their GitHub releases (as of April 2025) contain bare binaries - no <code>.sha256</code> files, no cosign bundles, no GPG signatures. To implement checksum verification, you would compute a hash yourself after downloading the installer once, then pin <em>that</em> hash. The initial "known-good" download trusts the same HTTPS channel as every subsequent download. You have not added a trust root - you have frozen a moment in time.</p>
+<p><strong>The shell script is not the installer.</strong> The 19KB script downloaded from <code>install.determinate.systems</code> is a thin platform-detecting wrapper. It downloads a ~15MB static <code>nix-installer</code> binary per architecture at runtime. Vendoring or verifying the shell script does not pin the binary it fetches. To actually pin the installer, you would need to vendor all three platform binaries (~45MB total: <code>x86_64-linux</code>, <code>aarch64-linux</code>, <code>aarch64-darwin</code>), turning the repo into a fork of Determinate's distribution channel.</p>
+<p><strong>Maintenance cost equals vendoring.</strong> A pinned checksum requires a scheduled GitHub Action to detect new installer releases, compute new hashes, and open a PR. Every upstream release blocks users until someone merges the hash bump. That is the same operational cost as vendoring the binaries - except vendoring would also provide offline installation.</p>
+<p><strong>The real security is already in place.</strong> Both call sites enforce TLS 1.2+ via <code>curl --proto '=https' --tlsv1.2</code> (TLS 1.2 minimum). The installer script itself pins a tagged binary version internally (<code>NIX_INSTALLER_BINARY_ROOT</code> points to a specific release URL, e.g., <code>v3.18.1</code>). The threat model where HTTPS is compromised but a repo-pinned hash saves you is a CDN compromise at <code>install.determinate.systems</code> - at which point the attacker likely controls the next release hash too.</p>
+<p><strong>Both call sites already skip when Nix is installed.</strong> <code>bootstrap.sh:phase_bootstrap_detect_nix()</code> and <code>install_nix.sh</code> check for existing Nix installations before touching the network. The installer runs once per machine, not on every setup invocation.</p>
+<p><strong>The enterprise answer is pre-installation, not verifying.</strong> Organizations with strict supply-chain requirements should pre-install Nix via their approved channel - MDM (Jamf/Intune via <a href="https://determinate.systems/nix/macos/mdm/">Determinate's enterprise offering</a>), internal package repository, or manual installation. All entry points detect existing installations and skip the download. This is documented in the setup help and proxy documentation.</p>
+<p>The <code>curl | sh</code> pattern is an accepted trade-off for a bootstrapper: it runs once, over enforced HTTPS, with a version-pinned payload, and is skipped entirely when Nix already exists. Adding checksum verification would create ongoing maintenance for a one-time operation that already has reasonable protections.</p>
+<h3 id="why-bash-end-to-end-not-bootstrap-in-bash-implement-in-python">Why bash end-to-end, not "bootstrap in bash, implement in Python"<a class="headerlink" href="#why-bash-end-to-end-not-bootstrap-in-bash-implement-in-python" title="Permanent link">¤</a></h3>
+<p><strong>The objection:</strong> "Bash was chosen because it's available everywhere, but the project has grown beyond what bash is suited for. Rewrite the logic layer in Python (or Go, or Rust) and keep bash only for the minimal bootstrap."</p>
+<p>The instinct is reasonable - bash is not a general-purpose programming language, and most projects that reach ~30 shell files and 400+ test cases have outgrown it. This project has not, because it solved the scalability problems that normally force a rewrite.</p>
+<p><strong>The codebase already has the structural properties of a well-engineered typed codebase.</strong></p>
+<ul>
+<li><strong>Testability.</strong> The phase library architecture with <code>_io_*</code> side-effect stubs gives function-level unit testing without mocking frameworks. Tests override wrappers by function redefinition before sourcing the phase under test - three lines per test, zero framework overhead. The result is 400+ test cases across 22 test files, with coverage of phase functions, scope resolution, profile block management, and CLI commands. This level of testing is not typical bash; it is typical of a well-engineered project in any language.</li>
+<li><strong>Documented interfaces.</strong> Each phase file has <code># Reads:</code> / <code># Writes:</code> header comments that document cross-phase data flow. The variable naming convention (<code>_IR_*</code> for install record, <code>_io_*</code> for wrappers, <code>phase_*</code> for public functions, <code>_&lt;name&gt;_*</code> for private helpers) makes ownership visible at a glance - the same information that module boundaries and type signatures provide in other languages.</li>
+<li><strong>Mechanical constraint enforcement.</strong> The bash 3.2 compatibility constraint is enforced by a pre-commit hook (<code>check_bash32.py</code>) that scans every nix-path file for bash 4+ constructs. ShellCheck runs on every commit. The macOS CI workflow validates the constraint end-to-end. These are not conventions that drift - they are gates that block.</li>
+</ul>
+<p><strong>A rewrite would be a lateral move, not an improvement.</strong> Bash has well-known limitations (weak data structures, no type system, verbose complex logic), but replacing it with Python introduces a different set of problems specific to this context:</p>
+<ul>
+<li><strong>Runtime availability.</strong> macOS no longer ships Python. Bare containers may lack it. The tool cannot assume Python exists on a fresh machine - the same bootstrapping paradox that justifies bash 3.2 compatibility.</li>
+<li><strong>Version skew.</strong> Target platforms span Python 3.8 to 3.12+. Managing Python version compatibility for a tool whose purpose is solving version management is circular.</li>
+<li><strong>Dependency management for the tool itself.</strong> A Python implementation needs either vendored dependencies, a <code>requirements.txt</code> with a virtualenv, or a <code>pyproject.toml</code> with a build step. Each option adds distribution complexity to a tool that currently requires zero installation beyond cloning.</li>
+<li><strong>Shell startup penalty.</strong> <code>nx</code> is currently a shell function with zero overhead - it's sourced into the user's shell on login. A Python CLI adds interpreter startup cost (~50-100ms) to every invocation, noticeable on commands like <code>nx scope list</code> or tab completions.</li>
+</ul>
+<p>The bootstrapping paradox is the decisive factor. The same argument that justifies bash 3.2 compatibility (macOS ships it, the tool cannot assume anything else exists) applies to the entire runtime. After setup, <code>nx upgrade</code>, <code>nx doctor</code>, <code>nx scope</code>, and <code>nx profile regenerate</code> all work with nothing but bash and the nix-installed tools. Adding a Python dependency to the runtime means users need Python installed to manage their environment - the same circular dependency the project already solved for <code>jq</code> via <code>base_init.nix</code>, except <code>jq</code> is a 5MB static binary and Python is an ecosystem.</p>
+<p><strong>The right trigger for partial extraction.</strong> The architecture is at roughly the right size ceiling for bash. If the project were to grow into dependency graph solving with conflict resolution, network-heavy operations with retry/backoff logic, or structured API clients, those specific capabilities would benefit from extraction into a compiled single-binary tool (Go or Rust, distributed via the nix flake). The key word is <em>extraction</em> - the orchestrator and CLI would remain bash, and the compiled tool would be called via <code>_io_run</code> like any other side effect. This preserves the zero-dependency property while offloading genuinely complex logic to a language suited for it.</p>
+<p>Nothing in the current scope calls for that extraction. The complexity ceiling has not been reached - it has been managed.</p>
+</article>
+</div>
+<script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+</div>
+</main>
+<footer class="md-footer">
+<div class="md-footer-meta md-typeset">
+<div class="md-footer-meta__inner md-grid">
+<div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" rel="noopener" target="_blank">
+      Material for MkDocs
+    </a>
+</div>
+</div>
+</div>
+</footer>
+</div>
+<div class="md-dialog" data-md-component="dialog">
+<div class="md-dialog__inner md-typeset"></div>
+</div>
+<script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.indexes", "navigation.sections", "content.code.copy", "content.tabs.link"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+<script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+<script src="../assets/javascripts/diagram-zoom.js"></script>
+</body>
+</html>

@@ -1,0 +1,1019 @@
+
+<!DOCTYPE html>
+
+<html class="no-js" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width,initial-scale=1" name="viewport"/>
+<meta content="Universal, cross-platform developer environment provisioning with Nix" name="description"/>
+<link href="https://szymonos.github.io/envy-nx/releasing/" rel="canonical"/>
+<link href="../proxy/" rel="prev"/>
+<link href="../customization/" rel="next"/>
+<link href="../assets/images/favicon.png" rel="icon"/>
+<meta content="mkdocs-1.6.1, mkdocs-material-9.7.6" name="generator"/>
+<title>Releasing - Dev Environment Setup</title>
+<link href="../assets/stylesheets/main.484c7ddc.min.css" rel="stylesheet"/>
+<link href="../assets/stylesheets/palette.ab4e12ef.min.css" rel="stylesheet"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&amp;display=fallback" rel="stylesheet"/>
+<style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+<link href="../assets/stylesheets/layout-wide-screen.css" rel="stylesheet"/>
+<link href="../assets/stylesheets/mermaid-lightbox.css" rel="stylesheet"/>
+<script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+</head>
+<body data-md-color-accent="blue" data-md-color-primary="indigo" data-md-color-scheme="slate" dir="ltr">
+<input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox"/>
+<input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox"/>
+<label class="md-overlay" for="__drawer"></label>
+<div data-md-component="skip">
+<a class="md-skip" href="#releasing">
+          Skip to content
+        </a>
+</div>
+<div data-md-component="announce">
+</div>
+<header class="md-header md-header--shadow" data-md-component="header">
+<nav aria-label="Header" class="md-header__inner md-grid">
+<a aria-label="Dev Environment Setup" class="md-header__button md-logo" data-md-component="logo" href=".." title="Dev Environment Setup">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
+</a>
+<label class="md-header__button md-icon" for="__drawer">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"></path></svg>
+</label>
+<div class="md-header__title" data-md-component="header-title">
+<div class="md-header__ellipsis">
+<div class="md-header__topic">
+<span class="md-ellipsis">
+            Dev Environment Setup
+          </span>
+</div>
+<div class="md-header__topic" data-md-component="header-topic">
+<span class="md-ellipsis">
+            
+              Releasing
+            
+          </span>
+</div>
+</div>
+</div>
+<label class="md-header__button md-icon" for="__search">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+</label>
+<div class="md-search" data-md-component="search" role="dialog">
+<label class="md-search__overlay" for="__search"></label>
+<div class="md-search__inner" role="search">
+<form class="md-search__form" name="search">
+<input aria-label="Search" autocapitalize="off" autocomplete="off" autocorrect="off" class="md-search__input" data-md-component="search-query" name="query" placeholder="Search" required="" spellcheck="false" type="text"/>
+<label class="md-search__icon md-icon" for="__search">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
+</label>
+<nav aria-label="Search" class="md-search__options">
+<button aria-label="Clear" class="md-search__icon md-icon" tabindex="-1" title="Clear" type="reset">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
+</button>
+</nav>
+</form>
+<div class="md-search__output">
+<div class="md-search__scrollwrap" data-md-scrollfix="" tabindex="0">
+<div class="md-search-result" data-md-component="search-result">
+<div class="md-search-result__meta">
+            Initializing search
+          </div>
+<ol class="md-search-result__list" role="presentation"></ol>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="md-header__source">
+<a class="md-source" data-md-component="source" href="https://github.com/szymonos/envy-nx" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewbox="0 0 512 512" xmlns="http://www.w3.org/2000/svg"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"></path></svg>
+</div>
+<div class="md-source__repository">
+    szymonos/envy-nx
+  </div>
+</a>
+</div>
+</nav>
+</header>
+<div class="md-container" data-md-component="container">
+<main class="md-main" data-md-component="main">
+<div class="md-main__inner md-grid">
+<div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Navigation" class="md-nav md-nav--primary" data-md-level="0">
+<label class="md-nav__title" for="__drawer">
+<a aria-label="Dev Environment Setup" class="md-nav__button md-logo" data-md-component="logo" href=".." title="Dev Environment Setup">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
+</a>
+    Dev Environment Setup
+  </label>
+<div class="md-nav__source">
+<a class="md-source" data-md-component="source" href="https://github.com/szymonos/envy-nx" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewbox="0 0 512 512" xmlns="http://www.w3.org/2000/svg"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"></path></svg>
+</div>
+<div class="md-source__repository">
+    szymonos/envy-nx
+  </div>
+</a>
+</div>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="..">
+<span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../nx/">
+<span class="md-ellipsis">
+    
+  
+    The nx CLI
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../architecture/">
+<span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../decisions/">
+<span class="md-ellipsis">
+    
+  
+    Design Decisions
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../standards/">
+<span class="md-ellipsis">
+    
+  
+    Quality &amp; Testing
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../enterprise/">
+<span class="md-ellipsis">
+    
+  
+    Enterprise Readiness
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../proxy/">
+<span class="md-ellipsis">
+    
+  
+    Corporate Proxy
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item md-nav__item--active">
+<input class="md-nav__toggle md-toggle" id="__toc" type="checkbox"/>
+<label class="md-nav__link md-nav__link--active" for="__toc">
+<span class="md-ellipsis">
+    
+  
+    Releasing
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<a class="md-nav__link md-nav__link--active" href="./">
+<span class="md-ellipsis">
+    
+  
+    Releasing
+  
+
+    
+  </span>
+</a>
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#overview">
+<span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#version-numbering">
+<span class="md-ellipsis">
+      
+        Version numbering
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#step-by-step-cutting-a-release">
+<span class="md-ellipsis">
+      
+        Step-by-step: cutting a release
+      
+    </span>
+</a>
+<nav aria-label="Step-by-step: cutting a release" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#1-update-the-changelog">
+<span class="md-ellipsis">
+      
+        1. Update the changelog
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#2-build-tag-and-push">
+<span class="md-ellipsis">
+      
+        2. Build, tag, and push
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#3-tag-and-push">
+<span class="md-ellipsis">
+      
+        3. Tag and push
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#what-the-ci-pipeline-does">
+<span class="md-ellipsis">
+      
+        What the CI pipeline does
+      
+    </span>
+</a>
+<nav aria-label="What the CI pipeline does" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#test-matrix">
+<span class="md-ellipsis">
+      
+        Test matrix
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#build">
+<span class="md-ellipsis">
+      
+        Build
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#sign">
+<span class="md-ellipsis">
+      
+        Sign
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#publish">
+<span class="md-ellipsis">
+      
+        Publish
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#release-artifacts">
+<span class="md-ellipsis">
+      
+        Release artifacts
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#installing-from-a-tarball">
+<span class="md-ellipsis">
+      
+        Installing from a tarball
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#verifying-artifacts">
+<span class="md-ellipsis">
+      
+        Verifying artifacts
+      
+    </span>
+</a>
+<nav aria-label="Verifying artifacts" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#checksum-verification">
+<span class="md-ellipsis">
+      
+        Checksum verification
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#cosign-signature-verification">
+<span class="md-ellipsis">
+      
+        Cosign signature verification
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#sbom">
+<span class="md-ellipsis">
+      
+        SBOM
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#version-skew-detection">
+<span class="md-ellipsis">
+      
+        Version skew detection
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#tarball-contents">
+<span class="md-ellipsis">
+      
+        Tarball contents
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../customization/">
+<span class="md-ellipsis">
+    
+  
+    Customization
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#overview">
+<span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#version-numbering">
+<span class="md-ellipsis">
+      
+        Version numbering
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#step-by-step-cutting-a-release">
+<span class="md-ellipsis">
+      
+        Step-by-step: cutting a release
+      
+    </span>
+</a>
+<nav aria-label="Step-by-step: cutting a release" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#1-update-the-changelog">
+<span class="md-ellipsis">
+      
+        1. Update the changelog
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#2-build-tag-and-push">
+<span class="md-ellipsis">
+      
+        2. Build, tag, and push
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#3-tag-and-push">
+<span class="md-ellipsis">
+      
+        3. Tag and push
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#what-the-ci-pipeline-does">
+<span class="md-ellipsis">
+      
+        What the CI pipeline does
+      
+    </span>
+</a>
+<nav aria-label="What the CI pipeline does" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#test-matrix">
+<span class="md-ellipsis">
+      
+        Test matrix
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#build">
+<span class="md-ellipsis">
+      
+        Build
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#sign">
+<span class="md-ellipsis">
+      
+        Sign
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#publish">
+<span class="md-ellipsis">
+      
+        Publish
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#release-artifacts">
+<span class="md-ellipsis">
+      
+        Release artifacts
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#installing-from-a-tarball">
+<span class="md-ellipsis">
+      
+        Installing from a tarball
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#verifying-artifacts">
+<span class="md-ellipsis">
+      
+        Verifying artifacts
+      
+    </span>
+</a>
+<nav aria-label="Verifying artifacts" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#checksum-verification">
+<span class="md-ellipsis">
+      
+        Checksum verification
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#cosign-signature-verification">
+<span class="md-ellipsis">
+      
+        Cosign signature verification
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#sbom">
+<span class="md-ellipsis">
+      
+        SBOM
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#version-skew-detection">
+<span class="md-ellipsis">
+      
+        Version skew detection
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#tarball-contents">
+<span class="md-ellipsis">
+      
+        Tarball contents
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-content" data-md-component="content">
+<article class="md-content__inner md-typeset">
+<h1 id="releasing">Releasing<a class="headerlink" href="#releasing" title="Permanent link">¤</a></h1>
+<p>How to cut a release, what happens automatically, and how consumers verify artifacts.</p>
+<h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">¤</a></h2>
+<p>Releases follow <a href="https://semver.org/">Semantic Versioning</a>. A release is triggered by pushing a <code>v*</code> tag to the repository. The CI pipeline runs the full test matrix, builds a runtime-only tarball, generates an SBOM, signs everything with cosign, and publishes a GitHub Release with all artifacts attached.</p>
+<div class="mermaid">flowchart LR
+    T["git tag -a v1.2.0"] --&gt; P["git push origin v1.2.0"]
+    P --&gt; CI["CI: test matrix
+    Linux (daemon + rootless)
+    macOS (Sequoia)"]
+    CI --&gt; B["Build tarball
+    + SBOM + checksums"]
+    B --&gt; S["Cosign sign
+    (keyless OIDC)"]
+    S --&gt; R["GitHub Release
+    with all artifacts"]</div>
+<h2 id="version-numbering">Version numbering<a class="headerlink" href="#version-numbering" title="Permanent link">¤</a></h2>
+<table>
+<thead>
+<tr>
+<th>Change type</th>
+<th>Bump</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Breaking <code>config.nix</code> layout, removed <code>nx</code> subcommand</td>
+<td>MAJOR</td>
+<td>Drop <code>--legacy</code> flag, rename scope files</td>
+</tr>
+<tr>
+<td>New scope, new <code>nx</code> subcommand, new flag</td>
+<td>MINOR</td>
+<td>Add <code>--gcloud</code> scope, add <code>nx pin show</code></td>
+</tr>
+<tr>
+<td>Bug fix, internal refactor, dependency bump, docs</td>
+<td>PATCH</td>
+<td>Fix BSD sed regression, bump nixpkgs</td>
+</tr>
+</tbody>
+</table>
+<h2 id="step-by-step-cutting-a-release">Step-by-step: cutting a release<a class="headerlink" href="#step-by-step-cutting-a-release" title="Permanent link">¤</a></h2>
+<h3 id="1-update-the-changelog">1. Update the changelog<a class="headerlink" href="#1-update-the-changelog" title="Permanent link">¤</a></h3>
+<p>Every PR that changes runtime files (<code>nix/</code>, <code>.assets/</code>, <code>wsl/</code>) must have an entry under <code>## [Unreleased]</code> in <code>CHANGELOG.md</code>. The <code>check-changelog</code> pre-commit hook enforces this - commits that touch runtime files without a changelog entry are rejected.</p>
+<p>Before tagging, review the <code>[Unreleased]</code> section and rename it to the version being released:</p>
+<div class="highlight"><pre><span></span><code><span class="gu">## [1.2.0] - 2026-04-25</span>
+
+<span class="gu">### Added</span>
+<span class="k">-</span><span class="w"> </span><span class="sb">`nx pin show`</span> command for viewing current nixpkgs pin
+
+<span class="gu">### Fixed</span>
+<span class="k">-</span><span class="w"> </span>BSD sed regression in profile block injection on macOS
+</code></pre></div>
+<p>Add a fresh <code>## [Unreleased]</code> heading above the new version section.</p>
+<h3 id="2-build-tag-and-push">2. Build, tag, and push<a class="headerlink" href="#2-build-tag-and-push" title="Permanent link">¤</a></h3>
+<div class="highlight"><pre><span></span><code>git<span class="w"> </span>switch<span class="w"> </span>main<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>git<span class="w"> </span>pull<span class="w"> </span>--ff-only
+make<span class="w"> </span>release
+</code></pre></div>
+<p><code>make release</code> runs end-to-end with one interactive confirmation. It:</p>
+<ol>
+<li>Verifies the current branch is <code>main</code> - aborts otherwise.</li>
+<li>Verifies the working tree is clean.</li>
+<li>Fetches <code>origin/main</code> and verifies local <code>HEAD</code> matches - aborts if behind or ahead, so the tag always points at a commit that's already published.</li>
+<li>Reads the latest released version from <code>CHANGELOG.md</code> (the first <code>## [X.Y.Z] - YYYY-MM-DD</code> heading, skipping <code>[Unreleased]</code>). Override with <code>make release VERSION=X.Y.Z</code> if needed.</li>
+<li>Aborts if <code>vX.Y.Z</code> already exists as a git tag - catches the "forgot to add a new release section" mistake.</li>
+<li>Runs <code>.assets/tools/build_release.sh</code> to produce <code>dist/envy-nx-&lt;version&gt;.tar.gz</code>.</li>
+<li>Prompts: <code>Tag vX.Y.Z at HEAD and push to origin? [y/N]</code></li>
+<li><strong><code>y</code>/<code>yes</code></strong>: runs <code>git tag -a vX.Y.Z -m "Release vX.Y.Z"</code> then <code>git push origin vX.Y.Z</code>. Pushing the tag triggers <code>release.yml</code> on GitHub Actions.</li>
+<li><strong>anything else</strong> (including <code>Enter</code>): skips tag/push and prints the manual commands as an escape hatch. Use this if you want to inspect the tarball before publishing.</li>
+</ol>
+<div class="admonition tip">
+<p class="admonition-title">Inspect before pushing</p>
+<p>Answer <code>n</code> at the prompt to skip the tag/push, then run <code>tar tf dist/envy-nx-*.tar.gz | head -30</code> to verify the tarball contents before publishing manually.</p>
+</div>
+<p>Verify the tarball contains only runtime files:</p>
+<div class="highlight"><pre><span></span><code>tar<span class="w"> </span>tf<span class="w"> </span>dist/envy-nx-*.tar.gz<span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-30
+</code></pre></div>
+<p>Expected structure:</p>
+<div class="highlight"><pre><span></span><code>envy-nx-1.2.0/
+envy-nx-1.2.0/VERSION
+envy-nx-1.2.0/nix/
+envy-nx-1.2.0/.assets/lib/
+envy-nx-1.2.0/.assets/config/
+envy-nx-1.2.0/.assets/setup/
+envy-nx-1.2.0/.assets/provision/
+envy-nx-1.2.0/wsl/
+envy-nx-1.2.0/LICENSE
+envy-nx-1.2.0/README.md
+envy-nx-1.2.0/CHANGELOG.md
+...
+</code></pre></div>
+<p>The tarball excludes all development tooling: <code>tests/</code>, <code>scripts/</code>, <code>design/</code>, <code>docs/</code>, <code>Makefile</code>, <code>.github/</code>, <code>.pre-commit-config.yaml</code>, Docker files, and <code>.git/</code>. It is a self-contained, install-ready archive.</p>
+<h3 id="3-tag-and-push">3. Tag and push<a class="headerlink" href="#3-tag-and-push" title="Permanent link">¤</a></h3>
+<p>After reviewing the tarball:</p>
+<div class="highlight"><pre><span></span><code>git<span class="w"> </span>tag<span class="w"> </span>-a<span class="w"> </span><span class="s2">"v1.2.0"</span><span class="w"> </span>-m<span class="w"> </span><span class="s2">"Release v1.2.0"</span>
+git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span><span class="s2">"v1.2.0"</span>
+</code></pre></div>
+<p>Pushing the tag triggers the <code>release.yml</code> workflow.</p>
+<h2 id="what-the-ci-pipeline-does">What the CI pipeline does<a class="headerlink" href="#what-the-ci-pipeline-does" title="Permanent link">¤</a></h2>
+<p>The release workflow runs three jobs sequentially:</p>
+<h3 id="test-matrix">Test matrix<a class="headerlink" href="#test-matrix" title="Permanent link">¤</a></h3>
+<p>The full test suite runs unconditionally (not gated on PR labels like <code>test:integration</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Job</th>
+<th>Runner</th>
+<th>Nix method</th>
+<th>What it validates</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>test-linux</code></td>
+<td>ubuntu-slim</td>
+<td>Determinate</td>
+<td>Daemon mode: full scope install, <code>nx doctor --strict</code></td>
+</tr>
+<tr>
+<td><code>test-linux</code></td>
+<td>ubuntu-slim</td>
+<td><code>--no-daemon</code></td>
+<td>Rootless/Coder mode: same validation without systemd</td>
+</tr>
+<tr>
+<td><code>test-macos</code></td>
+<td>macos-15</td>
+<td>Determinate</td>
+<td>macOS: bash 3.2 + BSD sed, Keychain cert extraction</td>
+</tr>
+</tbody>
+</table>
+<p>All three must pass before the release job runs.</p>
+<h3 id="build">Build<a class="headerlink" href="#build" title="Permanent link">¤</a></h3>
+<ol>
+<li><strong>Tarball</strong> - <code>scripts/build_release.sh</code> produces <code>envy-nx-&lt;version&gt;.tar.gz</code> with a stamped <code>VERSION</code> file</li>
+<li><strong>Checksums</strong> - SHA-256 checksum written to <code>CHECKSUMS.sha256</code></li>
+<li><strong>SBOM</strong> - a Nix <code>buildEnv</code> is built, its closure is captured via <code>nix path-info --json --recursive</code>, and transformed into SPDX 2.3 JSON by <code>nix_closure_to_spdx.py</code></li>
+<li><strong>Closure list</strong> - <code>closure.txt</code> lists every nix store path in the environment for quick inspection</li>
+</ol>
+<h3 id="sign">Sign<a class="headerlink" href="#sign" title="Permanent link">¤</a></h3>
+<p><a href="https://docs.sigstore.dev/cosign/overview/">Cosign</a> keyless signing via GitHub OIDC. No keys to manage - the signature proves "this artifact was built by this repository's CI pipeline, triggered by this specific tag push."</p>
+<p>Each artifact gets a <code>.bundle</code> file containing the signature and certificate chain.</p>
+<h3 id="publish">Publish<a class="headerlink" href="#publish" title="Permanent link">¤</a></h3>
+<p><code>gh release create</code> attaches all artifacts to a GitHub Release. The release body is extracted from <code>CHANGELOG.md</code> - either the section matching the tag version or the <code>[Unreleased]</code> section as fallback.</p>
+<h2 id="release-artifacts">Release artifacts<a class="headerlink" href="#release-artifacts" title="Permanent link">¤</a></h2>
+<p>Every GitHub Release includes:</p>
+<table>
+<thead>
+<tr>
+<th>Artifact</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>envy-nx-&lt;version&gt;.tar.gz</code></td>
+<td>Runtime-only tarball (~100KB), ready to extract and run</td>
+</tr>
+<tr>
+<td><code>CHECKSUMS.sha256</code></td>
+<td>SHA-256 checksum for integrity verification</td>
+</tr>
+<tr>
+<td><code>sbom.spdx.json</code></td>
+<td>SPDX 2.3 Software Bill of Materials for the nix closure</td>
+</tr>
+<tr>
+<td><code>closure.txt</code></td>
+<td>Flat list of nix store paths in the environment</td>
+</tr>
+<tr>
+<td><code>envy-nx-*.tar.gz.bundle</code></td>
+<td>Cosign signature bundle for the tarball</td>
+</tr>
+<tr>
+<td><code>sbom.spdx.json.bundle</code></td>
+<td>Cosign signature bundle for the SBOM</td>
+</tr>
+</tbody>
+</table>
+<h2 id="installing-from-a-tarball">Installing from a tarball<a class="headerlink" href="#installing-from-a-tarball" title="Permanent link">¤</a></h2>
+<p>The release tarball is an alternative to <code>git clone</code> for environments where git is not available, artifact stores are preferred, or a specific version must be pinned.</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># download and extract</span>
+curl<span class="w"> </span>-sL<span class="w"> </span>https://github.com/szymonos/envy-nx/releases/latest/download/envy-nx.tar.gz<span class="w"> </span><span class="p">|</span><span class="w"> </span>tar<span class="w"> </span>xz
+<span class="nb">cd</span><span class="w"> </span>envy-nx
+
+<span class="c1"># run setup (same as git clone)</span>
+nix/setup.sh<span class="w"> </span>--shell<span class="w"> </span>--python<span class="w"> </span>--pwsh
+</code></pre></div>
+<p>After setup, the extracted directory can be deleted - the environment is self-contained in <code>~/.config/nix-env/</code>.</p>
+<div class="admonition note">
+<p class="admonition-title">Version detection</p>
+<p>When installed from a tarball, the <code>VERSION</code> file provides the version identity instead of <code>git describe</code>. The <code>nx version</code> command, <code>install.json</code> provenance, and <code>NIX_ENV_VERSION</code> environment variable all read from this file automatically.</p>
+</div>
+<h2 id="verifying-artifacts">Verifying artifacts<a class="headerlink" href="#verifying-artifacts" title="Permanent link">¤</a></h2>
+<h3 id="checksum-verification">Checksum verification<a class="headerlink" href="#checksum-verification" title="Permanent link">¤</a></h3>
+<div class="highlight"><pre><span></span><code><span class="nb">cd</span><span class="w"> </span>dist/<span class="w">   </span><span class="c1"># or wherever you downloaded the artifacts</span>
+shasum<span class="w"> </span>-a<span class="w"> </span><span class="m">256</span><span class="w"> </span>-c<span class="w"> </span>CHECKSUMS.sha256
+</code></pre></div>
+<h3 id="cosign-signature-verification">Cosign signature verification<a class="headerlink" href="#cosign-signature-verification" title="Permanent link">¤</a></h3>
+<p>Requires <a href="https://docs.sigstore.dev/cosign/system_config/installation/">cosign</a> installed locally:</p>
+<div class="highlight"><pre><span></span><code>cosign<span class="w"> </span>verify-blob<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--bundle<span class="w"> </span>envy-nx-1.2.0.tar.gz.bundle<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--certificate-oidc-issuer<span class="w"> </span>https://token.actions.githubusercontent.com<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--certificate-identity-regexp<span class="w"> </span><span class="s1">'github\.com/szymonos/envy-nx'</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>envy-nx-1.2.0.tar.gz
+</code></pre></div>
+<p>A successful verification confirms:</p>
+<ul>
+<li>The artifact was built by GitHub Actions in the <code>szymonos/envy-nx</code> repository</li>
+<li>It has not been modified since signing</li>
+<li>No private keys were involved - the identity proof comes from GitHub's OIDC token</li>
+</ul>
+<h2 id="sbom">SBOM<a class="headerlink" href="#sbom" title="Permanent link">¤</a></h2>
+<p>The Software Bill of Materials (<code>sbom.spdx.json</code>) lists every package in the nix closure - the complete set of runtime dependencies, including transitive ones. It is generated from <code>nix path-info --json --recursive</code> and formatted as <a href="https://spdx.github.io/spdx-spec/v2.3/">SPDX 2.3</a> JSON.</p>
+<p>Each entry includes:</p>
+<ul>
+<li>Package name and version (parsed from the nix store path)</li>
+<li>Download location (<code>https://cache.nixos.org</code>)</li>
+<li>Dependency relationships (derived from nix references)</li>
+</ul>
+<p>The SBOM enables compliance workflows, vulnerability scanning (feed it to <a href="https://github.com/anchore/grype">Grype</a> or similar), and audit trails for environments deployed at scale.</p>
+<h2 id="version-skew-detection">Version skew detection<a class="headerlink" href="#version-skew-detection" title="Permanent link">¤</a></h2>
+<p><code>nx doctor</code> includes a <code>version_skew</code> check that compares the installed version (from <code>install.json</code>) against the latest GitHub Release. When the versions differ, it reports a warning:</p>
+<div class="highlight"><pre><span></span><code>  WARN  version_skew: installed 1.1.0, latest release 1.2.0
+</code></pre></div>
+<p>This check requires <code>gh</code> CLI and network access. It is a silent no-op when either is unavailable.</p>
+<h2 id="tarball-contents">Tarball contents<a class="headerlink" href="#tarball-contents" title="Permanent link">¤</a></h2>
+<p>The release tarball includes only files needed to run <code>nix/setup.sh</code> and configure the environment. Everything else is excluded.</p>
+<p><strong>Included:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Directory / file</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>nix/</code></td>
+<td>Flake, scopes, setup orchestrator</td>
+</tr>
+<tr>
+<td><code>.assets/lib/</code></td>
+<td>Shared libraries (scopes, certs, doctor)</td>
+</tr>
+<tr>
+<td><code>.assets/config/</code></td>
+<td>Shell aliases and configuration</td>
+</tr>
+<tr>
+<td><code>.assets/setup/</code></td>
+<td>Post-install user configuration</td>
+</tr>
+<tr>
+<td><code>.assets/provision/</code></td>
+<td>System-scope tool installers</td>
+</tr>
+<tr>
+<td><code>wsl/</code></td>
+<td>WSL orchestration scripts</td>
+</tr>
+<tr>
+<td><code>VERSION</code></td>
+<td>Stamped version for non-git installs</td>
+</tr>
+<tr>
+<td><code>LICENSE</code>, <code>README.md</code></td>
+<td>Documentation</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Excluded:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Directory / file</th>
+<th>Why excluded</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>tests/</code></td>
+<td>Development only</td>
+</tr>
+<tr>
+<td><code>scripts/</code></td>
+<td>Build tooling</td>
+</tr>
+<tr>
+<td><code>design/</code></td>
+<td>Internal design documents</td>
+</tr>
+<tr>
+<td><code>docs/</code></td>
+<td>Published separately via MkDocs</td>
+</tr>
+<tr>
+<td><code>.github/</code></td>
+<td>CI workflows</td>
+</tr>
+<tr>
+<td><code>Makefile</code></td>
+<td>Developer workflow</td>
+</tr>
+<tr>
+<td><code>.pre-commit-config.yaml</code></td>
+<td>Developer workflow</td>
+</tr>
+<tr>
+<td><code>.assets/docker/</code></td>
+<td>Smoke test infrastructure</td>
+</tr>
+<tr>
+<td><code>nix/config.nix</code>, <code>flake.lock</code></td>
+<td>Generated at install time</td>
+</tr>
+</tbody>
+</table>
+</article>
+</div>
+<script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+</div>
+</main>
+<footer class="md-footer">
+<div class="md-footer-meta md-typeset">
+<div class="md-footer-meta__inner md-grid">
+<div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" rel="noopener" target="_blank">
+      Material for MkDocs
+    </a>
+</div>
+</div>
+</div>
+</footer>
+</div>
+<div class="md-dialog" data-md-component="dialog">
+<div class="md-dialog__inner md-typeset"></div>
+</div>
+<script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.indexes", "navigation.sections", "content.code.copy", "content.tabs.link"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+<script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+<script src="../assets/javascripts/diagram-zoom.js"></script>
+<script type="module">import mermaid from "https://unpkg.com/mermaid@10.4.0/dist/mermaid.esm.min.mjs";
+mermaid.initialize({
+    startOnLoad: true,
+    theme: "dark",
+    securityLevel: "loose",
+    themeVariables: {
+        clusterBkg: "#263238",
+        darkMode: true,
+        edgeLabelBackground: "#263238",
+        fontFamily: "Roboto, sans-serif",
+        lineColor: "#90a4ae",
+        mainBkg: "#2c3e50",
+        nodeBorder: "#5c6bc0",
+        secondBkg: "#34495e",
+        tertiaryColor: "#455a64",
+        useMaxWidth: true,
+        htmlLabels: true,
+        curve: "basis"
+    },
+    sequence: {
+        useMaxWidth: true
+    },
+    gantt: {
+        useMaxWidth: true
+    },
+    flowchart: {
+        useMaxWidth: true,
+        htmlLabels: true,
+        curve: "basis"
+    }
+});</script></body>
+</html>
