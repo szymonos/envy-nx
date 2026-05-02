@@ -112,7 +112,7 @@ release: ## Build release tarball, then prompt to tag+push to origin (main branc
 		printf '\e[31;1mWorktree is dirty. Commit or stash changes first.\e[0m\n' >&2; exit 1; \
 	fi; \
 	printf '\e[96mFetching origin/main to verify sync...\e[0m\n'; \
-	: skipped fetch for test; \
+	git fetch --quiet origin main; \
 	if [ "$$(git rev-parse HEAD)" != "$$(git rev-parse origin/main)" ]; then \
 		printf '\e[31;1mLocal main differs from origin/main. Pull or push first so the tag points at a published commit.\e[0m\n' >&2; \
 		exit 1; \
@@ -126,8 +126,13 @@ release: ## Build release tarball, then prompt to tag+push to origin (main branc
 		printf '\e[96mDetected version from CHANGELOG.md: \e[1mv%s\e[0m\n' "$$ver"; \
 	fi; \
 	if git rev-parse "v$$ver" >/dev/null 2>&1; then \
-		printf '\e[31;1mTag v%s already exists. Did you forget to add a new release section to CHANGELOG.md?\e[0m\n' "$$ver" >&2; \
+		printf '\e[31;1mTag v%s already exists locally. Did you forget to add a new release section to CHANGELOG.md?\e[0m\n' "$$ver" >&2; \
 		printf '\e[31;1mOverride with: make release VERSION=X.Y.Z\e[0m\n' >&2; \
+		exit 1; \
+	fi; \
+	if git ls-remote --exit-code --tags origin "refs/tags/v$$ver" >/dev/null 2>&1; then \
+		printf '\e[31;1mTag v%s already exists on origin. Build would succeed but `git push origin v%s` would fail after the artifact is built.\e[0m\n' "$$ver" "$$ver" >&2; \
+		printf '\e[31;1mPick a new version (override: make release VERSION=X.Y.Z) or delete the remote tag if it was published in error.\e[0m\n' >&2; \
 		exit 1; \
 	fi; \
 	VERSION="$$ver" .assets/tools/build_release.sh; \
