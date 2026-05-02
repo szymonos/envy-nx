@@ -45,12 +45,12 @@ teardown() {
 @test "interactive declined leaves miniforge3 in place" {
   mkdir -p "$HOME/miniforge3"
 
-  # mock /dev/tty by piping "n" and redirecting stdin via FD trick.
-  # the script reads from /dev/tty, so we simulate via a here-doc.
-  # easiest in bats: feed "n" to /dev/tty by running under script(1)
-  # alternative: invoke with empty stdin and rely on read failing -> default skip
-  run bash -c "printf 'n\n' | bash '$SCRIPT' </dev/null"
-  # read fails (no tty), defaults to empty reply, hits the * case -> Skipped
+  # The script's own `[ ! -t 0 ]` guard short-circuits the prompt when
+  # stdin is not a terminal (cf. ARCHITECTURE.md §7.9). `</dev/null` here
+  # makes stdin a non-tty, so the script exits 0 with "Skipped" without
+  # ever touching /dev/tty - regardless of whether the test runner itself
+  # has a controlling terminal.
+  run bash "$SCRIPT" </dev/null
   [ "$status" -eq 0 ]
   [ -d "$HOME/miniforge3" ]
   [[ "$output" == *"Skipped"* ]] || [[ "$output" == *"retained"* ]]

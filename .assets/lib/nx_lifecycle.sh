@@ -151,9 +151,17 @@ function _nx_lifecycle_self() {
       _self_repo_url="$(_nx_read_install_field repo_url)"
       [ -z "$_self_repo_url" ] && _self_repo_url="$_NX_DEFAULT_REPO_URL"
       printf "\e[33mInstalled from tarball - converting to git.\e[0m\n"
+      # Refuse the prompt when stdin isn't a terminal - `</dev/tty` would
+      # otherwise block forever in non-interactive contexts (cron, scripts
+      # piping nx, etc.). See ARCHITECTURE.md §7.9.
+      if [ ! -t 0 ]; then
+        printf "\e[31mNon-interactive shell - cannot prompt for clone.\e[0m\n" >&2
+        printf "Re-run from an interactive shell, or git clone %s manually.\n" "$_self_repo_url" >&2
+        return 1
+      fi
       printf "Clone from %s? [Y/n] " "$_self_repo_url"
       local _self_reply
-      read -r _self_reply </dev/tty
+      read -r _self_reply </dev/tty # tty-ok
       case "$_self_reply" in
       [nN]*)
         return 1
