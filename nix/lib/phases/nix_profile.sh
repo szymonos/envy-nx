@@ -82,11 +82,27 @@ phase_nix_profile_mitm_probe() {
       _io_curl_probe "$NIX_ENV_TLS_PROBE_URL" || _probe_failed=true
     fi
     if [[ "$_probe_failed" == "true" ]] && command -v openssl &>/dev/null; then
-      warn "SSL verification failed - MITM proxy detected, intercepting certificates..."
-      # shellcheck source=../../../.assets/config/shell_cfg/functions.sh
-      source "$SCRIPT_ROOT/.assets/config/shell_cfg/functions.sh"
-      cert_intercept
-      build_ca_bundle
+      # Distinguish cert failure (MITM/corporate CA) from network failure
+      # (DNS down, captive portal, transient outage). A second probe with
+      # cert validation disabled isolates the cause: if it succeeds, the
+      # original failure was cert-related and cert_intercept is the right
+      # remedy; if it also fails, the network is the problem and running
+      # cert_intercept would append unrelated bytes to ca-custom.crt.
+      local _bypass_ok=false
+      if [[ -x "$HOME/.nix-profile/bin/curl" ]]; then
+        "$HOME/.nix-profile/bin/curl" -ksS "$NIX_ENV_TLS_PROBE_URL" >/dev/null 2>&1 && _bypass_ok=true
+      else
+        _io_curl_probe_insecure "$NIX_ENV_TLS_PROBE_URL" && _bypass_ok=true
+      fi
+      if [[ "$_bypass_ok" == "true" ]]; then
+        warn "SSL verification failed - MITM proxy detected, intercepting certificates..."
+        # shellcheck source=../../../.assets/config/shell_cfg/functions.sh
+        source "$SCRIPT_ROOT/.assets/config/shell_cfg/functions.sh"
+        cert_intercept
+        build_ca_bundle
+      else
+        warn "TLS probe to $NIX_ENV_TLS_PROBE_URL failed for non-cert reason (DNS/network/captive portal) - skipping cert interception"
+      fi
     fi
   fi
 

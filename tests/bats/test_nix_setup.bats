@@ -785,10 +785,11 @@ _scope_pkgs() {
   [[ "$output" == *"flake lock failed"* ]]
 }
 
-@test "nix_profile: mitm_probe calls cert_intercept on TLS failure" {
+@test "nix_profile: mitm_probe calls cert_intercept on TLS failure (cert cause confirmed by bypass probe)" {
   HOME="$TEST_HOME"
   NIX_ENV_TLS_PROBE_URL="https://example.com"
   _io_curl_probe() { return 1; }
+  _io_curl_probe_insecure() { return 0; } # bypass probe succeeds -> cert was the cause
   _io_run() { :; }
   mkdir -p "$TEST_HOME/.config/certs"
 
@@ -808,6 +809,29 @@ STUB
 
   [[ -f "$TEST_HOME/.config/certs/cert_intercept_called" ]]
   [[ -f "$TEST_HOME/.config/certs/ca-bundle.crt" ]]
+}
+
+@test "nix_profile: mitm_probe skips cert_intercept when bypass probe also fails (network/DNS, not cert)" {
+  HOME="$TEST_HOME"
+  NIX_ENV_TLS_PROBE_URL="https://example.com"
+  _io_curl_probe() { return 1; }
+  _io_curl_probe_insecure() { return 1; } # bypass also fails -> not a cert problem
+  _io_run() { :; }
+  mkdir -p "$TEST_HOME/.config/certs"
+
+  local fake_root="$BATS_TEST_TMPDIR/fake_root_netfail"
+  mkdir -p "$fake_root/.assets/lib" "$fake_root/.assets/config/shell_cfg"
+  echo 'build_ca_bundle() { touch "$HOME/.config/certs/ca-bundle.crt"; }' >"$fake_root/.assets/lib/certs.sh"
+  echo 'cert_intercept() { touch "$HOME/.config/certs/cert_intercept_called"; }' >"$fake_root/.assets/config/shell_cfg/functions.sh"
+  SCRIPT_ROOT="$fake_root"
+
+  run phase_nix_profile_mitm_probe
+
+  # cert_intercept must NOT have been called - that's the whole point
+  [[ ! -f "$TEST_HOME/.config/certs/cert_intercept_called" ]]
+  [[ ! -f "$TEST_HOME/.config/certs/ca-bundle.crt" ]]
+  # the warning explaining the skip should be visible
+  [[ "$output" == *"non-cert reason"* ]]
 }
 
 @test "nix_profile: mitm_probe skips probe when ca-bundle already exists" {

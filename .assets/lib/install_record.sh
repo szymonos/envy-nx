@@ -37,12 +37,43 @@ if ! command -v jq &>/dev/null; then
   unset _ir_nix_profile
 fi
 
+# Incremental flush helper. Writes the current phase as "in_progress" (or
+# the supplied status) without touching the EXIT trap path. Idempotent and
+# silent on failure - we never want a flush failure to abort setup.
+#
+# Usage (from setup.sh after each _ir_phase= assignment):
+#   _ir_flush                   # status defaults to "in_progress"
+#   _ir_flush in_progress       # explicit
+#
+# The EXIT trap continues to do the final write with status=success|failed.
+# If the script is killed (SIGKILL/OOM) before the trap fires, the on-disk
+# install.json reflects the last in-progress phase - which is the failure-
+# mode the previous EXIT-only design could not capture.
+_ir_flush() {
+  [ "${_ir_skip:-false}" = "true" ] && return 0
+  local _flush_status="${1:-in_progress}" _flush_error="${2:-}"
+  write_install_record "$_flush_status" "${_ir_phase:-unknown}" "$_flush_error" 2>/dev/null || true
+}
+
 # write_install_record <status> <phase> [error_message]
 write_install_record() {
   local status="${1:-unknown}" phase="${2:-unknown}" error="${3:-}"
   local entry_point="${_IR_ENTRY_POINT:-unknown}"
 
   mkdir -p "$DEV_ENV_DIR"
+
+  # Stable installed_at across all writes within the same setup run. First
+  # call captures current time; subsequent calls (mid-run flushes + EXIT
+  # trap) reuse it so the timestamp reflects "when did the install happen",
+  # not "when was the record last touched".
+  local installed_at
+  if [ -n "${_IR_INSTALLED_AT:-}" ]; then
+    installed_at="$_IR_INSTALLED_AT"
+  else
+    installed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    _IR_INSTALLED_AT="$installed_at"
+    export _IR_INSTALLED_AT
+  fi
 
   # version priority: caller-supplied > git describe > VERSION file > "unknown"
   local version="" source="" source_ref=""
@@ -69,6 +100,14 @@ write_install_record() {
   local nix_ver=""
   nix_ver="$(nix --version 2>/dev/null)" || true
 
+  # Capture the bash major.minor that ran setup. Distinguishes Apple's
+  # frozen 3.2 (the bash 3.2 compatibility constraint everyone's first
+  # macOS run hits) from modern bash 5+ on Linux/WSL/brewed-macOS.
+  # Useful for triaging bug reports - "is this a bash 3.2 path failure?"
+  # is one less question to ask. BASH_VERSINFO is always set in any
+  # bash-executed script, so no fallback needed.
+  local bash_ver="${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}"
+
   if command -v jq &>/dev/null; then
     local scopes_json="[]"
     if [ -n "${_IR_SCOPES:-}" ]; then
@@ -85,7 +124,7 @@ write_install_record() {
       --arg repo_url "${_IR_REPO_URL:-}" \
       --argjson scopes "$scopes_json" \
       --argjson allow_unfree "${_IR_ALLOW_UNFREE:-false}" \
-      --arg installed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+      --arg installed_at "$installed_at" \
       --arg installed_by "$(id -un)" \
       --arg platform "${_IR_PLATFORM:-unknown}" \
       --arg arch "$(uname -m)" \
@@ -94,6 +133,7 @@ write_install_record() {
       --arg phase "$phase" \
       --arg error "$error" \
       --arg nix_version "${nix_ver:-}" \
+      --arg bash_version "$bash_ver" \
       --arg shell "${SHELL:-}" \
       '{
         entry_point: $entry_point,
@@ -113,6 +153,7 @@ write_install_record() {
         phase: $phase,
         error: $error,
         nix_version: $nix_version,
+        bash_version: $bash_version,
         shell: $shell
       }' >"$DEV_ENV_DIR/install.json" 2>/dev/null
   else
@@ -124,12 +165,13 @@ write_install_record() {
   "source": "$source",
   "repo_path": "${_IR_REPO_PATH:-}",
   "repo_url": "${_IR_REPO_URL:-}",
-  "installed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "installed_at": "$installed_at",
   "installed_by": "$(id -un)",
   "platform": "${_IR_PLATFORM:-unknown}",
   "arch": "$(uname -m)",
   "status": "$status",
-  "phase": "$phase"
+  "phase": "$phase",
+  "bash_version": "$bash_ver"
 }
 IREOF
   fi
