@@ -9,6 +9,9 @@
 #         any_scope, _scope_set, _ir_skip
 
 # Refresh the repo from upstream when behind. Skips silently when:
+#   - NX_REEXECED is already set (we are the post-exec invocation; refresh
+#     already ran in the parent process - guards against the pathological
+#     loop where upstream still reports as behind after our reset)
 #   - --skip-repo-update is in $@ (caller already refreshed the repo, e.g.
 #     wsl_setup.ps1's Update-GitRepository, or developer iterating locally)
 #   - SCRIPT_ROOT is not a git work tree (tarball install)
@@ -18,10 +21,11 @@
 #   - HEAD has diverged from upstream (would discard local commits)
 # Uses ls-remote as a cheap pre-check (one small network round-trip, no local
 # writes) to skip the heavy `git fetch` when the remote tip already matches the
-# local tracking ref - the common case on rerun. Sets _ir_skip and exits 0
-# after a successful update so the user re-invokes with fresh source (the
-# running script's source has been replaced under it).
+# local tracking ref - the common case on rerun. After a successful update,
+# `exec`s the new setup.sh with the same args (instead of exiting and asking
+# the user to re-run), so the user invocation completes in one go.
 phase_bootstrap_refresh_repo() {
+  [ -n "${NX_REEXECED:-}" ] && return 0
   local _arg
   for _arg in "$@"; do
     [ "$_arg" = "--skip-repo-update" ] && return 0
@@ -40,7 +44,7 @@ phase_bootstrap_refresh_repo() {
   local_sha="$(git -C "$SCRIPT_ROOT" rev-parse "$upstream" 2>/dev/null)"
   if [ -n "$remote_sha" ] && [ -n "$local_sha" ] && [ "$remote_sha" = "$local_sha" ]; then
     [ "$(git -C "$SCRIPT_ROOT" rev-parse HEAD)" = "$local_sha" ] && return 0
-    _bootstrap_refresh_apply "$upstream"
+    _bootstrap_refresh_apply "$upstream" "$@"
     return 0
   fi
 
@@ -52,14 +56,20 @@ phase_bootstrap_refresh_repo() {
   head_sha="$(git -C "$SCRIPT_ROOT" rev-parse HEAD)"
   upstream_sha="$(git -C "$SCRIPT_ROOT" rev-parse "$upstream")"
   [ "$head_sha" = "$upstream_sha" ] && return 0
-  _bootstrap_refresh_apply "$upstream"
+  _bootstrap_refresh_apply "$upstream" "$@"
 }
 
 # Apply upstream as new HEAD when the working tree is clean and HEAD is an
 # ancestor of upstream (safe fast-forward). Bails with a warning when local
 # work would be lost - protects feature-branch and dirty-tree development.
+# On success, `exec`s the new setup.sh so the user invocation continues
+# transparently with the refreshed source. NX_REEXECED is exported as a loop
+# guard - the post-exec invocation skips the whole refresh phase via the
+# guard at the top of phase_bootstrap_refresh_repo. exec failures fall
+# through to set -e (script exits, EXIT trap records the failure).
 _bootstrap_refresh_apply() {
   local upstream="$1"
+  shift
   if [ -n "$(git -C "$SCRIPT_ROOT" status --porcelain 2>/dev/null)" ]; then
     warn "uncommitted changes in $SCRIPT_ROOT - skipping auto-update of repository"
     return 0
@@ -69,9 +79,9 @@ _bootstrap_refresh_apply() {
     return 0
   fi
   git -C "$SCRIPT_ROOT" reset --hard "$upstream" >/dev/null
-  info "repository updated to $upstream - run the script again"
-  _ir_skip=true
-  exit 0
+  info "repository updated to $upstream - re-executing with new source"
+  export NX_REEXECED=1
+  exec bash "$SCRIPT_ROOT/nix/setup.sh" "$@"
 }
 
 phase_bootstrap_check_root() {

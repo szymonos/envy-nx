@@ -115,3 +115,93 @@ _make_nojq_path() {
   jq -e '.repo_path == ""' "$DEV_ENV_DIR/install.json"
   jq -e '.repo_url == ""' "$DEV_ENV_DIR/install.json"
 }
+
+# -- bash_version provenance -------------------------------------------------
+
+@test "write_install_record with jq includes bash_version (major.minor)" {
+  if ! command -v jq &>/dev/null; then
+    skip "jq not available"
+  fi
+  write_install_record "success" "complete"
+  jq -e '.bash_version | test("^[0-9]+\\.[0-9]+$")' "$DEV_ENV_DIR/install.json"
+  # And it should match the actually-running bash's BASH_VERSINFO.
+  local expected="${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}"
+  jq -e --arg v "$expected" '.bash_version == $v' "$DEV_ENV_DIR/install.json"
+}
+
+@test "write_install_record without jq includes bash_version" {
+  local bin_dir="$BATS_TEST_TMPDIR/bin_nojq_bash"
+  _make_nojq_path "$bin_dir"
+  local ORIG_PATH="$PATH"
+  PATH="$bin_dir"
+  write_install_record "success" "bootstrap"
+  PATH="$ORIG_PATH"
+  grep -qE '"bash_version": "[0-9]+\.[0-9]+"' "$DEV_ENV_DIR/install.json"
+}
+
+# -- _ir_flush mid-run write path --------------------------------------------
+
+@test "_ir_flush defaults status to in_progress and writes current _ir_phase" {
+  if ! command -v jq &>/dev/null; then
+    skip "jq not available"
+  fi
+  _ir_phase="resolving_scopes"
+  _ir_flush
+  [[ -f "$DEV_ENV_DIR/install.json" ]]
+  jq -e '.status == "in_progress"' "$DEV_ENV_DIR/install.json"
+  jq -e '.phase == "resolving_scopes"' "$DEV_ENV_DIR/install.json"
+}
+
+@test "_ir_flush honors explicit status argument" {
+  if ! command -v jq &>/dev/null; then
+    skip "jq not available"
+  fi
+  _ir_phase="bootstrap"
+  _ir_flush "in_progress" ""
+  jq -e '.status == "in_progress"' "$DEV_ENV_DIR/install.json"
+}
+
+@test "_ir_flush is a no-op when _ir_skip=true" {
+  _ir_skip=true
+  _ir_phase="bootstrap"
+  _ir_flush
+  [ ! -f "$DEV_ENV_DIR/install.json" ]
+}
+
+@test "_ir_flush reuses installed_at across multiple calls (stable timestamp)" {
+  if ! command -v jq &>/dev/null; then
+    skip "jq not available"
+  fi
+  unset _IR_INSTALLED_AT
+  _ir_phase="bootstrap"
+  _ir_flush
+  local first
+  first="$(jq -r '.installed_at' "$DEV_ENV_DIR/install.json")"
+  # Force enough wall-clock to elapse that a regenerated timestamp would
+  # differ at second resolution. 1.1s is >= the ISO-8601 second tick so
+  # any code path that calls `date` again will produce a new value.
+  sleep 1.1
+  _ir_phase="profiles"
+  _ir_flush
+  local second
+  second="$(jq -r '.installed_at' "$DEV_ENV_DIR/install.json")"
+  [ "$first" = "$second" ]
+}
+
+@test "_ir_flush followed by write_install_record (final) preserves installed_at" {
+  if ! command -v jq &>/dev/null; then
+    skip "jq not available"
+  fi
+  unset _IR_INSTALLED_AT
+  _ir_phase="bootstrap"
+  _ir_flush
+  local mid
+  mid="$(jq -r '.installed_at' "$DEV_ENV_DIR/install.json")"
+  sleep 1.1
+  write_install_record "success" "complete"
+  local final
+  final="$(jq -r '.installed_at' "$DEV_ENV_DIR/install.json")"
+  [ "$mid" = "$final" ]
+  jq -e '.status == "success"' "$DEV_ENV_DIR/install.json"
+  jq -e '.phase == "complete"' "$DEV_ENV_DIR/install.json"
+}

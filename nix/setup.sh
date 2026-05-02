@@ -107,6 +107,10 @@ trap _on_exit EXIT
 # ---- run phases --------------------------------------------------------------
 setup_log_start
 
+# Initial flush: file exists from start so a SIGKILL/OOM during bootstrap still
+# leaves a record. Uses the heredoc fallback in write_install_record (no jq yet).
+_ir_flush "in_progress"
+
 phase_bootstrap_refresh_repo "$@"
 phase_bootstrap_check_root
 phase_bootstrap_resolve_paths "$SCRIPT_ROOT"
@@ -124,12 +128,14 @@ phase_summary_detect_mode
 
 phase_platform_detect
 _ir_phase="pre-setup"
+_ir_flush "in_progress"
 
 export NIX_ENV_PHASE="pre-setup"
 phase_platform_run_hooks "$ENV_DIR/hooks/pre-setup.d"
 phase_platform_discover_overlay
 
 _ir_phase="scope-resolve"
+_ir_flush "in_progress"
 
 phase_scopes_load_existing
 phase_scopes_apply_removes
@@ -140,6 +146,7 @@ phase_scopes_detect_init
 phase_scopes_write_config
 
 _ir_phase="nix-profile"
+_ir_flush "in_progress"
 
 phase_nix_profile_load_pinned_rev
 phase_nix_profile_print_mode
@@ -148,6 +155,7 @@ phase_nix_profile_apply
 phase_nix_profile_mitm_probe
 
 _ir_phase="configure"
+_ir_flush "in_progress"
 
 # shellcheck disable=SC2154  # unattended - set by phase_bootstrap_parse_args
 phase_configure_gh "$unattended"
@@ -155,6 +163,7 @@ phase_configure_git "$unattended"
 phase_configure_per_scope
 
 _ir_phase="profiles"
+_ir_flush "in_progress"
 
 phase_profiles_bash
 phase_profiles_zsh
@@ -163,11 +172,13 @@ export NIX_ENV_PHASE="post-setup"
 phase_platform_run_hooks "$ENV_DIR/hooks/post-setup.d"
 
 _ir_phase="post-install"
+_ir_flush "in_progress"
 
 # shellcheck disable=SC2154  # update_modules - set by phase_bootstrap_parse_args
 phase_post_install_common "$update_modules" "${sorted_scopes[@]}"
 
 _ir_phase="complete"
+_ir_flush "in_progress"
 
 phase_post_install_gc
 setup_log_close

@@ -37,6 +37,11 @@ err() { _log_msg "ERROR" "91" "1" "$@"; }
 _io_nix() { nix "$@"; }
 _io_nix_eval() { nix eval --impure --raw --expr "$1"; }
 _io_curl_probe() { curl -sS "$1" >/dev/null 2>&1; }
+# Insecure variant: bypasses cert validation (-k). Used by the MITM probe to
+# distinguish "TLS cert rejected" (cert problem - run cert_intercept) from
+# "endpoint unreachable" (network/DNS/captive portal - skip cert_intercept,
+# don't pollute ca-custom.crt with unrelated bytes).
+_io_curl_probe_insecure() { curl -ksS "$1" >/dev/null 2>&1; }
 
 # Invoke pwsh -nop via the nix wrapper, clearing LD_LIBRARY_PATH inside pwsh.
 # Must use the nix bin/pwsh wrapper (not share/powershell/pwsh) because the
