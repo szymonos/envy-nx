@@ -55,9 +55,9 @@ begin {
 
     # set location to workspace folder
     Push-Location "$PSScriptRoot/.."
-    # import SetupUtils module
+    # import utils-setup module
     Import-Module (Resolve-Path './modules/do-common')
-    Import-Module (Resolve-Path './modules/SetupUtils')
+    Import-Module (Resolve-Path './modules/utils-setup')
 
     # check if distro exist
     $distros = Get-WslDistro -FromRegistry

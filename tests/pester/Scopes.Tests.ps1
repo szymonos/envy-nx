@@ -1,9 +1,9 @@
 #Requires -Modules Pester
-# Unit tests for Resolve-ScopeDeps and Get-SortedScopes in SetupUtils module
+# Unit tests for Resolve-ScopeDeps and Get-SortedScopes in utils-setup module
 
 BeforeAll {
     # source the functions directly
-    . $PSScriptRoot/../../modules/SetupUtils/Functions/scopes.ps1
+    . $PSScriptRoot/../../modules/utils-setup/Functions/scopes.ps1
 
     # load shared scope definitions (same as the module does)
     $scopesData = [IO.File]::ReadAllText("$PSScriptRoot/../../.assets/lib/scopes.json") | ConvertFrom-Json

@@ -14,8 +14,8 @@ BeforeAll {
 
     # import modules so the real functions exist (we will mock them)
     Import-Module "$Script:RepoRoot/modules/do-common" -Force
-    Import-Module "$Script:RepoRoot/modules/InstallUtils" -Force
-    Import-Module "$Script:RepoRoot/modules/SetupUtils" -Force
+    Import-Module "$Script:RepoRoot/modules/utils-install" -Force
+    Import-Module "$Script:RepoRoot/modules/utils-setup" -Force
 
     # helper: build a check_distro JSON response
     function New-CheckDistro {
@@ -256,8 +256,8 @@ Describe 'wsl_setup.ps1 orchestration' {
                 `$env:HOMEPATH = '\Users\testuser'
                 Set-Location '$Script:RepoRoot'
                 Import-Module './modules/do-common' -Force
-                Import-Module './modules/InstallUtils' -Force
-                Import-Module './modules/SetupUtils' -Force
+                Import-Module './modules/utils-install' -Force
+                Import-Module './modules/utils-setup' -Force
                 function wsl.exe {
                     `$argStr = `$args -join ' '
                     if (`$argStr -match 'check_distro\.sh') { return '$(New-CheckDistro)' }
