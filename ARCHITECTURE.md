@@ -7,7 +7,7 @@ Single source of truth for an agent or contributor working on this codebase. Rea
 ```text
 envy-nx/
 ├── nix/                      Primary entry point + flake declarations
-│   ├── setup.sh              ~110-line orchestrator (sources phase libs)
+│   ├── setup.sh              ~190-line orchestrator (sources phase libs)
 │   ├── lib/
 │   │   ├── io.sh             Logging + side-effect wrappers (_io_*)
 │   │   └── phases/           bootstrap, platform, scopes, nix_profile,
@@ -44,8 +44,13 @@ envy-nx/
 │   ├── setup/setup_*.{sh,zsh,ps1}    User-level post-install setup
 │   ├── check/*.sh            One-off diagnostic scripts
 │   └── scripts/linux_setup.sh    Linux system prep + nix delegation
-├── wsl/wsl_setup.ps1         Windows-host orchestrator for WSL distros
-├── modules/                  Vendored PowerShell modules (do-*, psm-windows, ...)
+├── wsl/wsl_setup.ps1         Windows-host orchestrator for WSL distros (slim ~330-line
+│                             dispatcher; phase logic extracted to modules/utils-setup)
+├── modules/
+│   ├── utils-setup/          Repo-owned: scope helpers + 16 WSL phase functions
+│   │                         (Functions/wsl_{common,install,phases,provenance}.ps1)
+│   ├── utils-install/        Repo-owned: git/repo helpers
+│   └── do-*, psm-windows, aliases-* Vendored from upstream ps-modules
 ├── tests/
 │   ├── bats/*.bats           Bash unit tests (bats-core)
 │   ├── pester/*.Tests.ps1    PowerShell unit tests (Pester)
@@ -88,7 +93,7 @@ Implications for any change you make:
 
 ### 3a. Setup orchestration (`nix/setup.sh` + `nix/lib/phases/`)
 
-`nix/setup.sh` is a slim orchestrator (~110 lines). All logic lives in phase libraries; the orchestrator only sequences them.
+`nix/setup.sh` is a slim orchestrator (~190 lines, ~125 of executable code). All logic lives in phase libraries; the orchestrator only sequences them and emits `_ir_flush` calls between phase transitions for crash-resilient provenance.
 
 | Phase file                       | Responsibility                                                                               |
 | -------------------------------- | -------------------------------------------------------------------------------------------- |
@@ -381,6 +386,31 @@ Detection runs during setup (`phase_nix_profile_mitm_probe`): probes a TLS endpo
 - `cert_intercept [host...]` - extract certs from TLS chains, append to `ca-custom.crt`. Default host is `$NIX_ENV_TLS_PROBE_URL`.
 - `fixcertpy [path]` - patch certifi bundles with custom certs (each Python virtualenv has its own copy).
 
+### 3h. WSL host orchestration (`wsl/wsl_setup.ps1` + `modules/utils-setup/`)
+
+`wsl/wsl_setup.ps1` runs on the Windows host. It enumerates distros, installs missing ones, and per-distro: runs `check_distro.sh`, resolves scopes, runs DNS+SSL probes (with optional fixes), bootstraps nix via `wsl.exe --exec nix/setup.sh`, syncs SSH keys / GitHub config, configures git, and writes per-distro `install.json` provenance. The orchestrator is a slim ~330-line dispatcher; per-distro phase logic lives in 16 named functions on the existing `modules/utils-setup` PowerShell module:
+
+| File                                               | Functions                                                                                                                                                                                             |
+| -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `modules/utils-setup/Functions/wsl_common.ps1`     | `Get-WslDistro`, `Set-WslConf`, `Invoke-WslExe` (generic WSL plumbing)                                                                                                                                |
+| `modules/utils-setup/Functions/wsl_install.ps1`    | `Install-WslDistroIfMissing`, `Install-WslService`, `Invoke-WslDistroMigration`, `Get-WslMigrationChoice`, `Get-WslGhConfigFromDefault`, `Resolve-WslGtkThemePreference` (begin block)                |
+| `modules/utils-setup/Functions/wsl_phases.ps1`     | `Resolve-WslDistroScopes`, `Invoke-WslDistroCheck`, `Invoke-WslBaseSetup`, `Sync-WslGitHubConfig`, `Sync-WslSshKeys`, `Install-WslScopes`, `Set-WslGtkTheme`, `Set-WslGitConfig` (per-distro process) |
+| `modules/utils-setup/Functions/wsl_provenance.ps1` | `Get-WslInstallVersion`, `Write-WslInstallRecord` (clean block)                                                                                                                                       |
+
+**`Invoke-WslExe` boundary.** Phase functions in value-returning contexts must NOT call `wsl.exe ... | Out-Default` directly - PowerShell folds uncaptured external-command output into the function's pipeline output, polluting the return value. `Invoke-WslExe` bypasses the pipeline entirely via `[System.Diagnostics.Process]::Start` with `UseShellExecute = $false` and inherited std{in,out,err} handles. Three concurrent wins:
+
+1. UTF-16 LE output from native `wsl.exe` commands (`--install`, `--update`, `--unregister`) renders correctly because it goes straight to the terminal, not through PS's UTF-8 decoder.
+2. TTY-aware programs running inside the distro (nix's progress bar, apt-get progress, interactive prompts) detect a real terminal and use rich output instead of plain-text fallback.
+3. Output never enters the calling function's pipeline output, so callers returning a `[hashtable]` / `[pscustomobject]` can't have their return value polluted.
+
+`$LASTEXITCODE` is set globally to wsl.exe's exit code after `WaitForExit`. Off-Windows (Pester runners on Linux/macOS) the helper falls back to the PS call operator so `Mock wsl.exe { ... }` can intercept; the gating uses `$IsWindows` directly to avoid env-var-based race conditions across parallel test runspaces.
+
+**Failure semantics.** Phase functions `throw` on unrecoverable errors; the orchestrator catches and translates to `exit 1` (with a `Show-LogContext "<phase> failed: <message>"` log line so failures aren't silent). The "WSL service install completed - restart required" path uses a custom `ErrorRecord` with `FullyQualifiedErrorId = 'WslRestartRequired'`; the orchestrator matches on FQErrorId and exits 0 (avoids brittle `Exception.Message` literal matching).
+
+**Test coverage.** `tests/pester/WslSetup.Tests.ps1` (9 integration tests) exercises the orchestrator end-to-end with `wsl.exe` Mocked at both script scope and inside the `utils-setup` module scope. `tests/pester/WslSetupPhases.Tests.ps1` (49 unit tests) covers 14 of the 16 extracted functions directly (`Install-WslService` is exercised indirectly through `Install-WslDistroIfMissing`'s failure path; `Get-WslMigrationChoice` wraps `$Host.UI.PromptForChoice` and is interactive-only).
+
+**WSL CI gap.** GitHub-hosted Windows runners only support WSL1 (no nested virtualization), which lacks systemd and behaves differently from production WSL2. End-to-end testing is intentionally omitted - the orchestration logic is validated by the Pester tests above, and the design tracking the modularization is `design/wsl_setup_modularization.md`.
+
 ## 4. Package layering
 
 Packages assemble bottom-up into a single `buildEnv` profile entry. No layer can shadow another.
@@ -671,6 +701,15 @@ The `_io_*` convention: phases call `_io_nix`, `_io_nix_eval`, `_io_curl_probe`,
 
 ### 9.2. Unit tests - Pester (`tests/pester/*.Tests.ps1`)
 
+9 Pester files; full suite runs in parallel via `tests/hooks/pester_parallel.ps1` (file-level `ForEach-Object -Parallel` inside one pwsh session - avoids paying ~3s startup per file).
+
+WSL coverage is split across two complementary suites:
+
+- **`WslSetup.Tests.ps1`** - 9 integration tests exercising `wsl/wsl_setup.ps1` end-to-end with `wsl.exe` Mocked at both script scope (orchestrator-direct calls) and inside the `utils-setup` module scope (calls made from extracted phase functions). Asserts the orchestration sequence (which scripts get called in which order with which args).
+- **`WslSetupPhases.Tests.ps1`** - 49 unit tests covering the 16 phase functions extracted into `modules/utils-setup/Functions/wsl_*.ps1` (see §3h). Tests use `Mock -ModuleName 'utils-setup'` to intercept inside the module surface; off-Windows `Invoke-WslExe` falls back to the PS call operator (gated on `$IsWindows`) so Mocks fire on Linux/macOS runners.
+
+Direct invocation:
+
 ```powershell
 $pesterCfg = @{
     Run    = @{ Path = 'tests/pester/'; Exit = $true }
@@ -798,17 +837,21 @@ This project follows [Keep a Changelog](https://keepachangelog.com) format and [
 
 ### 12.3. powershell
 
-| File / Pattern                             | Role                                                                                                                                |
-| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `wsl/*.ps1`                                | WSL management (Windows host)                                                                                                       |
-| `.assets/config/pwsh_cfg/_aliases_nix.ps1` | PowerShell aliases + nx (bash proxy + native PS profile mgmt); `#region nx-completer` block is **generated** from `nx_surface.json` |
-| `.assets/config/pwsh_cfg/profile_nix.ps1`  | Base profile template                                                                                                               |
-| `.assets/scripts/module_manage.ps1`        | Vendored module clone/update management                                                                                             |
-| `modules/utils-install/`                   | Install utility module (repo cloning)                                                                                               |
-| `modules/utils-setup/`                     | Setup utility module (scopes, WSL config)                                                                                           |
-| `modules/do-*/`                            | Vendored: common / Linux / Azure functions                                                                                          |
-| `modules/psm-windows/`                     | Vendored: Windows-specific functions                                                                                                |
-| `modules/aliases-{git,kubectl}/`           | Vendored: aliases + completers                                                                                                      |
+| File / Pattern                                     | Role                                                                                                                                                       |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `wsl/*.ps1`                                        | WSL management (Windows host)                                                                                                                              |
+| `.assets/config/pwsh_cfg/_aliases_nix.ps1`         | PowerShell aliases + nx (bash proxy + native PS profile mgmt); `#region nx-completer` block is **generated** from `nx_surface.json`                        |
+| `.assets/config/pwsh_cfg/profile_nix.ps1`          | Base profile template                                                                                                                                      |
+| `.assets/scripts/module_manage.ps1`                | Vendored module clone/update management                                                                                                                    |
+| `modules/utils-install/Functions/git.ps1`          | `Update-GitRepository`, `Invoke-GhRepoClone`                                                                                                               |
+| `modules/utils-setup/Functions/scopes.ps1`         | `Resolve-ScopeDeps`, `Get-SortedScopes` (consume `scopes.json`)                                                                                            |
+| `modules/utils-setup/Functions/wsl_common.ps1`     | `Get-WslDistro`, `Set-WslConf`, `Invoke-WslExe` (generic WSL plumbing - see §3h)                                                                           |
+| `modules/utils-setup/Functions/wsl_install.ps1`    | Begin-block install + WSL1->WSL2 migration: `Install-WslDistroIfMissing`, `Install-WslService`, `Invoke-WslDistroMigration`, `Get-WslMigrationChoice`, ... |
+| `modules/utils-setup/Functions/wsl_phases.ps1`     | Per-distro process phases: `Invoke-WslDistroCheck`, `Invoke-WslBaseSetup`, `Sync-WslGitHubConfig`/`Sync-WslSshKeys`, `Install-WslScopes`, ...              |
+| `modules/utils-setup/Functions/wsl_provenance.ps1` | Clean-block helpers: `Get-WslInstallVersion`, `Write-WslInstallRecord` (per-distro `install.json`)                                                         |
+| `modules/do-*/`                                    | Vendored: common / Linux / Azure functions                                                                                                                 |
+| `modules/psm-windows/`                             | Vendored: Windows-specific functions                                                                                                                       |
+| `modules/aliases-{git,kubectl}/`                   | Vendored: aliases + completers                                                                                                                             |
 
 ### 12.4. nix declarations
 
