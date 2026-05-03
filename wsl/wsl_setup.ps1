@@ -51,6 +51,9 @@ Set network settings from the selected network interface in Windows.
 Skip updating installed PowerShell modules (Az, PSReadLine, etc.).
 .PARAMETER SkipRepoUpdate
 Skip updating current repository before running the setup.
+.PARAMETER WebDownload
+Switch, whether to use web download for WSL distro installation instead of Microsoft Store.
+This is useful when the Store download is very slow or unavailable.
 
 .EXAMPLE
 $Distro = 'Ubuntu'
@@ -134,7 +137,9 @@ param (
 
     [switch]$SkipModulesUpdate,
 
-    [switch]$SkipRepoUpdate
+    [switch]$SkipRepoUpdate,
+
+    [switch]$WebDownload
 )
 
 begin {
@@ -162,6 +167,10 @@ begin {
     # *get list of distros
     $lxss = Get-WslDistro | Where-Object Name -NotMatch '^docker-desktop'
     if ($PsCmdlet.ParameterSetName -ne 'Update') {
+        $installArgs = [System.Collections.Generic.List[string]]::new([string[]]@('--install', '--distribution', $Distro))
+        if ($PSBoundParameters.WebDownload) {
+            $installArgs.Add('--web-download')
+        }
         if ($Distro -notin $lxss.Name) {
             for ($i = 0; $i -lt 5; $i++) {
                 if ($onlineDistros = Get-WslDistro -Online) { break }
@@ -171,10 +180,10 @@ begin {
                 Show-LogContext "specified distribution not found ($Distro), proceeding to install"
                 try {
                     Get-Service WSLService | Out-Null
-                    wsl.exe --install --distribution $Distro --no-launch
+                    wsl.exe @installArgs --no-launch
                     if ($? -and $Distro -notin (Get-WslDistro -FromRegistry).Name) {
                         Write-Host "`nSetting up user profile in WSL distro. Type 'exit' when finished to proceed with WSL setup!`n" -ForegroundColor Yellow
-                        wsl.exe --install --distribution $Distro
+                        wsl.exe @installArgs
                     }
                     if (-not $?) {
                         Show-LogContext "`"$Distro`" distro installation failed." -Level ERROR
@@ -182,7 +191,7 @@ begin {
                     }
                 } catch {
                     if (Test-IsAdmin) {
-                        wsl.exe --install --distribution $Distro
+                        wsl.exe @installArgs
                         if ($?) {
                             Show-LogContext 'WSL service installation finished.'
                             Show-LogContext "`nRestart the system and run the script again to install the specified WSL distro!`n" -Level WARNING
@@ -192,7 +201,7 @@ begin {
                         }
                     } else {
                         Show-LogContext "`nInstalling WSL service. Wait for the process to finish and restart the system!`n" -Level WARNING
-                        Start-Process pwsh.exe "-NoProfile -Command `"wsl.exe --install --distribution $Distro`"" -Verb RunAs
+                        Start-Process pwsh.exe "-NoProfile -Command `"wsl.exe $($installArgs -join ' ')`"" -Verb RunAs
                         if ($?) {
                             Show-LogContext 'WSL service installation finished.'
                             Show-LogContext "`nRestart the system and run the script again to install the specified WSL distro!`n" -Level WARNING
@@ -243,7 +252,7 @@ begin {
                         break
                     }
                 }
-                wsl.exe --install --distribution $Distro --no-launch
+                wsl.exe @installArgs --no-launch
             }
         }
         Show-LogContext 'getting GitHub authentication config from the default distro'
