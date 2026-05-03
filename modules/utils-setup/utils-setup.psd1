@@ -73,8 +73,9 @@
         # scopes
         'Resolve-ScopeDeps'
         'Get-SortedScopes'
-        # wsl
+        # wsl common
         'Get-WslDistro'
+        'Invoke-WslExe'
         'Set-WslConf'
         # wsl install
         'Get-WslGhConfigFromDefault'

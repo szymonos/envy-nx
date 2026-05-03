@@ -171,7 +171,8 @@ begin {
                 -InstalledDistros $lxss `
                 -WebDownload ([bool]$WebDownload)
         } catch {
-            if ($_.Exception.Message -eq 'restart required') { exit 0 }
+            if ($_.FullyQualifiedErrorId -match '^WslRestartRequired') { exit 0 }
+            Show-LogContext "Distro install failed: $($_.Exception.Message)" -Level ERROR
             exit 1
         }
         if ($lxss.Where({ $_.Name -eq $Distro }).Version -eq 1) {
@@ -218,6 +219,7 @@ process {
         try {
             $chk = Invoke-WslDistroCheck -Distro $Distro -DistroRecord $script:distroRecords[$Distro]
         } catch {
+            Show-LogContext "Distro check failed: $($_.Exception.Message)" -Level ERROR
             exit 1
         }
         if ($null -eq $chk) {
@@ -246,6 +248,7 @@ process {
                 -AddCertificate ([bool]$AddCertificate) `
                 -DistroRecord $script:distroRecords[$Distro]
         } catch {
+            Show-LogContext "Base setup failed: $($_.Exception.Message)" -Level ERROR
             exit 1
         }
         # propagate auto-promoted switch values back to script scope

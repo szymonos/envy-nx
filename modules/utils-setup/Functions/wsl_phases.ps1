@@ -45,7 +45,8 @@ function Invoke-WslDistroCheck {
     if ($chk.uid -eq 0) {
         if ($chk.def_uid -ge 1000) {
             Write-Host "`nSetting up user profile in WSL distro. Type 'exit' when finished to proceed with WSL setup!`n" -ForegroundColor Yellow
-            wsl.exe --distribution $Distro
+            # interactive shell - Invoke-WslExe inherits stdin/stdout for typing + prompts
+            Invoke-WslExe --distribution $Distro
             $chkStr = wsl.exe @checkArgs
             try {
                 $chk = $chkStr | ConvertFrom-Json -AsHashtable -ErrorAction Stop
@@ -122,7 +123,7 @@ function Invoke-WslBaseSetup {
     }
     if ($FixNetwork) {
         Show-LogContext 'fixing network'
-        wsl/wsl_network_fix.ps1 $Distro
+        wsl/wsl_network_fix.ps1 $Distro | Out-Default
         $dnsOk = wsl.exe @dnsCheckArgs
     }
     if ($dnsOk -eq 'false') {
@@ -139,7 +140,7 @@ function Invoke-WslBaseSetup {
     }
     if ($AddCertificate) {
         Show-LogContext 'adding certificates in chain'
-        wsl/wsl_certs_add.ps1 $Distro
+        wsl/wsl_certs_add.ps1 $Distro | Out-Default
         $sslOk = wsl.exe @sslCheckArgs
     }
     if ($sslOk -eq 'false') {
@@ -158,16 +159,16 @@ function Invoke-WslBaseSetup {
         '.assets/provision/install_nix.sh'
     )
     foreach ($provisionScript in $provisionScripts) {
-        wsl.exe --distribution $Distro --user root --exec $provisionScript
+        Invoke-WslExe --distribution $Distro --user root --exec $provisionScript
     }
 
     # *boot setup
-    wsl.exe --distribution $Distro --user root install -m 0755 .assets/setup/autoexec.sh /etc
+    Invoke-WslExe --distribution $Distro --user root install -m 0755 .assets/setup/autoexec.sh /etc
     if (-not $Check.wsl_boot) {
         $bootConf = [ordered]@{
             boot = @{ command = '"[ -x /etc/autoexec.sh ] && /etc/autoexec.sh || true"' }
         }
-        Set-WslConf -Distro $Distro -ConfDict $bootConf
+        Set-WslConf -Distro $Distro -ConfDict $bootConf | Out-Default
     }
 
     return [pscustomobject]@{
@@ -347,16 +348,16 @@ function Install-WslScopes {
     if ('docker' -in $Scopes -and $WslVersion -eq 2) {
         Show-LogContext 'installing docker'
         if (-not $Check.systemd) {
-            wsl/wsl_systemd.ps1 $Distro -Systemd 'true'
-            wsl.exe --shutdown
+            wsl/wsl_systemd.ps1 $Distro -Systemd 'true' | Out-Default
+            Invoke-WslExe --shutdown
         }
-        wsl.exe --distribution $Distro --user root --exec .assets/provision/install_docker.sh $Check.user
+        Invoke-WslExe --distribution $Distro --user root --exec .assets/provision/install_docker.sh $Check.user
     }
 
     # -- zsh: system-wide install (login shell requires /etc/shells entry) --
     if ('zsh' -in $Scopes) {
         Show-LogContext 'installing zsh system-wide'
-        wsl.exe --distribution $Distro --user root --exec .assets/provision/install_zsh.sh
+        Invoke-WslExe --distribution $Distro --user root --exec .assets/provision/install_zsh.sh
     }
 
     # -- build nix/setup.sh argument list (splatted into wsl.exe call) --
@@ -387,8 +388,8 @@ function Install-WslScopes {
         $env:WSLENV = "${env:WSLENV}:NX_SSH_KEY_FP/u"
         $env:NX_SSH_KEY_FP = $SshKeyFp
     }
-    wsl.exe --distribution $Distro --exec nix/setup.sh @nixArgs
-    if (-not $?) {
+    Invoke-WslExe --distribution $Distro --exec nix/setup.sh @nixArgs
+    if ($LASTEXITCODE -ne 0) {
         Show-LogContext 'nix/setup.sh failed' -Level ERROR
         $DistroRecord.error = 'nix/setup.sh failed'
         return [pscustomobject]@{
@@ -407,8 +408,8 @@ function Install-WslScopes {
     # -- distrobox: WSL2-only system-wide --
     if ('distrobox' -in $Scopes -and $WslVersion -eq 2) {
         Show-LogContext 'installing distrobox'
-        wsl.exe --distribution $Distro --user root --exec .assets/provision/install_podman.sh
-        wsl.exe --distribution $Distro --user root --exec .assets/provision/install_distrobox.sh $Check.user
+        Invoke-WslExe --distribution $Distro --user root --exec .assets/provision/install_podman.sh
+        Invoke-WslExe --distribution $Distro --user root --exec .assets/provision/install_distrobox.sh $Check.user
     }
 
     # -- pwsh: Windows User-scope env vars (one-shot per script run) --
@@ -543,7 +544,11 @@ function Set-WslGitConfig {
             }
             git config --global user.name "$user"
         }
-        $builder.AppendLine("git config --global user.name '$user'") | Out-Null
+        # escape single quotes for the bash single-quoted context: end the
+        # quoted string, emit an escaped quote, restart the quoted string.
+        # Handles names like O'Connor without breaking the bash command.
+        $userEsc = $user.Replace("'", "'\''")
+        $builder.AppendLine("git config --global user.name '$userEsc'") | Out-Null
     }
 
     if (-not $Check.git_email) {
@@ -563,7 +568,8 @@ function Set-WslGitConfig {
             }
             git config --global user.email "$email"
         }
-        $builder.AppendLine("git config --global user.email '$email'") | Out-Null
+        $emailEsc = $email.Replace("'", "'\''")
+        $builder.AppendLine("git config --global user.email '$emailEsc'") | Out-Null
     }
 
     $extraSettings = [string[]]@(
