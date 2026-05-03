@@ -5,6 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+
+- `wsl/wsl_install.ps1`: new `-WebDownload` switch, forwarded to the `wsl/wsl_setup.ps1` invocation as `-WebDownload`. Mirrors the switch added to `wsl_setup.ps1` in 1.5.1 - lets users running the higher-level installer bypass the Microsoft Store as the distro source when the Store stalls or is policy-disabled. Existing behavior preserved when the switch is absent.
+
 ### Changed
 
 - **`wsl/wsl_setup.ps1` modularization**: full extraction of the begin / process / clean block logic into 16 named functions on the existing `modules/utils-setup` PowerShell module. Implements the design tracked in `design/wsl_setup_modularization.md`. Orchestrator drops from 670 to ~330 lines, becoming a slim sequence of named function calls instead of inline switch / foreach / nested-try-catch blocks; each function is now unit-testable in isolation. Behavior byte-identical; the pre-refactor `exit 1` paths in the orchestrator translate to phase functions that `throw` and an orchestrator `try/catch` that re-raises as `exit 1`. The pre-refactor `exit 0` after WSL service install becomes `throw 'restart required'` caught by the orchestrator.

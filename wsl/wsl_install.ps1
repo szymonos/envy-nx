@@ -40,6 +40,9 @@ Intercept and add certificates from chain into selected distro.
 Set network settings from the selected network interface in Windows.
 .PARAMETER SkipRepoUpdate
 Skip updating current repository before running the setup.
+.PARAMETER WebDownload
+Switch, whether to use web download for WSL distro installation instead of Microsoft Store.
+This is useful when the Store download is very slow or unavailable.
 
 .EXAMPLE
 # :perform basic Ubuntu WSL setup
@@ -83,7 +86,9 @@ param (
 
     [switch]$FixNetwork,
 
-    [switch]$SkipRepoUpdate
+    [switch]$SkipRepoUpdate,
+
+    [switch]$WebDownload
 )
 
 begin {
@@ -99,7 +104,7 @@ begin {
     Import-Module (Resolve-Path './modules/psm-windows') -Force
     Import-Module (Resolve-Path './modules/utils-install') -Force
 
-    if (-not $SkipRepoUpdate) {
+    if (-not $PSBoundParameters.SkipRepoUpdate) {
         Write-Host 'checking if the repository is up to date...' -ForegroundColor Cyan
         if ((Update-GitRepository) -eq 2) {
             Write-Host "`nRun the script again!" -ForegroundColor Yellow
@@ -159,15 +164,16 @@ process {
     # *Set up WSL
     # build command string
     $sb = [System.Text.StringBuilder]::new("wsl/wsl_setup.ps1 -Distro '$Distro'")
-    if ($Scope) {
+    if ($PSBoundParameters.Scope) {
         $scopeStr = $Scope | Join-Str -Separator ',' -SingleQuote
         $sb.Append(" -Scope @($scopeStr,'shell')") | Out-Null
     }
-    if ($Repos) {
+    if ($PSBoundParameters.Repos) {
         $reposStr = $Repos | Join-Str -Separator ',' -SingleQuote
         $sb.Append(" -Repos @($reposStr)") | Out-Null
     }
-    if ($AddCertificate) { $sb.Append(' -AddCertificate') | Out-Null }
+    if ($PSBoundParameters.AddCertificate) { $sb.Append(' -AddCertificate') | Out-Null }
+    if ($PSBoundParameters.WebDownload) { $sb.Append(' -WebDownload') | Out-Null }
     $sb.Append(" -OmpTheme 'base'") | Out-Null
     $sb.Append(' -SkipRepoUpdate') | Out-Null
     # run the wsl_setup script
