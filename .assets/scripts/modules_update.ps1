@@ -43,36 +43,6 @@ begin {
     Push-Location "$PSScriptRoot/../.."
     # import utils-install for the Invoke-GhRepoClone function
     Import-Module (Resolve-Path './modules/utils-install')
-
-    # specify update functions structure
-    $import = @{
-        'do-common'   = @{
-            utils-setup = @{
-                certs  = @(
-                    'ConvertFrom-PEM'
-                    'ConvertTo-PEM'
-                    'Get-Certificate'
-                )
-                common = @(
-                    'Get-LogMessage'
-                    'ConvertFrom-Cfg'
-                    'ConvertTo-Cfg'
-                    'Get-ArrayIndexMenu'
-                    'Invoke-ExampleScriptSave'
-                )
-            }
-        }
-        'psm-windows' = @{
-            utils-install = @{
-                common = @(
-                    'Invoke-CommandRetry'
-                    'Join-Str'
-                    'Test-IsAdmin'
-                    'Update-SessionEnvironmentPath'
-                )
-            }
-        }
-    }
 }
 
 process {
@@ -84,25 +54,20 @@ process {
 
     # *perform update
     Write-Host 'perform modules update..' -ForegroundColor Cyan
-    foreach ($srcModule in $import.GetEnumerator()) {
-        Import-Module (Resolve-Path "../ps-modules/modules/$($srcModule.Key)")
-        Write-Host "`n$($srcModule.Key)" -ForegroundColor Green
-        foreach ($dstModule in $srcModule.Value.GetEnumerator()) {
-            Write-Host $dstModule.Key
-            foreach ($destFile in $dstModule.Value.GetEnumerator()) {
-                Write-Host "  - $($destFile.Key).ps1"
-                $filePath = "./modules/$($dstModule.Key)/Functions/$($destFile.Key).ps1"
-                Set-Content -Value $null -Path $filePath
-                $builder = [System.Text.StringBuilder]::new()
-                foreach ($function in $destFile.Value) {
-                    Write-Host "    • $function"
-                    $def = "    $((Get-Command $function -CommandType Function).Definition.Trim())"
-                    $builder.AppendLine("function $function {") | Out-Null
-                    $builder.AppendLine($def) | Out-Null
-                    $builder.AppendLine("}`n") | Out-Null
-                }
-                Set-Content -Value $builder.ToString().Trim().Replace("`r`n", "`n") -Path $filePath -Encoding utf8
-            }
+    $modules = @(
+        'aliases-git'
+        'aliases-kubectl'
+        'do-az'
+        'do-common'
+        'do-linux'
+        'psm-windows'
+    )
+    foreach ($module in $modules) {
+        try {
+            Remove-Item -Path "./modules/$module" -Recurse -Force -ErrorAction SilentlyContinue
+            Copy-Item -Path "../ps-modules/modules/$module" -Destination "./modules" -Recurse
+        } catch {
+            Write-Warning "Failed to update module ${module}: $_"
         }
     }
 }
