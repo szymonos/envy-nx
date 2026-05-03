@@ -5,6 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.5.3] - 2026-05-03
+
+Hot-fix release on top of 1.5.2 cleaning up CI log noise. The 1.5.2 modularization fix that switched `Install-WslScopes`' nix-setup failure check from `if (-not $?)` to `if ($LASTEXITCODE -ne 0)` (necessary for the production `Process.Start` path) made the test-mode fallback in `Invoke-WslExe` see a leftover non-zero `$LASTEXITCODE` from prior real external commands - integration test assertions still passed, but every CI run printed misleading `ERROR ... nix/setup.sh failed` and `<< Failed to set up the Ubuntu WSL distro >>` lines that obscured real failures.
+
 ### Fixed
 
 - `Invoke-WslExe` (`modules/utils-setup/Functions/wsl_common.ps1`): test-mode fallback now resets `$global:LASTEXITCODE = 0` before invoking the mocked `wsl.exe` call. Without this, a leftover non-zero exit code from a prior real external command made `$LASTEXITCODE`-based failure checks downstream (most visibly `Install-WslScopes` after the `nix/setup.sh` call) spuriously log `<command> failed` during integration tests. Pester assertions still passed (they check call sequence, not exit codes), so the pipeline reported success - but the CI log was littered with misleading `ERROR ... nix/setup.sh failed` and `<< Failed to set up the Ubuntu WSL distro >>` lines on every run. Mocks that want to simulate failure can set `$global:LASTEXITCODE` themselves to override the default.
