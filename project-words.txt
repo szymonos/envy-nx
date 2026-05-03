@@ -31,6 +31,7 @@ elop
 elopment
 euid
 fastfetch
+fileno
 fixcertpy
 forkable
 gbda
@@ -41,6 +42,7 @@ hashtable
 hkcu
 hyperv
 intune
+isatty
 jamf
 kandji
 kubecolor
@@ -59,6 +61,7 @@ miniforge
 minisign
 mkdocs
 mktemp
+modularizes
 namerefs
 nixos
 nixpkgs
@@ -79,6 +82,7 @@ rekor
 remediations
 rollouts
 runspace
+runspaces
 scaffolder
 setsid
 setuid
