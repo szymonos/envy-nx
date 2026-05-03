@@ -5,6 +5,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-05-03
+
+Polish release on top of 1.5.0. Adds a `-WebDownload` switch to `wsl/wsl_setup.ps1` for environments where the Microsoft Store distro download is slow or blocked, aligns the two repo-owned PowerShell modules with the kebab-case naming used by every other module (`SetupUtils` → `utils-setup`, `InstallUtils` → `utils-install`), simplifies `.assets/scripts/modules_update.ps1` to a whole-directory copy from the upstream `ps-modules` checkout instead of cherry-picking individual functions, and fixes a `$input` automatic-variable collision in `tests/pester/ConvertCfg.Tests.ps1` that masked test intent.
+
+### Added
+
+- `wsl/wsl_setup.ps1`: new `-WebDownload` switch that appends `--web-download` to every `wsl.exe --install` invocation. Bypasses the Microsoft Store as the distro source - useful when the Store download stalls (common on slow or restricted networks) or when the Store is disabled by policy. Wired into all four install code paths (no-launch install, interactive setup, admin-mode service install, post-elevation install). Existing behavior preserved when the switch is absent.
+
+### Changed
+
+- **PowerShell module rename**: `modules/SetupUtils` → `modules/utils-setup` and `modules/InstallUtils` → `modules/utils-install`, including the manifest filenames (`utils-setup.psd1`, `utils-install.psd1`) and module GUIDs unchanged. Aligns the two repo-owned modules with the kebab-case convention used by `do-common`, `do-az`, `do-linux`, `psm-windows`, `aliases-git`, `aliases-kubectl` (every other module under `modules/`). All 11 callers updated in one pass: `wsl/*.ps1` scripts, `.assets/lib/scopes.sh` comment, `tests/pester/{Scopes,WslSetup}.Tests.ps1`, `.assets/scripts/modules_update.ps1`, `ARCHITECTURE.md`, `design/phase_1_self_contained.md`. Anyone importing these modules directly by old name (`Import-Module SetupUtils`) needs to update the import path.
+- `.assets/scripts/modules_update.ps1`: replaced the per-function cherry-pick logic with a whole-module directory copy from `../ps-modules/modules/<name>` to `./modules/<name>`. The previous design imported each function from ps-modules and rebuilt consolidated `Functions/<group>.ps1` files inline (~50 lines of nested hashtable + string-builder per module). The new approach (`Remove-Item -Recurse -Force` + `Copy-Item -Recurse`) preserves the source layout exactly, so updates from upstream don't drift on file structure. Scope reduced to the 6 externally-sourced modules (`aliases-git`, `aliases-kubectl`, `do-az`, `do-common`, `do-linux`, `psm-windows`); the two repo-owned modules (`utils-install`, `utils-setup`) are not touched by this script since they're maintained in this repo.
+
+### Fixed
+
+- `tests/pester/ConvertCfg.Tests.ps1`: renamed every `$input` local to `$cfgInput`. `$input` is a PowerShell automatic variable (the pipeline input enumerator); using it as a `It`-block local shadowed the automatic and caused subtle test-behavior surprises depending on whether the `It` block ran via direct invocation or pipelined. Behavior of `ConvertFrom-Cfg`/`ConvertTo-Cfg` unchanged - this is purely a test-hygiene fix.
+
 ## [1.5.0] - 2026-05-02
 
 `nx doctor` evolves from diagnostic into actionable: every failing or warning check now prints a `Fix:` hint, full output is mirrored to `~/.config/dev-env/doctor.log`, a `nix` version floor catches the most common cryptic-flake-error class, and a new `scope_bins_in_profile` check distinguishes "binary on PATH" from "binary actually provided by nix." Setup gains crash-proof provenance via incremental `install.json` flushes plus an `exec`-instead-of-exit auto-refresh - one invocation completes in one go, and the on-disk record reflects where the script died if it ever does. The MITM probe now distinguishes cert failure from network/DNS failure before mutating `ca-custom.crt`. The `nx_surface.json` manifest extends from completers/help into dispatchers and lib-file lists - 9 generated artifacts across 5 files, with 4 parity hooks collapsed into one `check-nx-generated` hook (~600 fewer lines of regex). Managed-block markers renamed to `nix:managed` / `env:managed` to match the PowerShell `nix:*` convention, with silent auto-migration. `make release` becomes one interactive command (auto-detect version, build, prompt to tag + push). Test infrastructure: bats and Pester suites now run in parallel via the same helpers `make test-unit` uses, integration workflows exercise the full suite per run, and a new `check-no-tty-read` hook prevents the silent-hang pattern from re-entering the codebase.
