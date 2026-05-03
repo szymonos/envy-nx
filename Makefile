@@ -100,7 +100,7 @@ egsave: ## Regenerate runnable-example scripts (requires pwsh)
 	@pwsh -nop .assets/scripts/scripts_egsave.ps1
 
 .PHONY: release
-release: ## Build release tarball, then prompt to tag+push to origin (main branch only; auto-detects VERSION from CHANGELOG.md, override: VERSION=X.Y.Z)
+release: ## Tag HEAD and push to origin to trigger the release workflow
 	@set -e; \
 	current_branch=$$(git rev-parse --abbrev-ref HEAD); \
 	if [ "$$current_branch" != "main" ]; then \
@@ -135,7 +135,6 @@ release: ## Build release tarball, then prompt to tag+push to origin (main branc
 		printf '\e[31;1mPick a new version (override: make release VERSION=X.Y.Z) or delete the remote tag if it was published in error.\e[0m\n' >&2; \
 		exit 1; \
 	fi; \
-	VERSION="$$ver" .assets/tools/build_release.sh; \
 	printf '\n\e[96mTag v%s at HEAD and push to origin?\e[0m [y/N] ' "$$ver"; \
 	read -r reply; \
 	case "$$reply" in \
