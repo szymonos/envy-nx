@@ -76,6 +76,25 @@
         # wsl
         'Get-WslDistro'
         'Set-WslConf'
+        # wsl install
+        'Get-WslGhConfigFromDefault'
+        'Get-WslMigrationChoice'
+        'Install-WslDistroIfMissing'
+        'Install-WslService'
+        'Invoke-WslDistroMigration'
+        'Resolve-WslGtkThemePreference'
+        # wsl phases
+        'Install-WslScopes'
+        'Invoke-WslBaseSetup'
+        'Invoke-WslDistroCheck'
+        'Resolve-WslDistroScopes'
+        'Set-WslGitConfig'
+        'Set-WslGtkTheme'
+        'Sync-WslGitHubConfig'
+        'Sync-WslSshKeys'
+        # wsl provenance
+        'Get-WslInstallVersion'
+        'Write-WslInstallRecord'
     )
 
     # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.

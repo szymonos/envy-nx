@@ -88,8 +88,6 @@ wsl/wsl_setup.ps1
 # :open the example script in VSCode
 code -r (.assets/scripts/scripts_egsave.ps1 wsl/wsl_setup.ps1 -WriteOutput)
 #>
-using namespace System.Management.Automation.Host
-
 [CmdletBinding(DefaultParameterSetName = 'Update')]
 param (
     [Parameter(Mandatory, Position = 0, ParameterSetName = 'Setup')]
@@ -167,99 +165,19 @@ begin {
     # *get list of distros
     $lxss = Get-WslDistro | Where-Object Name -NotMatch '^docker-desktop'
     if ($PsCmdlet.ParameterSetName -ne 'Update') {
-        $installArgs = [System.Collections.Generic.List[string]]::new([string[]]@('--install', '--distribution', $Distro))
-        if ($PSBoundParameters.WebDownload) {
-            $installArgs.Add('--web-download')
+        try {
+            $Distro = Install-WslDistroIfMissing `
+                -Distro $Distro `
+                -InstalledDistros $lxss `
+                -WebDownload ([bool]$WebDownload)
+        } catch {
+            if ($_.Exception.Message -eq 'restart required') { exit 0 }
+            exit 1
         }
-        if ($Distro -notin $lxss.Name) {
-            for ($i = 0; $i -lt 5; $i++) {
-                if ($onlineDistros = Get-WslDistro -Online) { break }
-            }
-            # install online distro
-            if ($Distro -in $onlineDistros.Name) {
-                Show-LogContext "specified distribution not found ($Distro), proceeding to install"
-                try {
-                    Get-Service WSLService | Out-Null
-                    wsl.exe @installArgs --no-launch
-                    if ($? -and $Distro -notin (Get-WslDistro -FromRegistry).Name) {
-                        Write-Host "`nSetting up user profile in WSL distro. Type 'exit' when finished to proceed with WSL setup!`n" -ForegroundColor Yellow
-                        wsl.exe @installArgs
-                    }
-                    if (-not $?) {
-                        Show-LogContext "`"$Distro`" distro installation failed." -Level ERROR
-                        exit 1
-                    }
-                } catch {
-                    if (Test-IsAdmin) {
-                        wsl.exe @installArgs
-                        if ($?) {
-                            Show-LogContext 'WSL service installation finished.'
-                            Show-LogContext "`nRestart the system and run the script again to install the specified WSL distro!`n" -Level WARNING
-                        } else {
-                            Show-LogContext 'WSL service installation failed.' -Level ERROR
-                            exit 1
-                        }
-                    } else {
-                        Show-LogContext "`nInstalling WSL service. Wait for the process to finish and restart the system!`n" -Level WARNING
-                        Start-Process pwsh.exe "-NoProfile -Command `"wsl.exe $($installArgs -join ' ')`"" -Verb RunAs
-                        if ($?) {
-                            Show-LogContext 'WSL service installation finished.'
-                            Show-LogContext "`nRestart the system and run the script again to install the specified WSL distro!`n" -Level WARNING
-                        } else {
-                            Show-LogContext 'WSL service installation failed.' -Level ERROR
-                            exit 1
-                        }
-                    }
-                    exit 0
-                }
-            } else {
-                Show-LogContext "The specified distro does not exist ($Distro)." -Level WARNING
-                exit 1
-            }
-        } elseif ($lxss.Where({ $_.Name -eq $Distro }).Version -eq 1) {
-            Show-LogContext "The distribution `"$Distro`" is currently using WSL1!" -Level WARNING
-            $caption = 'It is strongly recommended to use WSL2.'
-            $message = 'Select your choice:'
-            $choices = @(
-                @{ choice = '&Replace the current distro'; desc = "Delete current '$Distro' distro and install it as WSL2." }
-                @{ choice = '&Select another distro to install'; desc = 'Select from other online distros to install as WSL2.' }
-                @{ choice = '&Continue setup of the current distro'; desc = "Continue setup of the current WSL1 '$Distro' distro." }
-            )
-            [ChoiceDescription[]]$options = $choices.ForEach({ [ChoiceDescription]::new($_.choice, $_.desc) })
-            $choice = $Host.UI.PromptForChoice($caption, $message, $options, -1)
-            if ($choice -ne 2) {
-                # check the default WSL version and change to 2 if necessary
-                if ((Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Lxss').DefaultVersion -ne 2) {
-                    wsl.exe --set-default-version 2
-                }
-                switch ($choice) {
-                    0 {
-                        Show-LogContext 'unregistering current distro'
-                        wsl.exe --unregister $Distro
-                        break
-                    }
-                    1 {
-                        for ($i = 0; $i -lt 5; $i++) {
-                            if ($onlineDistros = Get-WslDistro -Online) {
-                                $onlineDistros = $onlineDistros.Name | Where-Object {
-                                    $_ -ne $Distro -and $_ -match 'ubuntu|debian'
-                                }
-                                break
-                            }
-                        }
-                        $Distro = Get-ArrayIndexMenu $onlineDistros -Message 'Choose distro to install' -Value
-                        Show-LogContext "installing selected distro ($Distro)"
-                        break
-                    }
-                }
-                wsl.exe @installArgs --no-launch
-            }
+        if ($lxss.Where({ $_.Name -eq $Distro }).Version -eq 1) {
+            $Distro = Invoke-WslDistroMigration -Distro $Distro -WebDownload ([bool]$WebDownload)
         }
-        Show-LogContext 'getting GitHub authentication config from the default distro'
-        $defDistro = $lxss.Where({ $_.Default }).Name
-        if ($defDistro -ne $Distro) {
-            $gh_cfg = wsl.exe --distribution $defDistro -- cat "`$HOME/.config/gh/hosts.yml" 2>$null
-        }
+        $gh_cfg = Get-WslGhConfigFromDefault -TargetDistro $Distro -InstalledDistros $lxss
         # get installed distro details
         $lxss = Get-WslDistro -FromRegistry | Where-Object Name -EQ $Distro
     } elseif ($lxss) {
@@ -272,10 +190,7 @@ begin {
 
     # determine GTK theme if not provided, based on system theme
     if (-not $GtkTheme) {
-        $systemUsesLightTheme = Get-ItemPropertyValue -ErrorAction SilentlyContinue `
-            -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' `
-            -Name 'SystemUsesLightTheme'
-        $GtkTheme = $systemUsesLightTheme ? 'light' : 'dark'
+        $GtkTheme = Resolve-WslGtkThemePreference
     }
 
     # *set script variables
@@ -299,336 +214,78 @@ process {
         }
 
         #region distro checks
-        $chkStr = wsl.exe -d $Distro --exec .assets/check/check_distro.sh
+        $chk = $null
         try {
-            $chk = $chkStr | ConvertFrom-Json -AsHashtable -ErrorAction Stop
+            $chk = Invoke-WslDistroCheck -Distro $Distro -DistroRecord $script:distroRecords[$Distro]
         } catch {
-            Show-LogContext $_
-            Show-LogContext "Failed to check the distro '$Distro'." -Level WARNING
-            Write-Host "`nThe WSL seems to be not responding correctly. Run the script again!"
-            Write-Host 'If the problem persists, run the wsl/wsl_restart.ps1 script as administrator and try again.'
-            $script:distroRecords[$Distro].error = 'distro check failed'
             exit 1
         }
-        if ($chk.uid -eq 0) {
-            if ($chk.def_uid -ge 1000) {
-                Write-Host "`nSetting up user profile in WSL distro. Type 'exit' when finished to proceed with WSL setup!`n" -ForegroundColor Yellow
-                wsl.exe --distribution $Distro
-                # rerun check_distro to get updated user
-                $chkStr = wsl.exe -d $Distro --exec .assets/check/check_distro.sh
-                try {
-                    $chk = $chkStr | ConvertFrom-Json -AsHashtable -ErrorAction Stop
-                } catch {
-                    Show-LogContext $_
-                    Show-LogContext "Failed to check the distro '$Distro'." -Level WARNING
-                    Write-Host "`nThe WSL seems to be not responding correctly. Run the script again!"
-                    Write-Host 'If the problem persists, run the wsl/wsl_restart.ps1 script as administrator and try again.'
-                    $script:distroRecords[$Distro].error = 'distro check failed'
-                    exit 1
-                }
-            } else {
-                $msg = [string]::Join("`n",
-                    "`n`e[93;1mWARNING: The '$Distro' WSL distro is set to use the root user.`e[0m`n",
-                    'This setup requires the non-root user to be configured as the default one.',
-                    "`e[97;1mRun the script again after creating a non-root user profile.`e[0m"
-                )
-                Write-Host $msg
-                # mark distro as failed
-                $script:distroRecords[$Distro].error = 'distro uses root user'
-                $failDistros.Add($Distro) | Out-Null
-                continue
-            }
+        if ($null -eq $chk) {
+            $failDistros.Add($Distro) | Out-Null
+            continue
         }
 
-        $scopeSet = [System.Collections.Generic.HashSet[string]]::new()
-        $Scope.ForEach({ $scopeSet.Add($_) | Out-Null })
-        # *determine additional scopes from distro check
-        switch ($chk) {
-            { $_.az } { $scopeSet.Add('az') | Out-Null }
-            { $_.bun } { $scopeSet.Add('bun') | Out-Null }
-            { $_.conda } { $scopeSet.Add('conda') | Out-Null }
-            { $_.gcloud } { $scopeSet.Add('gcloud') | Out-Null }
-            { $_.k8s_base } { $scopeSet.Add('k8s_base') | Out-Null }
-            { $_.k8s_dev } { $scopeSet.Add('k8s_dev') | Out-Null }
-            { $_.k8s_ext } { $scopeSet.Add('k8s_ext') | Out-Null }
-            { $_.pwsh } { $scopeSet.Add('pwsh') | Out-Null }
-            { $_.python } { $scopeSet.Add('python') | Out-Null }
-            { $_.shell } { $scopeSet.Add('shell') | Out-Null }
-            { $_.terraform } { $scopeSet.Add('terraform') | Out-Null }
-        }
-        # resolve dependencies using shared library
-        Resolve-ScopeDeps -ScopeSet $scopeSet -OmpTheme $(
-            if ($lx.Version -eq 2 -and ($chk.oh_my_posh -or $OmpTheme)) { $OmpTheme ? $OmpTheme : 'detect' } else { '' }
-        )
-        # remove scopes unavailable in WSL1
-        if ($lx.Version -eq 1) {
-            $scopeSet.Remove('distrobox') | Out-Null
-            $scopeSet.Remove('docker') | Out-Null
-            $scopeSet.Remove('k8s_ext') | Out-Null
-            $scopeSet.Remove('oh_my_posh') | Out-Null
-        }
-
-        # sort scopes using shared install order
-        [string[]]$scopes = Get-SortedScopes -ScopeSet $scopeSet
+        # *resolve scopes from -Scope, distro check, dependencies, install order
+        [string[]]$scopes = Resolve-WslDistroScopes `
+            -Scope $Scope `
+            -Check $chk `
+            -WslVersion $lx.Version `
+            -OmpTheme $OmpTheme `
+            -DistroRecord $script:distroRecords[$Distro]
         # display distro name and installed scopes
         Write-Host "`n`e[95;1m${Distro}$($scopes.Count ? " :`e[0;90m $($scopes -join ', ')`e[0m" : "`e[0m")"
-        $script:distroRecords[$Distro].scopes = $scopes
         $script:distroRecords[$Distro].phase = 'base-setup'
         #endregion
 
         #region perform base setup
-        # *fix WSL networking
-        $dnsOk = wsl.exe --distribution $Distro --exec .assets/check/check_dns.sh
-        if (-not $PSBoundParameters.FixNetwork -and $dnsOk -eq 'false') {
+        try {
+            $netResult = Invoke-WslBaseSetup `
+                -Distro $Distro `
+                -Check $chk `
+                -FixNetwork ([bool]$FixNetwork) `
+                -AddCertificate ([bool]$AddCertificate) `
+                -DistroRecord $script:distroRecords[$Distro]
+        } catch {
+            exit 1
+        }
+        # propagate auto-promoted switch values back to script scope
+        if ($netResult.FixNetwork -and -not $FixNetwork) {
             $PSBoundParameters['FixNetwork'] = $FixNetwork = [System.Management.Automation.SwitchParameter]::new($true)
         }
-        if ($PSBoundParameters.FixNetwork) {
-            Show-LogContext 'fixing network'
-            wsl/wsl_network_fix.ps1 $Distro
-            $dnsOk = wsl.exe --distribution $Distro --exec .assets/check/check_dns.sh
-        }
-        if ($dnsOk -eq 'false') {
-            $script:distroRecords[$Distro].error = 'DNS resolution failed'
-            Show-LogContext 'DNS resolution failed. Cannot resolve github.com from WSL. Script execution halted.' -Level ERROR
-            exit 1
-        }
-
-        # *install certificates
-        $sslOk = wsl.exe --distribution $Distro --user root --exec .assets/check/check_ssl.sh
-        if (-not $PSBoundParameters.AddCertificate -and $sslOk -ne 'true') {
+        if ($netResult.AddCertificate -and -not $AddCertificate) {
             $PSBoundParameters['AddCertificate'] = $AddCertificate = [System.Management.Automation.SwitchParameter]::new($true)
-        }
-        if ($PSBoundParameters.AddCertificate) {
-            Show-LogContext 'adding certificates in chain'
-            wsl/wsl_certs_add.ps1 $Distro
-            $sslOk = wsl.exe --distribution $Distro --user root --exec .assets/check/check_ssl.sh
-        }
-        if ($sslOk -eq 'false') {
-            $script:distroRecords[$Distro].error = 'SSL certificate verification failed'
-            Show-LogContext 'SSL certificate problem: self-signed certificate in certificate chain. Script execution halted.' -Level ERROR
-            exit 1
-        }
-
-        # *install packages
-        Show-LogContext 'updating system'
-        wsl.exe --distribution $Distro --user root --exec .assets/fix/fix_no_file.sh
-        wsl.exe --distribution $Distro --user root --exec .assets/fix/fix_secure_path.sh
-        wsl.exe --distribution $Distro --user root --exec .assets/provision/upgrade_system.sh
-        wsl.exe --distribution $Distro --user root --exec .assets/provision/install_base.sh
-        wsl.exe --distribution $Distro --user root --exec .assets/provision/install_nix.sh
-
-        # *boot setup
-        wsl.exe --distribution $Distro --user root install -m 0755 .assets/setup/autoexec.sh /etc
-        if (-not $chk.wsl_boot) {
-            Set-WslConf -Distro $Distro -ConfDict ([ordered]@{ boot = @{ command = '"[ -x /etc/autoexec.sh ] && /etc/autoexec.sh || true"' } })
         }
         #endregion
 
         $script:distroRecords[$Distro].phase = 'github'
         #region setup GitHub and SSH keys
-        # *pre-populate gh config from default distro (user-scope, no gh binary needed)
-        if ($gh_cfg -match 'github\.com') {
-            Show-LogContext 'pre-populating GitHub CLI config'
-            $cmnd = [string]::Join("`n",
-                'mkdir -p $HOME/.config/gh',
-                "cat > `$HOME/.config/gh/hosts.yml << 'GHEOF'",
-                ($gh_cfg -join "`n"),
-                'GHEOF'
-            )
-            wsl.exe --distribution $Distro --exec bash -c $cmnd
-        }
-
-        # *exchange SSH keys between Windows and WSL
-        $sshKey = 'id_ed25519'
-        $sshDir = [System.IO.Path]::Combine($HOME, '.ssh')
-        $winKey = [System.IO.Path]::Combine($sshDir, $sshKey)
-        $winKeyPub = [System.IO.Path]::Combine($sshDir, "$sshKey.pub")
-        $sshWinPath = "/mnt/$($env:HOMEDRIVE.Replace(':', '').ToLower())$($env:HOMEPATH.Replace('\', '/'))/.ssh"
-
-        $winKeyExists = (Test-Path $winKey) -and (Test-Path $winKeyPub)
-        if (-not $chk.ssh_key -and $winKeyExists) {
-            # copy Windows SSH keys to WSL
-            $cmnd = [string]::Join("`n",
-                'mkdir -p $HOME/.ssh',
-                "install -m 0600 '$sshWinPath/$sshKey' `$HOME/.ssh",
-                "install -m 0644 '$sshWinPath/$sshKey.pub' `$HOME/.ssh"
-            )
-            wsl.exe --distribution $Distro --exec sh -c $cmnd
-        } elseif (-not $winKeyExists) {
-            # copy WSL SSH keys to Windows
-            if (Test-Path $sshDir) {
-                Remove-Item $winKey, $winKeyPub -ErrorAction SilentlyContinue
-            } else {
-                New-Item $sshDir -ItemType Directory | Out-Null
-            }
-            # build bash command to generate SSH key if needed and copy to Windows
-            $cmnd = [string]::Join("`n",
-                '# copy SSH key to Windows',
-                "cp `"`$HOME/.ssh/id_ed25519`" $sshWinPath/id_ed25519",
-                "cp `"`$HOME/.ssh/id_ed25519.pub`" $sshWinPath/id_ed25519.pub"
-            )
-            if (-not $chk.ssh_key) {
-                # generate new SSH key inside WSL if it does not exist
-                $cmnd = [string]::Join("`n",
-                    '# generate SSH key if missing',
-                    '.assets/setup/setup_ssh.sh',
-                    $cmnd
-                )
-            }
-            wsl.exe --distribution $Distro --exec sh -c $cmnd
-        }
+        Sync-WslGitHubConfig -Distro $Distro -GhConfig $gh_cfg
+        Sync-WslSshKeys -Distro $Distro -HasWslKey ([bool]$chk.ssh_key)
         #endregion
 
         $script:distroRecords[$Distro].phase = 'scopes'
         #region install scopes
-        # -- docker: WSL-specific systemd + traditional install (nix doesn't install docker) --
-        if ('docker' -in $scopes -and $lx.Version -eq 2) {
-            Show-LogContext 'installing docker'
-            if (-not $chk.systemd) {
-                wsl/wsl_systemd.ps1 $Distro -Systemd 'true'
-                wsl.exe --shutdown
-            }
-            wsl.exe --distribution $Distro --user root --exec .assets/provision/install_docker.sh $chk.user
-        }
-
-        # -- zsh: system-wide install (login shell requires /etc/shells entry) --
-        if ('zsh' -in $scopes) {
-            Show-LogContext 'installing zsh system-wide'
-            wsl.exe --distribution $Distro --user root --exec .assets/provision/install_zsh.sh
-        }
-
-        # -- build nix/setup.sh arguments --
-        $nixArgs = [System.Collections.Generic.List[string]]::new()
-        # --skip-repo-update: wsl_setup.ps1 already refreshed the repo via
-        # Update-GitRepository at script start; the nix path's auto-refresh
-        # would be a wasted ls-remote round-trip on the WSL side
-        $nixArgs.AddRange([string[]]@('--unattended', '--skip-repo-update', '--quiet-summary'))
-        if (-not $PSBoundParameters.SkipModulesUpdate) {
-            $nixArgs.Add('--update-modules')
-        }
-        # map scopes to nix flags (exclude distrobox, docker - installed system-wide;
-        # oh_my_posh/starship - handled via --omp-theme/--starship-theme)
-        foreach ($sc in $scopes) {
-            if ($sc -notin @('distrobox', 'docker', 'oh_my_posh', 'starship')) {
-                $nixArgs.Add("--$($sc -replace '_', '-')")
-            }
-        }
-        if ($OmpTheme) {
-            $nixArgs.AddRange([string[]]@('--omp-theme', $OmpTheme))
-        }
-
-        # -- run nix setup (packages + configure scripts + profiles) --
-        Show-LogContext 'running nix setup'
-        if ($sshKeyFp -and $env:NX_SSH_KEY_FP -ne $sshKeyFp) {
-            $env:WSLENV = "${env:WSLENV}:NX_SSH_KEY_FP/u"
-            $env:NX_SSH_KEY_FP = $sshKeyFp
-        }
-        wsl.exe --distribution $Distro --exec nix/setup.sh @nixArgs
-        if (-not $?) {
-            Show-LogContext 'nix/setup.sh failed' -Level ERROR
-            $script:distroRecords[$Distro].error = 'nix/setup.sh failed'
+        $scopeResult = Install-WslScopes `
+            -Distro $Distro `
+            -Scopes $scopes `
+            -Check $chk `
+            -WslVersion $lx.Version `
+            -SshKeyFp $script:sshKeyFp `
+            -PwshEnvSet $script:pwshEnvSet `
+            -OmpTheme $OmpTheme `
+            -SkipModulesUpdate ([bool]$SkipModulesUpdate) `
+            -DistroRecord $script:distroRecords[$Distro]
+        $script:sshKeyFp = $scopeResult.SshKeyFp
+        $script:pwshEnvSet = $scopeResult.PwshEnvSet
+        if (-not $scopeResult.Success) {
             $failDistros.Add($Distro) | Out-Null
             continue
-        }
-        # capture SSH key fingerprint after first successful setup
-        if (-not $sshKeyFp -and (Test-Path $winKeyPub)) {
-            $sshKeyFp = (Get-Content $winKeyPub).Split(' ')[1]
-        }
-
-        # -- scopes not available in nix (traditional install) --
-        if ('distrobox' -in $scopes -and $lx.Version -eq 2) {
-            Show-LogContext 'installing distrobox'
-            wsl.exe --distribution $Distro --user root --exec .assets/provision/install_podman.sh
-            wsl.exe --distribution $Distro --user root --exec .assets/provision/install_distrobox.sh $chk.user
-        }
-
-        # -- pwsh: set persistent WSLENV variables on Windows host --
-        if ('pwsh' -in $scopes -and $pwshEnvSet) {
-            $envVars = @{
-                POWERSHELL_TELEMETRY_OPTOUT = '1'
-                POWERSHELL_UPDATECHECK      = 'Off'
-            }
-            foreach ($key in $envVars.Keys) {
-                if ([System.Environment]::GetEnvironmentVariable($key, 'User') -ne $envVars[$key]) {
-                    [System.Environment]::SetEnvironmentVariable($key, $envVars[$key], 'User')
-                }
-                $wslEnv = [System.Environment]::GetEnvironmentVariable('WSLENV', 'User')
-                if ($wslEnv -notmatch "\b$key\b") {
-                    [System.Environment]::SetEnvironmentVariable('WSLENV', "${wslEnv}$($wslEnv ? ':' : '')${key}/u", 'User')
-                }
-            }
-            $pwshEnvSet = $false
         }
         #endregion
 
         $script:distroRecords[$Distro].phase = 'post-install'
-        #region set gtk theme for wslg
-        if ($lx.Version -eq 2 -and $chk.wslg) {
-            $GTK_THEME = if ($GtkTheme -eq 'light') {
-                $chk.gtkd ? '"Adwaita"' : $null
-            } else {
-                $chk.gtkd ? $null : '"Adwaita:dark"'
-            }
-            if ($GTK_THEME) {
-                Show-LogContext "setting `e[3m$GtkTheme`e[23m gtk theme"
-                wsl.exe --distribution $Distro --user root -- bash -c "echo 'export GTK_THEME=$GTK_THEME' >/etc/profile.d/gtk_theme.sh"
-            }
-        }
-        #endregion
-
-        #region setup git config
-        $builder = [System.Text.StringBuilder]::new()
-        $builder.AppendLine('. /etc/profile.d/nix.sh 2>/dev/null') | Out-Null
-        # set up git author identity
-        if (-not $chk.git_user) {
-            if (-not ($user = git config --global --get user.name)) {
-                $user = try {
-                    Get-LocalUser -Name $env:USERNAME | Select-Object -ExpandProperty FullName
-                } catch {
-                    try {
-                        [string[]]$userArr = ([ADSI]"LDAP://$(WHOAMI /FQDN 2>$null)").displayName.Split(',').Trim()
-                        if ($userArr.Count -gt 1) { [array]::Reverse($userArr) }
-                        "$userArr"
-                    } catch {
-                        ''
-                    }
-                }
-                while (-not $user) {
-                    $user = Read-Host -Prompt 'provide git user name'
-                }
-                git config --global user.name "$user"
-            }
-            $builder.AppendLine("git config --global user.name '$user'") | Out-Null
-        }
-        if (-not $chk.git_email) {
-            if (-not ($email = git config --global --get user.email)) {
-                $email = try {
-                    (Get-ChildItem -Path HKCU:\Software\Microsoft\IdentityCRL\UserExtendedProperties).PSChildName
-                } catch {
-                    try {
-                        ([ADSI]"LDAP://$(WHOAMI /FQDN 2>$null)").mail
-                    } catch {
-                        ''
-                    }
-                }
-                while ($email -notmatch '.+@.+') {
-                    $email = Read-Host -Prompt 'provide git user email'
-                }
-                git config --global user.email "$email"
-            }
-            $builder.AppendLine("git config --global user.email '$email'") | Out-Null
-        }
-        if (-not ($chk.git_user -and $chk.git_email)) {
-            # additional git settings
-            $builder.AppendLine('git config --global core.eol lf') | Out-Null
-            $builder.AppendLine('git config --global core.autocrlf input') | Out-Null
-            $builder.AppendLine('git config --global core.longpaths true') | Out-Null
-            $builder.AppendLine('git config --global push.autoSetupRemote true') | Out-Null
-            $cmnd = $builder.ToString().Trim() -replace "`r"
-            Show-LogContext 'configuring git'
-            wsl.exe --distribution $Distro --exec bash -c $cmnd
-        }
-        #endregion
+        Set-WslGtkTheme -Distro $Distro -Check $chk -WslVersion $lx.Version -GtkTheme $GtkTheme
+        Set-WslGitConfig -Distro $Distro -Check $chk
 
         # mark distro as successfully set up
         $script:distroRecords[$Distro].phase = 'complete'
@@ -662,33 +319,13 @@ end {
 }
 
 clean {
-    # resolve version on the Windows host (avoids safe.directory issues inside WSL)
-    $irVersion = git describe --tags --dirty 2>$null
-    if (-not $irVersion) { $irVersion = git rev-parse --short HEAD 2>$null }
-    $irSourceRef = git rev-parse HEAD 2>$null
-    $irSource = $irVersion ? 'git' : 'tarball'
-
-    # write install provenance record inside each processed WSL distro
+    $version = Get-WslInstallVersion
     foreach ($name in $script:distroRecords.Keys) {
-        $rec = $script:distroRecords[$name]
-        $status = if ($name -in $script:successDistros) { 'success' } else { 'failed' }
-        $irScopes = ($rec.scopes -join ' ').Trim()
-        $bashCmd = [string]::Join("`n",
-            "source .assets/lib/install_record.sh",
-            "_IR_ENTRY_POINT='wsl/nix'",
-            "_IR_VERSION='$irVersion'",
-            "_IR_SOURCE='$irSource'",
-            "_IR_SOURCE_REF='$irSourceRef'",
-            "_IR_SCOPES='$irScopes'",
-            "_IR_MODE='$($rec.mode)'",
-            "_IR_PLATFORM='WSL'",
-            "write_install_record '$status' '$($rec.phase)' '$($rec.error)'"
-        )
-        try {
-            wsl.exe --distribution $name --exec bash -c $bashCmd 2>$null
-        } catch {
-            # best-effort: don't fail cleanup if WSL distro is unreachable
-        }
+        Write-WslInstallRecord `
+            -Distro $name `
+            -Record $script:distroRecords[$name] `
+            -Version $version `
+            -IsSuccess ($name -in $script:successDistros)
     }
     Pop-Location
 }
