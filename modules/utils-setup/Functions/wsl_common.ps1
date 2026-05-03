@@ -43,7 +43,14 @@ function Invoke-WslExe {
     )
 
     if (-not $IsWindows) {
-        # test fallback - let Pester Mocks intercept via PS call lookup
+        # test fallback - let Pester Mocks intercept via PS call lookup.
+        # Reset $LASTEXITCODE so a leftover non-zero value from a prior real
+        # external command doesn't make $LASTEXITCODE-based failure checks
+        # (e.g. Install-WslScopes after the nix/setup.sh call) spuriously
+        # log "<command> failed" during integration tests where the Mock
+        # returns successfully but doesn't touch the exit code. Mocks that
+        # want to simulate failure can set $global:LASTEXITCODE themselves.
+        $global:LASTEXITCODE = 0
         wsl.exe @Arguments | Out-Default
         return
     }

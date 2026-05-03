@@ -5,6 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `Invoke-WslExe` (`modules/utils-setup/Functions/wsl_common.ps1`): test-mode fallback now resets `$global:LASTEXITCODE = 0` before invoking the mocked `wsl.exe` call. Without this, a leftover non-zero exit code from a prior real external command made `$LASTEXITCODE`-based failure checks downstream (most visibly `Install-WslScopes` after the `nix/setup.sh` call) spuriously log `<command> failed` during integration tests. Pester assertions still passed (they check call sequence, not exit codes), so the pipeline reported success - but the CI log was littered with misleading `ERROR ... nix/setup.sh failed` and `<< Failed to set up the Ubuntu WSL distro >>` lines on every run. Mocks that want to simulate failure can set `$global:LASTEXITCODE` themselves to override the default.
+
 ## [1.5.2] - 2026-05-03
 
 Modularizes `wsl/wsl_setup.ps1` (670 lines, deeply nested begin/process/clean blocks with 25+ inline `wsl.exe` calls) into 16 named, unit-testable phase functions on the existing `modules/utils-setup` PowerShell module. The orchestrator collapses to ~330 lines of named function calls; the new module surface is reusable from future WSL helper scripts. Behavior byte-identical at the production level. Manual Windows + WSL smoke-testing surfaced four real regressions the Pester suite couldn't reach (output-stream pollution, UTF-16 garble, broken `nix` progress bar, macOS Pester race) - all fixed in this release via a new `Invoke-WslExe` helper built on `[System.Diagnostics.Process]::Start` with inherited stdio. Three rounds of Copilot review folded in: silent error catches now log, restart-required signaling uses `FullyQualifiedErrorId` instead of brittle message matching, git config resists single-quote injection. The `-WebDownload` switch added to `wsl/wsl_setup.ps1` in 1.5.1 is now also propagated through `wsl/wsl_install.ps1`. Vendored ps-modules functions (`do-common`, `do-linux`, `aliases-kubectl`, `utils-install`) refreshed from upstream.
