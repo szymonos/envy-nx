@@ -84,8 +84,8 @@ function Install-WslService {
     )
 
     if (Test-IsAdmin) {
-        wsl.exe @InstallArgs
-        if (-not $?) {
+        Invoke-WslExe @InstallArgs
+        if ($LASTEXITCODE -ne 0) {
             Show-LogContext 'WSL service installation failed.' -Level ERROR
             throw 'WSL service install failed'
         }
@@ -100,7 +100,15 @@ function Install-WslService {
     }
     Show-LogContext 'WSL service installation finished.'
     Show-LogContext "`nRestart the system and run the script again to install the specified WSL distro!`n" -Level WARNING
-    throw 'restart required'
+    # signal the orchestrator to exit 0 via FullyQualifiedErrorId, NOT message
+    # text - keeps the user-facing message editable without flipping behavior
+    $err = [System.Management.Automation.ErrorRecord]::new(
+        [System.Exception]::new('WSL service installed - restart required to continue'),
+        'WslRestartRequired',
+        [System.Management.Automation.ErrorCategory]::OperationStopped,
+        $null
+    )
+    throw $err
 }
 
 <#
@@ -157,12 +165,12 @@ function Install-WslDistroIfMissing {
     Show-LogContext "specified distribution not found ($Distro), proceeding to install"
     try {
         Get-Service -Name WSLService | Out-Null
-        wsl.exe @installArgs --no-launch
-        if ($? -and $Distro -notin (Get-WslDistro -FromRegistry).Name) {
+        Invoke-WslExe @installArgs --no-launch
+        if ($LASTEXITCODE -eq 0 -and $Distro -notin (Get-WslDistro -FromRegistry).Name) {
             Write-Host "`nSetting up user profile in WSL distro. Type 'exit' when finished to proceed with WSL setup!`n" -ForegroundColor Yellow
-            wsl.exe @installArgs
+            Invoke-WslExe @installArgs
         }
-        if (-not $?) {
+        if ($LASTEXITCODE -ne 0) {
             Show-LogContext "`"$Distro`" distro installation failed." -Level ERROR
             throw "distro install failed for '$Distro'"
         }
@@ -205,13 +213,13 @@ function Invoke-WslDistroMigration {
     # ensure the default WSL version is 2 before reinstalling
     $defaultVersion = (Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Lxss').DefaultVersion
     if ($defaultVersion -ne 2) {
-        wsl.exe --set-default-version 2
+        Invoke-WslExe --set-default-version 2
     }
 
     switch ($choice) {
         0 {
             Show-LogContext 'unregistering current distro'
-            wsl.exe --unregister $Distro
+            Invoke-WslExe --unregister $Distro
             break
         }
         1 {
@@ -235,7 +243,7 @@ function Invoke-WslDistroMigration {
     if ($WebDownload) {
         $installArgs.Add('--web-download')
     }
-    wsl.exe @installArgs --no-launch
+    Invoke-WslExe @installArgs --no-launch
 
     return $Distro
 }

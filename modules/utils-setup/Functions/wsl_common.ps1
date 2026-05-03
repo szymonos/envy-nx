@@ -1,4 +1,64 @@
 <#
+.SYNOPSIS
+Invoke wsl.exe with stdin/stdout/stderr inherited from the parent process.
+.DESCRIPTION
+A direct `wsl.exe ... | Out-Default` inside a value-returning function has
+two production problems:
+
+1. wsl.exe native commands (--install, --update, --unregister) emit UTF-16
+   LE. PowerShell decodes the pipe with its console encoding (usually UTF-8
+   or the system codepage) and renders garbled output ("D o w n l o a d i n g :
+   U b u n t u").
+2. TTY-aware programs running inside wsl.exe (nix's progress bar, apt-get
+   progress, etc.) see a pipe instead of a terminal and fall back to plain
+   text logs ("copying path '/nix/store/...' from 'https://cache.nixos.org'..."
+   line per dependency, instead of a single live bar).
+
+This wrapper bypasses the PowerShell pipeline entirely via Process.Start
+with `UseShellExecute = $false` and the default (inherited) std{in,out,err}
+handles. wsl.exe writes directly to the terminal - no PS decoding, no pipe.
+Output never enters the calling function's pipeline output, so callers
+returning a value (`Install-WslScopes`, `Invoke-WslDistroCheck`, etc.) can't
+have their return value polluted.
+
+`$LASTEXITCODE` is set globally to the wsl.exe exit code after WaitForExit,
+so callers detect failure with `if ($LASTEXITCODE -ne 0) { ... }`.
+
+Off-Windows (Pester running on Linux/macOS): falls back to the PowerShell
+call operator so `Mock wsl.exe { ... }` can intercept. The keying off
+`$IsWindows` is intentional - Process.Start with wsl.exe only makes sense
+on Windows, and parallel test runners (pester_parallel.ps1) make
+env-var-based gating racy across runspaces.
+.PARAMETER Arguments
+Arguments forwarded to wsl.exe.
+.EXAMPLE
+Invoke-WslExe --install --distribution Ubuntu --web-download
+if ($LASTEXITCODE -ne 0) { throw 'install failed' }
+#>
+function Invoke-WslExe {
+    [CmdletBinding()]
+    param (
+        [Parameter(ValueFromRemainingArguments)]
+        [string[]]$Arguments
+    )
+
+    if (-not $IsWindows) {
+        # test fallback - let Pester Mocks intercept via PS call lookup
+        wsl.exe @Arguments | Out-Default
+        return
+    }
+
+    $psi = [System.Diagnostics.ProcessStartInfo]::new('wsl.exe')
+    foreach ($arg in $Arguments) {
+        $psi.ArgumentList.Add($arg)
+    }
+    $psi.UseShellExecute = $false
+    $proc = [System.Diagnostics.Process]::Start($psi)
+    $proc.WaitForExit()
+    $global:LASTEXITCODE = $proc.ExitCode
+}
+
+<#
 .DESCRIPTION
 Get list of WSL distros
 

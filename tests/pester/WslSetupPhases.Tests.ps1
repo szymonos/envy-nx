@@ -362,10 +362,8 @@ Describe 'Install-WslScopes' {
         $script:wslCalls = [System.Collections.Generic.List[string[]]]::new()
         Mock -CommandName 'wsl.exe' -ModuleName 'utils-setup' -MockWith {
             $script:wslCalls.Add([string[]]$args)
-            # arrange $? to match the configured success state
-            if (-not $script:wslSucceeded -and ($args -join ' ') -match 'nix/setup\.sh') {
-                Write-Error -Message 'simulated nix/setup.sh failure' -ErrorAction SilentlyContinue
-            }
+            # simulate wsl.exe's $LASTEXITCODE behavior: 0 on success, non-zero on failure
+            $global:LASTEXITCODE = $script:wslSucceeded ? 0 : 1
         }
         Mock -CommandName 'Show-LogContext' -ModuleName 'utils-setup' -MockWith { }
         Mock -CommandName 'Test-Path' -ModuleName 'utils-setup' -MockWith { return $false }
@@ -510,6 +508,27 @@ Describe 'Set-WslGitConfig' {
         $check = New-CheckDistroHashtable -Flags @{ git_user = $true; git_email = $true }
         Set-WslGitConfig -Distro 'Ubuntu' -Check $check
         $script:wslInvoked | Should -Be $false
+    }
+}
+
+Describe 'Invoke-WslExe' {
+    # Off-Windows the helper falls back to the PowerShell call operator
+    # (`if (-not $IsWindows)`) so Pester `Mock` can intercept. The production
+    # Process.Start path can't be exercised on Linux/macOS runners.
+
+    It 'forwards arguments to wsl.exe verbatim' {
+        $script:capturedArgs = $null
+        Mock -CommandName 'wsl.exe' -ModuleName 'utils-setup' -MockWith {
+            $script:capturedArgs = $args
+        }
+        Invoke-WslExe --install --distribution Ubuntu --web-download
+        ($script:capturedArgs -join ' ') | Should -Be '--install --distribution Ubuntu --web-download'
+    }
+
+    It 'returns nothing (output is consumed by Out-Default)' {
+        Mock -CommandName 'wsl.exe' -ModuleName 'utils-setup' -MockWith { 'wsl-stdout-line' }
+        $result = Invoke-WslExe --status
+        $result | Should -BeNullOrEmpty
     }
 }
 
@@ -728,17 +747,23 @@ Describe 'Invoke-WslDistroCheck' {
         Mock -CommandName 'wsl.exe' -ModuleName 'utils-setup' -MockWith {
             $script:callCount++
             # 1st call: --exec check_distro.sh -> root output
-            # 2nd call: --distribution Ubuntu (interactive setup) -> empty
+            # 2nd call: --distribution Ubuntu (interactive setup) -> non-empty stdout
             # 3rd call: --exec check_distro.sh -> non-root output
             switch ($script:callCount) {
                 1 { return (New-CheckDistroHashtable -User 'root' -Uid 0 -Flags @{ def_uid = 1000 } |
                             ConvertTo-Json -Compress) }
-                2 { return '' }
+                2 { return 'pretend-this-is-wsl-interactive-output-from-the-distro-shell' }
                 default { return (New-CheckDistroHashtable | ConvertTo-Json -Compress) }
             }
         }
         $rec = New-DistroRecord
         $result = Invoke-WslDistroCheck -Distro 'Ubuntu' -DistroRecord $rec
+        # regression: pre-fix, the uncaptured `wsl.exe --distribution $Distro` polluted
+        # the function's pipeline output and made $result an array @('output...', <hashtable>)
+        # rather than just the hashtable. Subsequent calls like Resolve-WslDistroScopes
+        # -Check $result then failed with "Cannot convert System.Object[] to Hashtable".
+        $result | Should -BeOfType [hashtable]
+        $result -is [array] | Should -Be $false
         $result.uid | Should -Be 1000
         $script:callCount | Should -Be 3
         $rec.phase | Should -Be 'base-setup'

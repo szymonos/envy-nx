@@ -48,6 +48,7 @@ kubectx
 kubelogin
 kustomize
 kyverno
+lastexitcode
 libicu
 lockfiles
 makefiles

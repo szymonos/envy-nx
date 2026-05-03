@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 
 . $PSScriptRoot/Functions/scopes.ps1
-. $PSScriptRoot/Functions/wsl.ps1
+. $PSScriptRoot/Functions/wsl_common.ps1
 . $PSScriptRoot/Functions/wsl_install.ps1
 . $PSScriptRoot/Functions/wsl_phases.ps1
 . $PSScriptRoot/Functions/wsl_provenance.ps1
@@ -16,8 +16,9 @@ $exportModuleMemberParams = @{
         # scopes
         'Resolve-ScopeDeps'
         'Get-SortedScopes'
-        # wsl
+        # wsl common
         'Get-WslDistro'
+        'Invoke-WslExe'
         'Set-WslConf'
         # wsl install
         'Get-WslGhConfigFromDefault'

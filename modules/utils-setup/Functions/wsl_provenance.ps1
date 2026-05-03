@@ -76,7 +76,7 @@ function Write-WslInstallRecord {
         "write_install_record '$status' '$($Record.phase)' '$($Record.error)'"
     )
     try {
-        wsl.exe --distribution $Distro --exec bash -c $bashCmd 2>$null
+        wsl.exe --distribution $Distro --exec bash -c $bashCmd 2>$null | Out-Default
     } catch {
         # best-effort: don't fail cleanup if the distro is unreachable
     }
