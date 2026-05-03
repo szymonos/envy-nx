@@ -41,13 +41,13 @@ begin {
 
     # set location to workspace folder
     Push-Location "$PSScriptRoot/../.."
-    # import InstallUtils for the Invoke-GhRepoClone function
-    Import-Module (Resolve-Path './modules/InstallUtils')
+    # import utils-install for the Invoke-GhRepoClone function
+    Import-Module (Resolve-Path './modules/utils-install')
 
     # specify update functions structure
     $import = @{
         'do-common'   = @{
-            SetupUtils = @{
+            utils-setup = @{
                 certs  = @(
                     'ConvertFrom-PEM'
                     'ConvertTo-PEM'
@@ -63,7 +63,7 @@ begin {
             }
         }
         'psm-windows' = @{
-            InstallUtils = @{
+            utils-install = @{
                 common = @(
                     'Invoke-CommandRetry'
                     'Join-Str'

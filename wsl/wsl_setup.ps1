@@ -153,8 +153,8 @@ begin {
     # set location to workspace folder
     Push-Location "$PSScriptRoot/.."
     Import-Module (Convert-Path './modules/do-common') -Force
-    Import-Module (Convert-Path './modules/InstallUtils') -Force
-    Import-Module (Convert-Path './modules/SetupUtils') -Force
+    Import-Module (Convert-Path './modules/utils-install') -Force
+    Import-Module (Convert-Path './modules/utils-setup') -Force
 
     if (-not $SkipRepoUpdate) {
         Show-LogContext 'checking if the repository is up to date'

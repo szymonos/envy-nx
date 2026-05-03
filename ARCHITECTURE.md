@@ -804,8 +804,8 @@ This project follows [Keep a Changelog](https://keepachangelog.com) format and [
 | `.assets/config/pwsh_cfg/_aliases_nix.ps1` | PowerShell aliases + nx (bash proxy + native PS profile mgmt); `#region nx-completer` block is **generated** from `nx_surface.json` |
 | `.assets/config/pwsh_cfg/profile_nix.ps1`  | Base profile template                                                                                                               |
 | `.assets/scripts/module_manage.ps1`        | Vendored module clone/update management                                                                                             |
-| `modules/InstallUtils/`                    | Install utility module (repo cloning)                                                                                               |
-| `modules/SetupUtils/`                      | Setup utility module (scopes, WSL config)                                                                                           |
+| `modules/utils-install/`                   | Install utility module (repo cloning)                                                                                               |
+| `modules/utils-setup/`                     | Setup utility module (scopes, WSL config)                                                                                           |
 | `modules/do-*/`                            | Vendored: common / Linux / Azure functions                                                                                          |
 | `modules/psm-windows/`                     | Vendored: Windows-specific functions                                                                                                |
 | `modules/aliases-{git,kubectl}/`           | Vendored: aliases + completers                                                                                                      |

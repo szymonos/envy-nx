@@ -14,7 +14,7 @@ install order, dependency rules). It has three first-class consumers that
 each parse it natively:
 
   - bash (this file) via jq
-  - PowerShell: modules/SetupUtils/SetupUtils.psm1, wsl/wsl_setup.ps1
+  - PowerShell: modules/utils-setup/utils-setup.psm1, wsl/wsl_setup.ps1
     (ConvertFrom-Json - built-in, no dependency)
   - Python: tests/hooks/validate_scopes.py (json stdlib)
 

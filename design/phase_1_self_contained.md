@@ -367,7 +367,7 @@ The fallback at `install_record.sh:89-103` writes JSON via heredoc when jq is un
 
 My initial review was wrong on three points:
 
-- **`scripts_egsave.ps1`** is **not** unexplained. It has comment-based help and uses `Invoke-ExampleScriptSave` from the project's own `modules/SetupUtils/`. Its real problem: it's absent from `CONTRIBUTING.md`, `ARCHITECTURE.md`, and the Makefile. A new contributor has no way to discover it when adding `: '...'` example blocks to new scripts - which `CONTRIBUTING.md` requires.
+- **`scripts_egsave.ps1`** is **not** unexplained. It has comment-based help and uses `Invoke-ExampleScriptSave` from the project's own `modules/utils-setup/`. Its real problem: it's absent from `CONTRIBUTING.md`, `ARCHITECTURE.md`, and the Makefile. A new contributor has no way to discover it when adding `: '...'` example blocks to new scripts - which `CONTRIBUTING.md` requires.
 - **`nx pin`** IS covered by tests (`tests/bats/test_nx_commands.bats:77-141`). My Phase 1 proposal to make pinning the default (§1.2.2) is additive, not corrective.
 - The CHANGELOG already points to `docs/proxy.md` correctly; earlier commits fixed the broken link.
 
@@ -379,7 +379,7 @@ Each item evaluated against the codebase.
 
 **WORTH DOING - mechanical but not trivial.** The script sits at the repo root with an awkward name. `.assets/scripts/` already contains utility scripts (`linux_setup.sh`, `modules_update.ps1`, font installers). Moving it there is consistent.
 
-Impact: 51 references across 17 PS1 files (each has 3 example lines like `.assets/scripts/scripts_egsave.ps1 wsl/wsl_setup.ps1`). The script uses `Push-Location $PSScriptRoot` and `Import-Module (Resolve-Path './modules/SetupUtils')` - both assume repo root, so the module import path needs adjusting. A single `sed`/PowerShell replace handles the bulk of the reference updates.
+Impact: 51 references across 17 PS1 files (each has 3 example lines like `.assets/scripts/scripts_egsave.ps1 wsl/wsl_setup.ps1`). The script uses `Push-Location $PSScriptRoot` and `Import-Module (Resolve-Path './modules/utils-setup')` - both assume repo root, so the module import path needs adjusting. A single `sed`/PowerShell replace handles the bulk of the reference updates.
 
 #### 5.2.2 Add `make egsave` target
 
