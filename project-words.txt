@@ -33,6 +33,7 @@ fixcertpy
 forkable
 gbda
 gtimeout
+hashtable
 hyperv
 intune
 jamf
