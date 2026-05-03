@@ -24,6 +24,11 @@ have their return value polluted.
 `$LASTEXITCODE` is set globally to the wsl.exe exit code after WaitForExit,
 so callers detect failure with `if ($LASTEXITCODE -ne 0) { ... }`.
 
+`WorkingDirectory` is explicitly set to `$PWD.Path` because PowerShell and
+.NET maintain separate CWD state. Without this, Process.Start inherits the
+.NET CWD (set at PS startup and not updated by Set-Location), so relative
+paths like `nix/setup.sh` resolve against the wrong directory.
+
 Off-Windows (Pester running on Linux/macOS): falls back to the PowerShell
 call operator so `Mock wsl.exe { ... }` can intercept. The keying off
 `$IsWindows` is intentional - Process.Start with wsl.exe only makes sense
@@ -43,7 +48,14 @@ function Invoke-WslExe {
     )
 
     if (-not $IsWindows) {
-        # test fallback - let Pester Mocks intercept via PS call lookup
+        # test fallback - let Pester Mocks intercept via PS call lookup.
+        # Reset $LASTEXITCODE so a leftover non-zero value from a prior real
+        # external command doesn't make $LASTEXITCODE-based failure checks
+        # (e.g. Install-WslScopes after the nix/setup.sh call) spuriously
+        # log "<command> failed" during integration tests where the Mock
+        # returns successfully but doesn't touch the exit code. Mocks that
+        # want to simulate failure can set $global:LASTEXITCODE themselves.
+        $global:LASTEXITCODE = 0
         wsl.exe @Arguments | Out-Default
         return
     }
@@ -53,6 +65,7 @@ function Invoke-WslExe {
         $psi.ArgumentList.Add($arg)
     }
     $psi.UseShellExecute = $false
+    $psi.WorkingDirectory = $PWD.Path
     $proc = [System.Diagnostics.Process]::Start($psi)
     $proc.WaitForExit()
     $global:LASTEXITCODE = $proc.ExitCode
