@@ -4,25 +4,45 @@ Workflow guide for developing on this repo. For architecture, file classificatio
 
 ## Prerequisites
 
-| Tool         | Version | Purpose                                   |
-| ------------ | ------- | ----------------------------------------- |
-| `bash`       | 3.2+    | Scripts (macOS system default is 3.2)     |
-| `prek`       | latest  | Pre-commit hook runner (not `pre-commit`) |
-| `bats`       | 1.5+    | Bash unit tests                           |
-| `pwsh`       | 7.4+    | PowerShell scripts and Pester tests       |
-| `jq`         | any     | Scope resolution (`scopes.sh`)            |
-| `python3`    | 3.10+   | Pre-commit hook scripts                   |
-| `shellcheck` | 0.9+    | Shell linting                             |
-| `docker`     | any     | Smoke tests (optional)                    |
+Required for any contribution:
+
+| Tool      | Version | Purpose                                                                                                                  |
+| --------- | ------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `bash`    | 3.2+    | Scripts (macOS system default is 3.2)                                                                                    |
+| `git`     | any     | Version control                                                                                                          |
+| `uv`      | latest  | Bootstraps `prek`, Python pre-commit hooks, and the docs toolchain via `make install` (replaces a global `prek` install) |
+| `python3` | 3.10+   | Pre-commit hook scripts (`uv` will provide one if your system Python is older)                                           |
+
+For running unit tests (`make test-unit`):
+
+| Tool                               | Version | Purpose                                                                                              |
+| ---------------------------------- | ------- | ---------------------------------------------------------------------------------------------------- |
+| `bats`                             | 1.5+    | Bash unit tests                                                                                      |
+| `pwsh`                             | 7.4+    | PowerShell scripts and Pester tests                                                                  |
+| `Pester` (PS module)               | 5.6.0+  | `Install-Module -Name Pester -RequiredVersion 5.6.0 -Repository PSGallery -Scope CurrentUser -Force` |
+| `zsh`                              | any     | `tests/bats/test_nx_zsh.bats` runtime smoke (auto-skipped when `zsh` is absent)                      |
+| `jq`                               | any     | Used by `scopes.sh` and several bats fixtures                                                        |
+| `coreutils` (`gtimeout`/`timeout`) | any     | Test-timeout helpers; macOS's BSD `coreutils` works too                                              |
+
+For Docker smoke tests (`make test-nix`):
+
+| Tool     | Version | Purpose                                       |
+| -------- | ------- | --------------------------------------------- |
+| `docker` | any     | Builds + runs the throwaway provisioning pass |
+
+**Not needed locally** - these run inside pre-commit hooks via `prek` (which `make install` set up):
+
+- `shellcheck`, `shfmt`, `markdownlint-cli2`, `cspell`, `ruff` - pulled by `prek` from external repos and cached in its env. You don't need them on `$PATH`.
 
 ## Quick start
 
 ```bash
-make install     # install pre-commit hooks via prek
-make lint        # run hooks on changed files (do this before every commit)
-make test-unit   # run bats + Pester unit tests (fast, no Docker)
-make test        # run all tests including Docker smoke tests
-make help        # list all targets
+make install         # `uv sync` - installs prek + Python pre-commit deps + the docs toolchain
+make hooks-install   # register prek as a git hook (optional - `make lint` works without it)
+make lint            # run hooks on changed files (do this before every commit)
+make test-unit       # run bats + Pester unit tests in parallel (fast, no Docker)
+make test            # run all tests including Docker smoke tests
+make help            # list all targets
 ```
 
 ## Development loop
@@ -82,13 +102,17 @@ These are the most common contribution shapes. Each links to the full recipe in 
 - Use `pwsh` for PowerShell 7.4+ (not `powershell`).
 - Use `gh` CLI for GitHub operations.
 - Before fixing a pattern globally, run `rg <pattern> .` or `git grep <pattern>` to find **all** occurrences. For bulk renames across many files, use `sed -i` instead of editing one by one. Verify with another grep afterwards.
-- After a manifest change, regenerate completers: `python3 -m tests.hooks.gen_nx_completions`. The `check-nx-completions` hook will fail otherwise.
+- After a manifest (`nx_surface.json`) change, regenerate the 9 generated artifacts: `python3 -m tests.hooks.gen_nx_completions`. The `check-nx-generated` hook will fail otherwise.
 
 ## Release process
 
-1. Ensure all `## [Unreleased]` CHANGELOG entries are present and accurate.
-2. Run `make release` - builds the tarball and prints the tag/push commands.
-3. Review the tarball contents, then run the printed commands.
-4. The `release.yml` workflow runs the full test matrix, generates SBOM, signs artifacts, and publishes the GitHub Release.
+1. Land all release content on `main` via PRs. Make sure your local `main` matches `origin/main` (`git switch main && git pull --ff-only`).
+2. Promote `## [Unreleased]` entries into a versioned section: `## [X.Y.Z] - YYYY-MM-DD`. Commit + push to `main`.
+3. Run `make release` from the clean `main` checkout. The target is one interactive command - it:
+   - Detects the version from the latest `## [X.Y.Z]` heading in `CHANGELOG.md` (override with `make release VERSION=X.Y.Z` for hotfix builds that don't match the latest entry).
+   - Validates: branch is `main`, worktree is clean, local `HEAD == origin/main`, tag `vX.Y.Z` doesn't exist locally **or** on origin (catches the "forgot to add a new release section" mistake before building).
+   - Builds the tarball.
+   - Prompts: `Tag vX.Y.Z at HEAD and push to origin? [y/N]`. Answer `y` to tag + push (triggers `release.yml`); anything else prints the manual `git tag` / `git push` commands and exits cleanly.
+4. `release.yml` runs the full test matrix, generates SBOM, signs artifacts, and publishes the GitHub Release.
 
 See `ARCHITECTURE.md` §11 for the SemVer bump policy.
