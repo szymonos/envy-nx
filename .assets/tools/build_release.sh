@@ -49,8 +49,12 @@ rm -f "$STAGING/$RELEASE_NAME/nix/flake.lock"
 # build tarball
 tar -czf "$TARBALL" -C "$STAGING" "$RELEASE_NAME"
 
-# generate checksums (shasum works on both macOS and Linux)
-(cd "$OUT_DIR" && shasum -a 256 "$(basename "$TARBALL")" >CHECKSUMS.sha256)
+# generate checksums (sha256sum on Linux/coreutils, shasum on macOS)
+if command -v sha256sum >/dev/null 2>&1; then
+  (cd "$OUT_DIR" && sha256sum "$(basename "$TARBALL")" >CHECKSUMS.sha256)
+else
+  (cd "$OUT_DIR" && shasum -a 256 "$(basename "$TARBALL")" >CHECKSUMS.sha256)
+fi
 
 printf '\e[32mRelease tarball: %s (%s)\e[0m\n' "$TARBALL" "$(du -h "$TARBALL" | cut -f1)"
 printf '\e[32mChecksums:      %s/CHECKSUMS.sha256\e[0m\n' "$OUT_DIR"
