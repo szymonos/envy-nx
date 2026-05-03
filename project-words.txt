@@ -1,5 +1,7 @@
+adsi
 airgap
 argstr
+autoexec
 azcopy
 azurecli
 behaviour
@@ -32,8 +34,11 @@ fastfetch
 fixcertpy
 forkable
 gbda
+gheof
 gtimeout
+gtkd
 hashtable
+hkcu
 hyperv
 intune
 jamf
@@ -64,6 +69,7 @@ pcre
 pipefail
 pkgs
 prek
+pscustomobject
 pypi
 pyproject
 readarray

@@ -61,8 +61,10 @@ Describe 'wsl_setup.ps1 orchestration' {
     BeforeEach {
         $global:WslTestCalls.Clear()
 
-        # mock wsl.exe - record calls and return canned responses
-        Mock wsl.exe {
+        # shared wsl.exe mock body - registered both at script scope (for direct
+        # script-body calls) and inside the utils-setup module scope (for calls
+        # made from extracted phase functions like Invoke-WslDistroCheck)
+        $wslMockBody = {
             $global:WslTestCalls.Add([string[]]$args)
             $argStr = $args -join ' '
             # return appropriate responses based on the script being called
@@ -87,6 +89,8 @@ Describe 'wsl_setup.ps1 orchestration' {
             }
             return ''
         }
+        Mock -CommandName 'wsl.exe' -MockWith $wslMockBody
+        Mock -CommandName 'wsl.exe' -ModuleName 'utils-setup' -MockWith $wslMockBody
 
         # mock Windows-only functions
         Mock Get-WslDistro {
