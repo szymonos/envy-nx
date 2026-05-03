@@ -30,6 +30,7 @@ elif
 elop
 elopment
 euid
+execvpe
 fastfetch
 fileno
 fixcertpy
