@@ -6,13 +6,13 @@ This tool provisions developer environments - if it breaks, developers cannot wo
 
 | Metric                       | Value                                                                       |
 | ---------------------------- | --------------------------------------------------------------------------- |
-| Unit test files              | 26 (18 bats + 8 Pester)                                                     |
-| Individual test cases        | 466 (378 bats + 88 Pester)                                                  |
+| Unit test files              | 27 (18 bats + 9 Pester)                                                     |
+| Individual test cases        | 546 (407 bats + 139 Pester)                                                 |
 | Test code                    | 8,000+ lines                                                                |
-| Custom pre-commit hooks      | 12 Python scripts                                                           |
+| Custom pre-commit hooks      | 11 Python scripts                                                           |
 | CI matrix axes               | 5 (Linux daemon, Linux rootless, Linux tarball, macOS Sequoia, macOS Tahoe) |
 | Platforms validated per PR   | macOS (bash 3.2 + BSD), Ubuntu (bash 5 + GNU)                               |
-| Pre-commit checks per commit | 24 hooks                                                                    |
+| Pre-commit checks per commit | 23 hooks                                                                    |
 
 ## Test infrastructure
 
@@ -40,7 +40,7 @@ No mocking framework, no external dependencies. Functions call `_io_nix`, `_io_r
 
 ### Unit tests - PowerShell (Pester)
 
-8 Pester test files mirror the bash coverage for PowerShell components: WSL orchestration, scope parsing, certificate conversion, configuration helpers, and `nx` CLI PowerShell equivalents.
+9 Pester test files mirror the bash coverage for PowerShell components: WSL orchestration (high-level integration in `WslSetup.Tests.ps1`), the 16 phase functions extracted from `wsl/wsl_setup.ps1` into the `utils-setup` module (`WslSetupPhases.Tests.ps1` - 49 unit tests across the new module surface), scope parsing, certificate conversion, configuration helpers, and the `nx` CLI PowerShell argument completer.
 
 ### Integration tests - CI
 
@@ -89,25 +89,24 @@ Each CI run validates:
 
 ## Pre-commit hooks
 
-Every commit passes through 24 hooks. 12 are custom Python scripts purpose-built for this codebase:
+Every commit passes through 23 hooks. 11 are custom Python scripts purpose-built for this codebase:
 
-| Hook                          | What it enforces                                                                                                                                                                                                                                        |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `gremlins-check`              | No unwanted Unicode characters (zero-width spaces, smart quotes, en-dashes) - auto-fixes common substitutions                                                                                                                                           |
-| `validate-docs-words`         | Custom dictionary (`project-words.txt`) contains only words that appear in docs - removes stale entries automatically                                                                                                                                   |
-| `align-tables`                | Markdown tables are column-aligned (auto-fixes on save)                                                                                                                                                                                                 |
-| `validate-scopes`             | `scopes.json` and `nix/scopes/*.nix` are consistent - every scope has a matching `.nix` file with a `# bins:` declaration                                                                                                                               |
-| `check-bash32`                | Nix-path scripts contain no bash 4+ constructs - 15 rules covering mapfile, associative arrays, namerefs, GNU sed/grep extensions                                                                                                                       |
-| `check-zsh-compat`            | Files sourced into the user's interactive shell (`shell_cfg/*.sh`, `lib/{nx,profile_block}.sh`) work under zsh - flags bare `name() {` defs, for-loops over unquoted globs (zsh `nomatch` aborts), and unguarded `BASH_SOURCE` / `compgen` / `complete` |
-| `check-changelog`             | Runtime file changes (`nix/`, `.assets/`, `wsl/`) require a CHANGELOG entry under `[Unreleased]` - bypass via `skip-changelog` label                                                                                                                    |
-| `check-nx-completions`        | Generated tab completers (bash, zsh, PS) and `_nx_lifecycle_help` body match `nx_surface.json` - regenerate via `python3 -m tests.hooks.gen_nx_completions`                                                                                             |
-| `check-nx-dispatch-parity`    | Bash `nx_main` case arms (verbs + aliases) match `nx_surface.json` - closes the drift loop where the dispatcher silently accepts undeclared aliases                                                                                                     |
-| `check-nx-profile-parity`     | PowerShell `nx profile` subverbs match `nx_surface.json` - the bash and PS dispatchers operate on different files, but the user-facing surface stays in sync                                                                                            |
-| `bats-tests` / `pester-tests` | Smart test runners that parse `source` directives to map changed files to their tests - only runs relevant tests, not the full suite                                                                                                                    |
+| Hook                          | What it enforces                                                                                                                                                                                                                                                                                          |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gremlins-check`              | No unwanted Unicode characters (zero-width spaces, smart quotes, en-dashes) - auto-fixes common substitutions                                                                                                                                                                                             |
+| `validate-docs-words`         | Custom dictionary (`project-words.txt`) contains only words that appear in docs - removes stale entries automatically                                                                                                                                                                                     |
+| `align-tables`                | Markdown tables are column-aligned (auto-fixes on save)                                                                                                                                                                                                                                                   |
+| `validate-scopes`             | `scopes.json` and `nix/scopes/*.nix` are consistent - every scope has a matching `.nix` file with a `# bins:` declaration                                                                                                                                                                                 |
+| `check-bash32`                | Nix-path scripts contain no bash 4+ constructs - 15 rules covering mapfile, associative arrays, namerefs, GNU sed/grep extensions                                                                                                                                                                         |
+| `check-zsh-compat`            | Files sourced into the user's interactive shell (`shell_cfg/*.sh`, `lib/{nx,profile_block}.sh`) work under zsh - flags bare `name() {` defs, for-loops over unquoted globs (zsh `nomatch` aborts), and unguarded `BASH_SOURCE` / `compgen` / `complete`                                                   |
+| `check-no-tty-read`           | Forbids `read ... </dev/tty` in `.assets/`, `nix/`, `wsl/`, `modules/` without a `# tty-ok` self-attestation marker - the pattern silently hangs in interactive shells (controlling tty bypasses stdin redirects) yet silently passes in headless CI / agents, misleading authors into thinking it's safe |
+| `check-changelog`             | Runtime file changes (`nix/`, `.assets/`, `wsl/`) require a CHANGELOG entry under `[Unreleased]` - bypass via `skip-changelog` label                                                                                                                                                                      |
+| `check-nx-generated`          | All 9 generated artifacts match `nx_surface.json`: bash/zsh/PS completers, `_nx_lifecycle_help` body, `nx_main` case arms, PS `nx:dispatch` region, and lib-file for-loops in 3 sync/audit sites. Regenerate via `python3 -m tests.hooks.gen_nx_completions`. Replaces 4 earlier parity hooks             |
+| `bats-tests` / `pester-tests` | Smart test runners that parse `source` directives to map changed files to their tests - only runs relevant tests, not the full suite                                                                                                                                                                      |
 
 Documentation build validation (`mkdocs build --strict`) runs in the CI pipeline rather than as a pre-commit hook, since it requires the full docs dependency set.
 
-External hooks add standard checks: ShellCheck (shell static analysis), markdownlint, cspell (spell checking on docs and commit messages), ruff (Python lint and format), executable/shebang validation, line ending normalization.
+External hooks add standard checks: ShellCheck (shell static analysis), shfmt (shell formatting), markdownlint, cspell (spell checking on docs and commit messages), ruff (Python lint and format), executable/shebang validation, line ending normalization.
 
 ## Enforced constraints
 
