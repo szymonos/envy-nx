@@ -49,19 +49,14 @@ GitHub Actions workflows run the full setup end-to-end on real operating systems
 ```mermaid
 flowchart LR
     subgraph "Linux CI"
-        LD["Ubuntu
-        daemon mode"]
-        LN["Ubuntu
-        rootless (Coder)"]
-        LT["Ubuntu
-        tarball (no .git)"]
+        LD["Ubuntu<br/>daemon mode"]
+        LN["Ubuntu<br/>rootless (Coder)"]
+        LT["Ubuntu<br/>tarball (no .git)"]
     end
 
     subgraph "macOS CI"
-        MS["macOS Sequoia
-        bash 3.2 + BSD"]
-        MT["macOS Tahoe
-        forward-compat signal"]
+        MS["macOS Sequoia<br/>bash 3.2 + BSD"]
+        MT["macOS Tahoe<br/>forward-compat signal"]
     end
 
     LD & LN & LT & MS & MT --> V["Verify"]
@@ -91,18 +86,18 @@ Each CI run validates:
 
 Every commit passes through 23 hooks. 11 are custom Python scripts purpose-built for this codebase:
 
-| Hook                          | What it enforces                                                                                                                                                                                                                                                                                          |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `gremlins-check`              | No unwanted Unicode characters (zero-width spaces, smart quotes, en-dashes) - auto-fixes common substitutions                                                                                                                                                                                             |
-| `validate-docs-words`         | Custom dictionary (`project-words.txt`) contains only words that appear in docs - removes stale entries automatically                                                                                                                                                                                     |
-| `align-tables`                | Markdown tables are column-aligned (auto-fixes on save)                                                                                                                                                                                                                                                   |
-| `validate-scopes`             | `scopes.json` and `nix/scopes/*.nix` are consistent - every scope has a matching `.nix` file with a `# bins:` declaration                                                                                                                                                                                 |
-| `check-bash32`                | Nix-path scripts contain no bash 4+ constructs - 15 rules covering mapfile, associative arrays, namerefs, GNU sed/grep extensions                                                                                                                                                                         |
-| `check-zsh-compat`            | Files sourced into the user's interactive shell (`shell_cfg/*.sh`, `lib/{nx,profile_block}.sh`) work under zsh - flags bare `name() {` defs, for-loops over unquoted globs (zsh `nomatch` aborts), and unguarded `BASH_SOURCE` / `compgen` / `complete`                                                   |
-| `check-no-tty-read`           | Forbids `read ... </dev/tty` in `.assets/`, `nix/`, `wsl/`, `modules/` without a `# tty-ok` self-attestation marker - the pattern silently hangs in interactive shells (controlling tty bypasses stdin redirects) yet silently passes in headless CI / agents, misleading authors into thinking it's safe |
-| `check-changelog`             | Runtime file changes (`nix/`, `.assets/`, `wsl/`) require a CHANGELOG entry under `[Unreleased]` - bypass via `skip-changelog` label                                                                                                                                                                      |
-| `check-nx-generated`          | All 9 generated artifacts match `nx_surface.json`: bash/zsh/PS completers, `_nx_lifecycle_help` body, `nx_main` case arms, PS `nx:dispatch` region, and lib-file for-loops in 3 sync/audit sites. Regenerate via `python3 -m tests.hooks.gen_nx_completions`. Replaces 4 earlier parity hooks             |
-| `bats-tests` / `pester-tests` | Smart test runners that parse `source` directives to map changed files to their tests - only runs relevant tests, not the full suite                                                                                                                                                                      |
+| Hook                          | What it enforces                                                                                                                                                                                                                                                                                                       |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gremlins-check`              | No unwanted Unicode characters (zero-width spaces, smart quotes, en-dashes) - auto-fixes common substitutions                                                                                                                                                                                                          |
+| `validate-docs-words`         | Custom dictionary (`project-words.txt`) contains only words that appear in docs - removes stale entries automatically                                                                                                                                                                                                  |
+| `align-tables`                | Markdown tables are column-aligned (auto-fixes on save)                                                                                                                                                                                                                                                                |
+| `validate-scopes`             | `scopes.json` and `nix/scopes/*.nix` are consistent - every scope has a matching `.nix` file with a `# bins:` declaration                                                                                                                                                                                              |
+| `check-bash32`                | Nix-path scripts contain no bash 4+ constructs - 15 rules covering mapfile, associative arrays, namerefs, GNU sed/grep extensions                                                                                                                                                                                      |
+| `check-zsh-compat`            | Files sourced into the user's interactive shell (`shell_cfg/*.sh`, `lib/{nx,profile_block}.sh`) work under zsh - flags bare `name() {` defs, for-loops over unquoted globs (zsh `nomatch` aborts), and unguarded `BASH_SOURCE` / `compgen` / `complete`                                                                |
+| `check-no-tty-read`           | Forbids `read` redirected from `/dev/tty` in `.assets/`, `nix/`, `wsl/`, `modules/` without a `# tty-ok` self-attestation marker - the pattern silently hangs in interactive shells (controlling tty bypasses stdin redirects) yet silently passes in headless CI / agents, misleading authors into thinking it's safe |
+| `check-changelog`             | Runtime file changes (`nix/`, `.assets/`, `wsl/`) require a CHANGELOG entry under `[Unreleased]` - bypass via `skip-changelog` label                                                                                                                                                                                   |
+| `check-nx-generated`          | All 9 generated artifacts match `nx_surface.json`: bash/zsh/PS completers, `_nx_lifecycle_help` body, `nx_main` case arms, PS `nx:dispatch` region, and lib-file for-loops in 3 sync/audit sites. Regenerate via `python3 -m tests.hooks.gen_nx_completions`. Replaces 4 earlier parity hooks                          |
+| `bats-tests` / `pester-tests` | Smart test runners that parse `source` directives to map changed files to their tests - only runs relevant tests, not the full suite                                                                                                                                                                                   |
 
 Documentation build validation (`mkdocs build --strict`) runs in the CI pipeline rather than as a pre-commit hook, since it requires the full docs dependency set.
 
