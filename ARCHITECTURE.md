@@ -777,10 +777,14 @@ This project follows [Keep a Changelog](https://keepachangelog.com) format and [
 
 **Cutting a release:**
 
-1. Ensure all changes have CHANGELOG entries under `## [Unreleased]`.
-2. Run `make release` - builds the tarball, prints the tag/push commands.
-3. Review tarball contents, then run the printed commands.
-4. The `release.yml` workflow runs the full test matrix, generates SBOM, signs artifacts, and publishes the GitHub Release.
+1. Land all release content on `main`. Make sure your local `main` matches `origin/main` (`git switch main && git pull --ff-only`).
+2. Promote `## [Unreleased]` entries into a versioned section: `## [X.Y.Z] - YYYY-MM-DD`. Commit + push to `main`.
+3. From the clean `main` checkout, run `make release` - one interactive command that:
+   - Auto-detects the version from the latest `## [X.Y.Z]` heading in `CHANGELOG.md` (override with `make release VERSION=X.Y.Z` for hotfix builds).
+   - Validates four preconditions: branch is `main`, worktree is clean, local `HEAD == origin/main` (after `git fetch`), tag `vX.Y.Z` doesn't exist locally **or** on origin (catches the "forgot to add a new release section" mistake before the tarball is built).
+   - Builds the tarball via `.assets/tools/build_release.sh`.
+   - Prompts: `Tag vX.Y.Z at HEAD and push to origin? [y/N]`. Answer `y` to run `git tag -a` + `git push origin vX.Y.Z` (triggers `release.yml`); anything else prints the manual commands and exits cleanly so you can inspect the tarball first.
+4. `release.yml` runs the full test matrix, generates SBOM, signs artifacts via cosign, and publishes the GitHub Release.
 
 ## 12. File reference
 
