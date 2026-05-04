@@ -6,6 +6,12 @@
 /tmp/
 /tmp.*/
 
+# local settings
+settings.local.json
+.claude/settings.json
+.claude/rules/openwolf.md
+.wolf
+
 # Intercepted MITM root certificates
 .assets/certs/
 

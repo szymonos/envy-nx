@@ -68,6 +68,7 @@ nixos
 nixpkgs
 nmap
 nomatch
+openwolf
 otbs
 pasteable
 pcre
