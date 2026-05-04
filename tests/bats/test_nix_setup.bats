@@ -829,26 +829,31 @@ STUB
 
   # cert_intercept must NOT have been called - that's the whole point
   [[ ! -f "$TEST_HOME/.config/certs/cert_intercept_called" ]]
-  [[ ! -f "$TEST_HOME/.config/certs/ca-bundle.crt" ]]
+  # ca-bundle.crt IS built unconditionally now (not gated on MITM detection),
+  # so the bundle exists even when the probe is skipped for network reasons.
+  [[ -f "$TEST_HOME/.config/certs/ca-bundle.crt" ]]
   # the warning explaining the skip should be visible
   [[ "$output" == *"non-cert reason"* ]]
 }
 
-@test "nix_profile: mitm_probe skips probe when ca-bundle already exists" {
+@test "nix_profile: mitm_probe skips probe when ca-custom.crt already exists" {
   HOME="$TEST_HOME"
   NIX_ENV_TLS_PROBE_URL="https://example.com"
   mkdir -p "$TEST_HOME/.config/certs"
-  touch "$TEST_HOME/.config/certs/ca-bundle.crt"
+  # Probe is gated on ca-custom.crt (the cause), not ca-bundle.crt (the
+  # derivative). When ca-custom.crt exists, MITM was already handled and
+  # we shouldn't re-probe or re-intercept.
+  touch "$TEST_HOME/.config/certs/ca-custom.crt"
   _io_run() { :; }
 
   # Use fake SCRIPT_ROOT - cert_intercept should NOT be called
   local fake_root="$BATS_TEST_TMPDIR/fake_root2"
   mkdir -p "$fake_root/.assets/lib" "$fake_root/.assets/config/shell_cfg"
-  echo 'build_ca_bundle() { :; }' >"$fake_root/.assets/lib/certs.sh"
+  echo 'build_ca_bundle() { touch "$HOME/.config/certs/ca-bundle.crt"; }' >"$fake_root/.assets/lib/certs.sh"
   echo 'cert_intercept() { touch "$HOME/cert_intercept_called"; }' >"$fake_root/.assets/config/shell_cfg/functions.sh"
   SCRIPT_ROOT="$fake_root"
 
-  # probe should be skipped (ca-bundle exists), so curl stub should not matter
+  # probe should be skipped (ca-custom.crt exists), so curl stub should not matter
   _io_curl_probe() {
     touch "$TEST_HOME/probe_called"
     return 1
@@ -857,6 +862,97 @@ STUB
   phase_nix_profile_mitm_probe
   [[ ! -f "$TEST_HOME/cert_intercept_called" ]]
   [[ ! -f "$TEST_HOME/probe_called" ]]
+  # build_ca_bundle still runs unconditionally
+  [[ -f "$TEST_HOME/.config/certs/ca-bundle.crt" ]]
+}
+
+@test "nix_profile: mitm_probe rebuilds ca-bundle.crt after cert_intercept (macOS Keychain merge path)" {
+  HOME="$TEST_HOME"
+  NIX_ENV_TLS_PROBE_URL="https://example.com"
+  _io_curl_probe() { return 1; }
+  _io_curl_probe_insecure() { return 0; } # bypass succeeds -> MITM detected
+  _io_run() { :; }
+  mkdir -p "$TEST_HOME/.config/certs"
+
+  # Stub build_ca_bundle to count invocations - it must run twice (once
+  # before the probe, once after cert_intercept produces ca-custom.crt) so
+  # the macOS Keychain dump gets the freshly intercepted certs appended.
+  local fake_root="$BATS_TEST_TMPDIR/fake_root_rebuild"
+  mkdir -p "$fake_root/.assets/lib" "$fake_root/.assets/config/shell_cfg"
+  cat >"$fake_root/.assets/lib/certs.sh" <<'STUB'
+build_ca_bundle() {
+  local _counter="$HOME/.config/certs/build_count"
+  if [ -f "$_counter" ]; then
+    printf '%s' "$(($(cat "$_counter") + 1))" >"$_counter"
+  else
+    printf '1' >"$_counter"
+  fi
+  touch "$HOME/.config/certs/ca-bundle.crt"
+}
+STUB
+  cat >"$fake_root/.assets/config/shell_cfg/functions.sh" <<'STUB'
+cert_intercept() { touch "$HOME/.config/certs/ca-custom.crt"; }
+STUB
+  SCRIPT_ROOT="$fake_root"
+
+  phase_nix_profile_mitm_probe
+  [[ "$(cat "$TEST_HOME/.config/certs/build_count")" = "2" ]]
+}
+
+@test "bootstrap: ensure_certs builds ca-bundle.crt before nix operations" {
+  HOME="$TEST_HOME"
+  mkdir -p "$TEST_HOME/.config/certs"
+
+  local fake_root="$BATS_TEST_TMPDIR/fake_root_ensure"
+  mkdir -p "$fake_root/.assets/lib"
+  echo 'build_ca_bundle() { touch "$HOME/.config/certs/ca-bundle.crt"; }' >"$fake_root/.assets/lib/certs.sh"
+  SCRIPT_ROOT="$fake_root"
+
+  phase_bootstrap_ensure_certs
+  [[ -f "$TEST_HOME/.config/certs/ca-bundle.crt" ]]
+}
+
+@test "bootstrap: ensure_certs unsets NIX_SSL_CERT_FILE when it points to a missing file" {
+  HOME="$TEST_HOME"
+  # Simulate the broken state: shell-exported env var pointing to a file
+  # the user just deleted. Without ensure_certs's self-heal, the next
+  # nix operation would inherit the bad path and abort.
+  export NIX_SSL_CERT_FILE="$TEST_HOME/.config/certs/ca-bundle.crt"
+  export SSL_CERT_FILE="$TEST_HOME/.config/certs/ca-bundle.crt"
+
+  local fake_root="$BATS_TEST_TMPDIR/fake_root_selfheal"
+  mkdir -p "$fake_root/.assets/lib"
+  # Stub build_ca_bundle as a no-op (simulating an unsupported distro
+  # where neither /etc/ssl/certs/* nor security exist) so the file stays
+  # missing - the self-heal branch is what we want to exercise.
+  echo 'build_ca_bundle() { :; }' >"$fake_root/.assets/lib/certs.sh"
+  SCRIPT_ROOT="$fake_root"
+
+  run phase_bootstrap_ensure_certs
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == *"NIX_SSL_CERT_FILE"* ]]
+  [[ "$output" == *"missing file"* ]]
+  # Re-enter to verify the unset stuck (the run subshell loses the unset,
+  # so directly invoke the function in the parent shell).
+  phase_bootstrap_ensure_certs >/dev/null 2>&1
+  [[ -z "${NIX_SSL_CERT_FILE:-}" ]]
+  [[ -z "${SSL_CERT_FILE:-}" ]]
+}
+
+@test "bootstrap: ensure_certs leaves valid NIX_SSL_CERT_FILE alone" {
+  HOME="$TEST_HOME"
+  mkdir -p "$TEST_HOME/.config/certs"
+  # Valid existing file - self-heal must NOT fire.
+  touch "$TEST_HOME/.config/certs/ca-bundle.crt"
+  export NIX_SSL_CERT_FILE="$TEST_HOME/.config/certs/ca-bundle.crt"
+
+  local fake_root="$BATS_TEST_TMPDIR/fake_root_keep"
+  mkdir -p "$fake_root/.assets/lib"
+  echo 'build_ca_bundle() { :; }' >"$fake_root/.assets/lib/certs.sh"
+  SCRIPT_ROOT="$fake_root"
+
+  phase_bootstrap_ensure_certs
+  [[ "$NIX_SSL_CERT_FILE" = "$TEST_HOME/.config/certs/ca-bundle.crt" ]]
 }
 
 @test "nix_profile: gc runs wipe-history and store gc" {

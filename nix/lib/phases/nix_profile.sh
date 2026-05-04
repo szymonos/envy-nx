@@ -67,38 +67,61 @@ phase_nix_profile_mitm_probe() {
   # shellcheck source=../../../.assets/lib/certs.sh
   source "$SCRIPT_ROOT/.assets/lib/certs.sh"
 
-  # Probe-first on all platforms: only build a CA bundle when nix tools
-  # can't verify TLS on their own (MITM proxy / corporate CA). Without
-  # interception, tools use their own optimized cert paths (e.g. rustls
-  # bundled roots in uv).
+  # ca-bundle.crt is also built early in phase_bootstrap_ensure_certs so
+  # it exists before any nix/git network call inherits NIX_SSL_CERT_FILE
+  # from the user's managed env block. Calling it again here is idempotent
+  # (Linux: ln -sf overwrite; macOS: Keychain dump via mktemp+mv) and
+  # keeps phase_nix_profile_mitm_probe self-contained for unit testing.
   local ca_bundle="$HOME/.config/certs/ca-bundle.crt"
-  if [[ ! -f "$ca_bundle" ]]; then
-    # Use nix curl - system curl on macOS uses Keychain and passes behind
-    # MITM proxies that nix tools (isolated OpenSSL) would reject.
-    local _probe_failed=false
-    if [[ -x "$HOME/.nix-profile/bin/curl" ]]; then
-      "$HOME/.nix-profile/bin/curl" -sS "$NIX_ENV_TLS_PROBE_URL" >/dev/null 2>&1 || _probe_failed=true
+  local custom_certs="$HOME/.config/certs/ca-custom.crt"
+  build_ca_bundle
+
+  # Probe-first on all platforms: intercept certs only when nix tools
+  # can't verify TLS on their own (MITM proxy / corporate CA). Gate on
+  # ca-custom.crt (the cause), not ca-bundle.crt (the derivative).
+  if [[ ! -f "$custom_certs" ]]; then
+    # The only portable MITM signal is `openssl s_client -CAfile
+    # <Mozilla-only bundle>`: -CAfile overrides system trust store and
+    # inherited SSL_CERT_FILE / NIX_SSL_CERT_FILE on every platform.
+    # Nix's cacert package ships a Mozilla-only bundle at a known path -
+    # use it. (curl --cacert was previously tried but is silently ignored
+    # by macOS system curl when built against Secure Transport, and is
+    # additive-with-SSL_CERT_FILE on Debian's curl/OpenSSL.)
+    #
+    # `cacert` and `openssl` are both in base.nix (always installed), so
+    # if nix is set up at all the openssl-pinned branch is what runs. The
+    # `_io_curl_probe` fallback only fires when nix isn't available - on
+    # Linux it trusts /etc/ssl/certs/ and will silently miss MITM, but
+    # that's the best we can do without a known-good Mozilla bundle.
+    local _probe_failed=false _mozilla_bundle="" _candidate
+    for _candidate in \
+      "$HOME/.nix-profile/etc/ssl/certs/ca-bundle.crt" \
+      "$HOME/.nix-profile/etc/ssl/certs/ca-certificates.crt"; do
+      if [[ -f "$_candidate" ]]; then
+        _mozilla_bundle="$_candidate"
+        break
+      fi
+    done
+    if [[ -n "$_mozilla_bundle" ]] && command -v openssl >/dev/null 2>&1; then
+      _io_curl_probe_pinned "$NIX_ENV_TLS_PROBE_URL" "$_mozilla_bundle" || _probe_failed=true
     else
       _io_curl_probe "$NIX_ENV_TLS_PROBE_URL" || _probe_failed=true
     fi
     if [[ "$_probe_failed" == "true" ]] && command -v openssl &>/dev/null; then
       # Distinguish cert failure (MITM/corporate CA) from network failure
-      # (DNS down, captive portal, transient outage). A second probe with
-      # cert validation disabled isolates the cause: if it succeeds, the
-      # original failure was cert-related and cert_intercept is the right
-      # remedy; if it also fails, the network is the problem and running
-      # cert_intercept would append unrelated bytes to ca-custom.crt.
+      # (DNS down, captive portal, transient outage). The bypass probe
+      # disables verification entirely (-k), so no cacert is needed -
+      # any working curl will do.
       local _bypass_ok=false
-      if [[ -x "$HOME/.nix-profile/bin/curl" ]]; then
-        "$HOME/.nix-profile/bin/curl" -ksS "$NIX_ENV_TLS_PROBE_URL" >/dev/null 2>&1 && _bypass_ok=true
-      else
-        _io_curl_probe_insecure "$NIX_ENV_TLS_PROBE_URL" && _bypass_ok=true
-      fi
+      _io_curl_probe_insecure "$NIX_ENV_TLS_PROBE_URL" && _bypass_ok=true
       if [[ "$_bypass_ok" == "true" ]]; then
         warn "SSL verification failed - MITM proxy detected, intercepting certificates..."
         # shellcheck source=../../../.assets/config/shell_cfg/functions.sh
         source "$SCRIPT_ROOT/.assets/config/shell_cfg/functions.sh"
         cert_intercept
+        # Rebuild ca-bundle.crt to merge the freshly intercepted ca-custom.crt.
+        # No-op on Linux (bundle is a symlink to system store); required on
+        # macOS where the bundle is Keychain dump + custom append.
         build_ca_bundle
       else
         warn "TLS probe to $NIX_ENV_TLS_PROBE_URL failed for non-cert reason (DNS/network/captive portal) - skipping cert interception"

@@ -67,6 +67,7 @@ namerefs
 nixos
 nixpkgs
 nmap
+nodeenv
 nomatch
 openwolf
 otbs
@@ -106,6 +107,7 @@ tfswitch
 tlsv
 triaging
 unioned
+unsets
 vdisk
 versinfo
 virtualenv

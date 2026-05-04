@@ -213,3 +213,27 @@ teardown() {
   run ! cert_intercept
   [[ "$output" == *"openssl"*"required"* ]]
 }
+
+@test "cert_intercept returns 0 even when skip_count=0 (regression: trailing [...] && ...)" {
+  # Regression: the function used to end with `[ $skip_count -gt 0 ] && printf ...`,
+  # which left the test's exit code as the function's return value when no
+  # skips occurred. Caller phase_nix_profile_mitm_probe runs under `set -e`
+  # in nix/setup.sh, so a stray return-1 silently killed the script
+  # immediately after a successful intercept.
+  # Stub openssl s_client to return an empty chain so cert_intercept
+  # processes no certs (cert_count=0, skip_count=0). Wrap in `bash -c` so
+  # we can assert the function's exit code under `set -e`.
+  bash -c '
+    set -eo pipefail
+    source "'"$BATS_TEST_DIRNAME"'/../../.assets/config/shell_cfg/functions.sh"
+    openssl() {
+      case "$1" in
+        s_client) printf "" ;;
+        *) command openssl "$@" ;;
+      esac
+    }
+    HOME="'"$TEST_DIR"'/no_skip_test"
+    mkdir -p "$HOME/.config/certs"
+    cert_intercept >/dev/null 2>&1
+  '
+}

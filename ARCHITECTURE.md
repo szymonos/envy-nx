@@ -252,7 +252,7 @@ Implemented in `resolve_scope_deps` (`.assets/lib/scopes.sh`). `--omp-theme <the
 | `scope_bins_in_profile` | Same `# bins:`, but tighter: each binary must be under `~/.nix-profile/bin/` (proves nix actually provided it, not a system shadow)      | FAIL: lists bins absent from nix-profile (skipped if `~/.nix-profile` is absent) |
 | `shell_profile`         | Exactly 1 managed block in the **invoking shell's** rc file (bash → `.bashrc`, zsh → `.zshrc`)                                           | FAIL: zero or duplicates                                                         |
 | `shell_config_files`    | Every `~/.config/shell/<file>` referenced by the rc resolves on disk                                                                     | FAIL: lists missing files                                                        |
-| `cert_bundle`           | Custom CA bundle + VS Code env OK                                                                                                        | FAIL: bundle or env missing                                                      |
+| `cert_bundle`           | If `ca-custom.crt` exists: bundle + VS Code env OK. If absent: nix-curl probe shows no MITM (skipped under `NX_DOCTOR_SKIP_NETWORK=1`)   | FAIL: bundle/env missing, or MITM detected with `ca-custom.crt` absent           |
 | `vscode_server_env`     | `~/.vscode-server/server-env-setup` includes nix PATH (if `~/.nix-profile/bin` exists)                                                   | WARN: nix PATH missing                                                           |
 | `nix_profile`           | `nix-env` in `nix profile list`                                                                                                          | FAIL: not found                                                                  |
 | `nix_profile_link`      | `~/.nix-profile` is a symlink resolving to a live target                                                                                 | FAIL: missing or dangling                                                        |
@@ -364,9 +364,14 @@ Many enterprise environments use MITM TLS inspection proxies. Three ways tools b
 
 1. **Nix-installed binaries** are built against nix's own OpenSSL with an isolated Mozilla CA bundle. They do not consult the macOS Keychain or Linux system CA store. A proxy cert trusted by the OS is invisible.
 2. **Python tools** (pip, requests, azure-cli) use `certifi`, vendored per-virtualenv.
-3. **Node.js tools** use Node's built-in CA bundle by default, separate from the system store.
+3. **Node.js tools** use Node's built-in CA bundle by default, separate from the system store. This includes nodeenv-spawned Node from Python wrappers (e.g., pyright-python).
 
-Detection runs during setup (`phase_nix_profile_mitm_probe`): probes a TLS endpoint (default `https://www.google.com`, override with `NIX_ENV_TLS_PROBE_URL`). On failure, runs `cert_intercept` to extract intermediate + root certs from the TLS chain, deduplicates, appends to `~/.config/certs/ca-custom.crt`. Then `build_ca_bundle` merges with nix CAs into `~/.config/certs/ca-bundle.crt`.
+`ca-bundle.crt` and `ca-custom.crt` are managed independently - one is not gated on the other:
+
+- `ca-bundle.crt` is the **full trust store** for nix tools. `build_ca_bundle` always runs each setup, regardless of MITM presence: Linux/WSL symlinks `/etc/ssl/certs/ca-certificates.crt`; macOS dumps `SystemRootCertificates` + `System.keychain` (atomic via mktemp+mv).
+- `ca-custom.crt` is the **proxy delta** - extra certs for tools that already trust the system store (notably Node via `NODE_EXTRA_CA_CERTS`). Only created when `phase_nix_profile_mitm_probe` confirms MITM via a nix-curl probe (isolated OpenSSL, immune to Keychain). On detection, `cert_intercept` extracts intermediate+root certs from the TLS chain into `ca-custom.crt`, then `build_ca_bundle` runs again so the macOS bundle picks up the appended custom certs.
+
+The probe is gated on `ca-custom.crt` existence (the cause), not `ca-bundle.crt` (the derivative). This avoids the failure mode where an existing `ca-bundle.crt` (e.g., a Keychain dump on macOS that happens to include the MITM cert) silently skipped the probe and left `ca-custom.crt` missing - leaving `NODE_EXTRA_CA_CERTS` unset and Node-based hooks failing with `SELF_SIGNED_CERT_IN_CHAIN`.
 
 **Env vars exported by the `managed env` block:**
 

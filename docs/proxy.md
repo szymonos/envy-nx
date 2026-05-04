@@ -20,26 +20,34 @@ The result: the same certificate must be configured in multiple places, through 
 
 ### Automatic detection
 
-When `nix/setup.sh` runs, it probes a TLS endpoint (default: `https://www.google.com`). If the connection fails due to SSL verification, a MITM proxy is assumed and the certificate interception flow runs automatically:
+When `nix/setup.sh` runs, two independent steps execute every run:
+
+1. **`build_ca_bundle`** always (re)creates `~/.config/certs/ca-bundle.crt` from the system trust store - a symlink to `/etc/ssl/certs/...` on Linux/WSL, a Keychain dump on macOS. This is the "everything nix tools should trust" file.
+2. **TLS probe** with the nix-installed `curl` (isolated OpenSSL, ignores both Keychain and system store). If verification fails AND a `-k` retry succeeds, a MITM proxy is the cause. `cert_intercept` extracts the proxy chain into `~/.config/certs/ca-custom.crt`, then `build_ca_bundle` runs again so the macOS bundle picks up the new certs.
 
 ```mermaid
 flowchart TD
-    P["TLS probe fails"] --> I["cert_intercept
-    Extract intermediate + root certs
-    from TLS chain, deduplicate"]
+    B0["build_ca_bundle (always)
+    Linux: symlink system bundle
+    macOS: dump Keychain"] --> P["nix-curl TLS probe"]
+    P -->|verify ok| E["Export NIX_SSL_CERT_FILE
+    (covers remaining setup)"]
+    P -->|verify fails| K["nix-curl -k retry"]
+    K -->|succeeds| I["MITM detected
+    cert_intercept extracts chain"]
     I --> S["Save to
     ~/.config/certs/ca-custom.crt"]
-    S --> B["build_ca_bundle
-    Merge nix CAs + custom certs"]
-    B --> F["Write
-    ~/.config/certs/ca-bundle.crt"]
-    F --> E["Export NIX_SSL_CERT_FILE
-    (immediate, covers remaining setup)"]
-    E --> PR["Profile setup
-    Persist env vars to shell profiles"]
+    S --> B1["build_ca_bundle
+    rebuild with ca-custom.crt"]
+    B1 --> E
+    K -->|also fails| W["Network/DNS issue
+    skip cert interception"]
+    W --> E
 ```
 
-On macOS, certificates are exported directly from the Keychain - capturing any corporate CA certificates that IT has already deployed via MDM.
+On macOS, the Keychain dump captures any corporate CA certificates IT has deployed via MDM. The probe still runs because nix-installed tools have their own isolated OpenSSL and don't consult the Keychain - so the proxy cert must also be extracted into `ca-custom.crt` for `NODE_EXTRA_CA_CERTS` to work for tools like Node.js downloaded via nodeenv (e.g., pyright).
+
+`ca-bundle.crt` and `ca-custom.crt` are managed independently. Existing `ca-bundle.crt` no longer skips the probe - the probe is gated on `ca-custom.crt` (the cause), not `ca-bundle.crt` (the derivative).
 
 ### What gets configured
 
@@ -58,12 +66,12 @@ All exports are guarded at runtime - variables are only set if the cert file sti
 
 ### Certificate storage
 
-| Location                        | Purpose                                    | Created by        |
-| ------------------------------- | ------------------------------------------ | ----------------- |
-| `~/.config/certs/ca-custom.crt` | Intercepted proxy certs only               | `cert_intercept`  |
-| `~/.config/certs/ca-bundle.crt` | Full CA bundle (system CAs + custom certs) | `build_ca_bundle` |
+| Location                        | Purpose                                    | Created by        | When                              |
+| ------------------------------- | ------------------------------------------ | ----------------- | --------------------------------- |
+| `~/.config/certs/ca-bundle.crt` | Full CA bundle (system CAs + custom certs) | `build_ca_bundle` | Every `nix/setup.sh` run          |
+| `~/.config/certs/ca-custom.crt` | Intercepted proxy certs only               | `cert_intercept`  | When MITM detected (probe failed) |
 
-On Linux, `ca-bundle.crt` symlinks to the system bundle (which includes any custom certs added via `update-ca-certificates`). On macOS, it is a merged file combining the nix-provided CA bundle with Keychain-exported and intercepted proxy certs.
+On Linux, `ca-bundle.crt` symlinks to the system bundle (which includes any custom certs added via `update-ca-certificates`). On macOS, it is a merged file combining the Keychain dump with `ca-custom.crt` when the latter exists.
 
 ### VS Code Server
 
