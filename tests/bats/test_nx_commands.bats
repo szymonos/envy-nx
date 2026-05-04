@@ -1047,35 +1047,30 @@ EOF
 
 # -- _nx_self_sync ------------------------------------------------------------
 
-@test "self_sync copies nx files to env dir" {
+@test "self_sync delegates to nix/setup.sh --skip-repo-update" {
+  # _nx_self_sync no longer copies files itself - it execs the latest
+  # nix/setup.sh so the LATEST phase_bootstrap_sync_env_dir determines
+  # the file list (cross-major upgrade safety). Stub setup.sh to record
+  # its invocation args + cwd, then assert the delegation contract.
   local fake_repo="$TEST_DIR/fake-repo"
-  mkdir -p "$fake_repo/.assets/lib" "$fake_repo/nix/scopes"
-  printf '#!/bin/sh\necho nx\n' >"$fake_repo/.assets/lib/nx.sh"
-  printf 'doctor\n' >"$fake_repo/.assets/lib/nx_doctor.sh"
-  printf 'profile\n' >"$fake_repo/.assets/lib/profile_block.sh"
-  printf '{ }\n' >"$fake_repo/nix/flake.nix"
-  printf '{ pkgs }: []\n' >"$fake_repo/nix/scopes/shell.nix"
+  mkdir -p "$fake_repo/nix"
+  printf '#!/usr/bin/env bash\nprintf "stub-setup args=%%s pwd=%%s\\n" "$*" "$PWD"\n' \
+    >"$fake_repo/nix/setup.sh"
+  chmod +x "$fake_repo/nix/setup.sh"
 
   run _nx_self_sync "$fake_repo"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"synced"* ]]
-  [ -f "$ENV_DIR/nx.sh" ]
-  [ -x "$ENV_DIR/nx.sh" ]
-  [ -f "$ENV_DIR/nx_doctor.sh" ]
-  [ -f "$ENV_DIR/profile_block.sh" ]
-  [ -f "$ENV_DIR/flake.nix" ]
-  [ -f "$ENV_DIR/scopes/shell.nix" ]
+  [[ "$output" == *"stub-setup args=--skip-repo-update"* ]]
 }
 
-@test "self_sync skips missing files gracefully" {
+@test "self_sync errors when nix/setup.sh is missing or not executable" {
   local fake_repo="$TEST_DIR/empty-repo"
-  mkdir -p "$fake_repo/.assets/lib"
-  printf '#!/bin/sh\necho nx\n' >"$fake_repo/.assets/lib/nx.sh"
+  mkdir -p "$fake_repo"
 
   run _nx_self_sync "$fake_repo"
-  [ "$status" -eq 0 ]
-  [ -f "$ENV_DIR/nx.sh" ]
-  [ ! -f "$ENV_DIR/nx_doctor.sh" ]
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"nx self sync"* ]]
+  [[ "$output" == *"setup.sh not found"* ]]
 }
 
 # -- nx help includes setup and self ------------------------------------------
@@ -1163,9 +1158,11 @@ EOF
   git clone "$bare_repo" "$git_repo" >/dev/null 2>&1
   git -C "$git_repo" config user.email "test@test.com"
   git -C "$git_repo" config user.name "Test"
-  # create lib files for self_sync
-  mkdir -p "$git_repo/.assets/lib"
-  printf '#!/bin/sh\n' >"$git_repo/.assets/lib/nx.sh"
+  # _nx_self_sync now delegates to nix/setup.sh - stub it so the test
+  # doesn't try to run the real setup pipeline
+  mkdir -p "$git_repo/nix"
+  printf '#!/usr/bin/env bash\necho "SETUP_RAN $*"\n' >"$git_repo/nix/setup.sh"
+  chmod +x "$git_repo/nix/setup.sh"
 
   mkdir -p "$HOME/.config/dev-env"
   printf '{"repo_path": "%s"}\n' "$git_repo" >"$HOME/.config/dev-env/install.json"
@@ -1173,7 +1170,7 @@ EOF
   run nx self update
   [ "$status" -eq 0 ]
   [[ "$output" == *"Updated"* ]]
-  [[ "$output" == *"synced"* ]]
+  [[ "$output" == *"SETUP_RAN --skip-repo-update"* ]]
 }
 
 @test "self update --force resets to origin" {
@@ -1191,8 +1188,9 @@ EOF
   git clone "$bare_repo" "$git_repo" >/dev/null 2>&1
   git -C "$git_repo" config user.email "test@test.com"
   git -C "$git_repo" config user.name "Test"
-  mkdir -p "$git_repo/.assets/lib"
-  printf '#!/bin/sh\n' >"$git_repo/.assets/lib/nx.sh"
+  mkdir -p "$git_repo/nix"
+  printf '#!/usr/bin/env bash\necho "SETUP_RAN $*"\n' >"$git_repo/nix/setup.sh"
+  chmod +x "$git_repo/nix/setup.sh"
 
   mkdir -p "$HOME/.config/dev-env"
   printf '{"repo_path": "%s"}\n' "$git_repo" >"$HOME/.config/dev-env/install.json"
@@ -1200,7 +1198,7 @@ EOF
   run nx self update --force
   [ "$status" -eq 0 ]
   [[ "$output" == *"Force-updated"* ]]
-  [[ "$output" == *"synced"* ]]
+  [[ "$output" == *"SETUP_RAN --skip-repo-update"* ]]
 }
 
 # -- nx setup -----------------------------------------------------------------

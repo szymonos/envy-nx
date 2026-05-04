@@ -5,22 +5,22 @@
 # _NX_DEFAULT_REPO_URL) to already be defined.
 
 function _nx_self_sync() {
+  # Delegate to nix/setup.sh --skip-repo-update instead of doing our own
+  # file copy. This guarantees the *latest* phase_bootstrap_sync_env_dir
+  # determines the file list - critical for cross-major upgrades, where
+  # an OLD installed copy of this function would otherwise know nothing
+  # about new lib files (e.g. 1.3.x -> 1.5.x added nx_pkg.sh /
+  # nx_scope.sh / nx_profile.sh / nx_lifecycle.sh, so the OLD sync left
+  # the install half-broken). Skipping --skip-repo-update would also be
+  # fine - the auto-refresh-and-exec chain in setup.sh handles the pull
+  # - but the caller (`_nx_self_dispatch update`) already pulled, so
+  # explicit --skip-repo-update saves a wasted ls-remote round-trip.
   local repo_path="$1"
-  local f
-  # >>> nx-libs generated >>> (regenerate: python3 -m tests.hooks.gen_nx_completions)
-  for f in nx.sh nx_lifecycle.sh nx_pkg.sh nx_profile.sh nx_scope.sh nx_doctor.sh profile_block.sh; do
-    # <<< nx-libs generated <<<
-    if [ -f "$repo_path/.assets/lib/$f" ]; then
-      command cp -f "$repo_path/.assets/lib/$f" "$_NX_ENV_DIR/$f"
-      [ "$f" = "nx.sh" ] && chmod +x "$_NX_ENV_DIR/$f"
-    fi
-  done
-  [ -f "$repo_path/nix/flake.nix" ] && command cp -f "$repo_path/nix/flake.nix" "$_NX_ENV_DIR/"
-  if [ -d "$repo_path/nix/scopes" ]; then
-    rm -rf "$_NX_ENV_DIR/scopes"
-    command cp -rf "$repo_path/nix/scopes" "$_NX_ENV_DIR/"
+  if [ ! -x "$repo_path/nix/setup.sh" ]; then
+    printf "\e[31mnx self sync: %s/nix/setup.sh not found or not executable\e[0m\n" "$repo_path" >&2
+    return 1
   fi
-  printf "\e[32msynced nx files to %s\e[0m\n" "${_NX_ENV_DIR/#$HOME/\~}"
+  bash "$repo_path/nix/setup.sh" --skip-repo-update
 }
 
 function _nx_lifecycle_version() {
@@ -204,8 +204,10 @@ function _nx_self_dispatch() {
       printf "\e[32mUpdated.\e[0m\n"
     fi
 
+    # `_nx_self_sync` now runs the full setup pipeline (no separate "run
+    # nx setup" follow-up needed) - keeps the upgrade chain in lockstep
+    # with the latest phase_bootstrap_sync_env_dir.
     _nx_self_sync "$_self_repo_path"
-    printf "\nRun \e[1mnx setup\e[0m for a full environment update.\n"
     # force the nx() wrapper to re-source nx.sh on the next call
     unset -f nx_main
     ;;
