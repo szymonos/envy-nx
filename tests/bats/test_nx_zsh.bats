@@ -86,10 +86,49 @@ _zsh() {
   [[ "$output" == *"Usage: nx"* ]]
 }
 
-@test "nx_main version works under zsh" {
-  # No install.json in this test env - version prints "No install record found"
+@test "nx_main version works under zsh (no install.json - early return path)" {
+  # Without install.json, _nx_lifecycle_version prints "No install record
+  # found" and returns before declaring any locals. This is the path that
+  # *used to be* the only one tested - it never executed the local
+  # declarations and so missed the `local status` zsh-readonly-variable
+  # bug. The "with install.json" test below covers the full happy path.
   run _zsh "source $NX_LIB_DIR/nx.sh && nx_main version"
   [ "$status" -eq 0 ]
+  [[ "$output" == *"No install record found"* ]]
+}
+
+@test "nx_main version works under zsh (with install.json - full path, no zsh-readonly conflicts)" {
+  # Regression: `local status=...` errored with `read-only variable: status`
+  # under zsh because $status is a zsh special read-only var. This test
+  # writes a real install.json so the function reaches the local
+  # declarations + jq parses + final printfs - the path that breaks under
+  # zsh if any local shadows a read-only special.
+  mkdir -p "$HOME/.config/dev-env"
+  cat >"$HOME/.config/dev-env/install.json" <<'EOF'
+{
+  "version": "1.5.3",
+  "entry_point": "nix",
+  "source": "git",
+  "source_ref": "abcdef123456",
+  "scopes": ["shell"],
+  "installed_at": "2026-05-04T06:52:13Z",
+  "mode": "reconfigure",
+  "status": "success",
+  "phase": "complete",
+  "platform": "Linux",
+  "arch": "x86_64",
+  "nix_version": "nix (Nix) 2.18.1",
+  "bash_version": "5.2",
+  "repo_path": "/home/test/envy-nx"
+}
+EOF
+  run _zsh "source $NX_LIB_DIR/nx.sh && nx_main version"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"dev-env"* ]]
+  [[ "$output" == *"1.5.3"* ]]
+  [[ "$output" == *"success"* ]]
+  # explicitly assert the regression: no read-only error
+  [[ "$output" != *"read-only variable"* ]]
 }
 
 @test "nx_main pin show works under zsh (scope/pin family dispatcher)" {

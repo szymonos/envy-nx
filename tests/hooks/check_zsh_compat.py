@@ -104,6 +104,23 @@ RULES: tuple[Rule, ...] = (
         'bash-only completion variable - guard with [ -n "$BASH_VERSION" ]',
         guarded=True,
     ),
+    Rule(
+        # `local` declaration of a name zsh treats as a special read-only
+        # variable. zsh refuses to create a same-named local, erroring with
+        # `read-only variable: <name>`. Rename the local (e.g. status ->
+        # ir_status) so it doesn't collide. List covers the read-only
+        # specials most likely to appear as variable names: `status` and
+        # `pipestatus` (exit codes), `LINENO`/`lineno` (line number),
+        # `argv` (positional params alias). Other read-only specials
+        # (`?`, `RANDOM`, `SECONDS`) are unlikely to be used as identifier
+        # names so omitted from the rule.
+        re.compile(
+            r"^\s*local\s+(?:[\w]+\s+)*(?:status|pipestatus|LINENO|lineno|argv)\b"
+        ),
+        "`local` declaration of a zsh read-only special variable - "
+        "zsh errors with `read-only variable: <name>`. Rename the local "
+        "(e.g. `status` -> `ir_status`) to avoid the collision",
+    ),
 )
 
 # ---------------------------------------------------------------------------

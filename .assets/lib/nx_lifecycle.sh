@@ -33,7 +33,12 @@ function _nx_lifecycle_version() {
     cat "$install_json"
     return 0
   fi
-  local ver entry src src_ref scopes installed_at mode status phase plat nix_ver bash_ver err_msg
+  # `ir_status` (not `status`) - `$status` is a zsh special read-only
+  # variable (the exit code of the last command, equivalent to bash's `$?`)
+  # and `local status=...` errors with `read-only variable: status` under
+  # zsh. nx_lifecycle.sh is sourced into the user's interactive shell
+  # (bash AND zsh), so all locals must avoid zsh's read-only specials.
+  local ver entry src src_ref scopes installed_at mode ir_status phase plat nix_ver bash_ver err_msg
   ver="$(jq -r '.version // "unknown"' "$install_json")"
   entry="$(jq -r '.entry_point // "unknown"' "$install_json")"
   src="$(jq -r '.source // "unknown"' "$install_json")"
@@ -41,7 +46,7 @@ function _nx_lifecycle_version() {
   scopes="$(jq -r '.scopes // [] | join(", ")' "$install_json")"
   installed_at="$(jq -r '.installed_at // "unknown"' "$install_json")"
   mode="$(jq -r '.mode // "unknown"' "$install_json")"
-  status="$(jq -r '.status // "unknown"' "$install_json")"
+  ir_status="$(jq -r '.status // "unknown"' "$install_json")"
   phase="$(jq -r '.phase // "unknown"' "$install_json")"
   plat="$(jq -r '"\(.platform // "unknown")/\(.arch // "unknown")"' "$install_json")"
   nix_ver="$(jq -r '.nix_version // ""' "$install_json")"
@@ -68,10 +73,10 @@ function _nx_lifecycle_version() {
   [ -n "$repo_path" ] && printf "  \e[90mRepo:      \e[0m%s\n" "$repo_path"
   printf "  \e[90mPlatform:  \e[0m%s\n" "$plat"
   printf "  \e[90mMode:      \e[0m%s\n" "$mode"
-  if [ "$status" = "success" ]; then
-    printf "  \e[90mStatus:    \e[32m%s\e[0m\n" "$status"
+  if [ "$ir_status" = "success" ]; then
+    printf "  \e[90mStatus:    \e[32m%s\e[0m\n" "$ir_status"
   else
-    printf "  \e[90mStatus:    \e[31m%s\e[0m (phase: %s)\n" "$status" "$phase"
+    printf "  \e[90mStatus:    \e[31m%s\e[0m (phase: %s)\n" "$ir_status" "$phase"
     [ -n "$err_msg" ] && printf "  \e[90mError:     \e[31m%s\e[0m\n" "$err_msg"
   fi
   printf "  \e[90mInstalled: \e[0m%s\n" "$installed_at"

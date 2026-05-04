@@ -5,12 +5,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+
+- `check-zsh-compat` hook: new rule flagging `local` declarations of zsh's special read-only variables (`status`, `pipestatus`, `LINENO`, `lineno`, `argv`). Using one of these as a local name errors at runtime under zsh with `read-only variable: <name>` because zsh refuses to shadow the special. The previous test for `_nx_lifecycle_version` under zsh ran in an environment without `install.json` and exited via the early-return path, never reaching the `local status=...` declaration that breaks - this static rule catches the same class of issue at lint time without needing the runtime smoke to find it.
+
 ### Changed
 
 - `_nx_self_sync` (`.assets/lib/nx_lifecycle.sh`) now delegates to `bash <repo>/nix/setup.sh --skip-repo-update` instead of doing its own file copy with a hardcoded list. The previous design baked the file list into the user's installed `nx_lifecycle.sh` - on a cross-major upgrade, the OLD installed sync function knew nothing about lib files added since (e.g. 1.3.x → 1.5.x added `nx_pkg.sh` / `nx_scope.sh` / `nx_profile.sh` / `nx_lifecycle.sh`), so `nx self update` left the install half-synced and the new `nx.sh` couldn't load (`nx: family file nx_pkg.sh not found`). Delegating to setup.sh guarantees the *latest* `phase_bootstrap_sync_env_dir` determines the file list, so the upgrade chain stays in lockstep with whatever the repo's current code says it should be. `_nx_self_dispatch update` no longer prints the now-redundant "Run nx setup for a full environment update" follow-up since `_nx_self_sync` itself runs the full setup pipeline.
 
 ### Fixed
 
+- `_nx_lifecycle_version` (`.assets/lib/nx_lifecycle.sh`): `nx version` errored under zsh with `read-only variable: status` whenever `install.json` was present. `$status` is a zsh special read-only variable (the exit code of the last command, equivalent to bash's `$?`), and `local status=...` errors with `read-only variable: status` because zsh can't shadow the special. Renamed the local to `ir_status`. The bug shipped in 1.5.x because the existing `nx_main version works under zsh` smoke test ran without `install.json` and hit the early-return path before reaching the broken `local` declaration; added a second smoke test that pre-seeds `install.json` so the full happy-path runs under zsh, and added a static `check-zsh-compat` rule (see Added) to catch the class of issue at lint time.
 - `nx.sh` family-file source loop now self-heals on missing files. If `nx_pkg.sh` / `nx_scope.sh` / `nx_profile.sh` / `nx_lifecycle.sh` are absent (the broken-mid-upgrade state described above), the loop prints a concrete recovery instruction (`bash <repo_path>/nix/setup.sh`, looked up from `install.json:repo_path`, or a generic clone-and-setup fallback when the repo path is unknown) and replaces `nx_main` with a stub that surfaces the same message on every subsequent `nx` invocation. Previously the loop printed `nx: family file X not found` and continued, leaving the user with cryptic `command not found: _nx_<family>_<verb>` errors on the actual command. Now the user sees exactly what to run.
 
 ## [1.5.3] - 2026-05-03
