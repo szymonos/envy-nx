@@ -169,15 +169,39 @@ function _nx_read_install_field() {
 # Family files live next to nx.sh both at dev time (.assets/lib/) and at
 # runtime (~/.config/nix-env/, populated by phase_bootstrap_sync_env_dir).
 # `_nx_find_lib` does the lookup with the same BASH_SOURCE/zsh fallback.
+#
+# If any family file is missing the install is in a broken intermediate
+# state (typically: cross-major upgrade where an old `_nx_self_sync` knew
+# only about an older file list). Print actionable recovery instructions
+# and replace `nx_main` with a stub that surfaces the same message on every
+# subsequent invocation - cleaner than letting `nx <verb>` fall through to
+# `command not found: _nx_<family>_<verb>`.
+_nx_missing_families=""
 for _nx_family in nx_pkg.sh nx_scope.sh nx_profile.sh nx_lifecycle.sh; do
   _nx_family_path="$(_nx_find_lib "$_nx_family")" || {
-    printf "\e[31mnx: family file %s not found\e[0m\n" "$_nx_family" >&2
+    _nx_missing_families="$_nx_missing_families $_nx_family"
     continue
   }
   # shellcheck source=/dev/null
   source "$_nx_family_path"
 done
-unset _nx_family _nx_family_path
+if [ -n "$_nx_missing_families" ]; then
+  _nx_repo_path="$(_nx_read_install_field repo_path)"
+  printf "\e[31mnx: environment is incomplete - missing family file(s):%s\e[0m\n" "$_nx_missing_families" >&2
+  printf "\e[31mthis usually means a cross-version upgrade left the install half-synced.\e[0m\n" >&2
+  if [ -n "$_nx_repo_path" ] && [ -d "$_nx_repo_path/.git" ]; then
+    printf "\e[33mrecover with:\e[0m bash %s/nix/setup.sh\n" "$_nx_repo_path" >&2
+  else
+    printf "\e[33mrecover with:\e[0m clone https://github.com/szymonos/envy-nx and run nix/setup.sh from the clone\n" >&2
+  fi
+  function nx_main() {
+    printf "\e[31mnx is unusable - run the recovery command printed at shell startup, then exec \$SHELL\e[0m\n" >&2
+    return 1
+  }
+  unset _nx_family _nx_family_path _nx_missing_families _nx_repo_path
+  return 0 2>/dev/null || true
+fi
+unset _nx_family _nx_family_path _nx_missing_families
 
 # --- Main dispatch ---
 

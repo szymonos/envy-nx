@@ -79,13 +79,9 @@ def main():
         "nx-libs region (bootstrap)",
         failures,
     )
-    _check_region(
-        gen.LIFECYCLE_FILE,
-        gen.LIB_FILES_REGION_RE,
-        gen.emit_lib_files_region(manifest, "f"),
-        "nx-libs region (lifecycle)",
-        failures,
-    )
+    # Note: nx_lifecycle.sh's lib-files for-loop was retired - `_nx_self_sync`
+    # delegates to `nix/setup.sh --skip-repo-update` instead of doing its
+    # own copy. See gen_nx_completions.py main() for the matching note.
     _check_region(
         gen.DOCTOR_FILE,
         gen.LIB_FILES_REGION_RE,

@@ -829,12 +829,11 @@ def main():
         emit_lib_files_region(manifest, "_nx_lib"),
         "nx-libs region (bootstrap)",
     )
-    _replace_region(
-        LIFECYCLE_FILE,
-        LIB_FILES_REGION_RE,
-        emit_lib_files_region(manifest, "f"),
-        "nx-libs region (lifecycle)",
-    )
+    # Note: nx_lifecycle.sh used to host an emitted lib-files for-loop in
+    # `_nx_self_sync`. That function now delegates to `nix/setup.sh
+    # --skip-repo-update` instead of doing its own copying, so the latest
+    # phase_bootstrap_sync_env_dir always determines the file list - the
+    # lifecycle copy of the loop became dead duplication and was removed.
     _replace_region(
         DOCTOR_FILE,
         LIB_FILES_REGION_RE,
