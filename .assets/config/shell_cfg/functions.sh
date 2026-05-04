@@ -299,5 +299,12 @@ function cert_intercept() {
   else
     printf '\e[34mno new certificates to add\e[0m\n' >&2
   fi
-  [ $skip_count -gt 0 ] && printf '\e[90m(%d already existing, skipped)\e[0m\n' "$skip_count" >&2
+  # `cmd && action` pattern leaves the test's exit code as the function's
+  # return value when action is skipped. Caller `phase_nix_profile_mitm_probe`
+  # runs under `set -e` in nix/setup.sh, so a `[ 0 -gt 0 ]` here would kill
+  # the script right after a successful intercept. Use `if/fi` to keep the
+  # function exit code at 0.
+  if [ $skip_count -gt 0 ]; then
+    printf '\e[90m(%d already existing, skipped)\e[0m\n' "$skip_count" >&2
+  fi
 }

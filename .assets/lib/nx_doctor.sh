@@ -291,16 +291,69 @@ _check_shell_config_files() {
 }
 
 _check_cert_bundle() {
-  # Only relevant when custom certs exist (MITM proxy / corporate CA).
-  # No ca-custom.crt means no interception detected - bundle is not needed.
+  # Two failure modes:
+  #   (a) ca-custom.crt exists but ca-bundle.crt or VS Code server-env are
+  #       out of sync - normal post-MITM-detection consistency check.
+  #   (b) ca-custom.crt is missing AND a fresh nix-curl probe shows MITM
+  #       interception is happening - the broken state where setup ran on
+  #       an older code path that built ca-bundle.crt from the system store
+  #       (which already trusts the proxy) without ever extracting the
+  #       proxy cert into ca-custom.crt. Result: NODE_EXTRA_CA_CERTS in
+  #       Makefile/profile is silently unset and Node hooks fail with
+  #       SELF_SIGNED_CERT_IN_CHAIN.
   local _dir="$HOME/.config/certs" _detail="" _fix=""
   if [ ! -f "$_dir/ca-custom.crt" ]; then
-    echo "pass"
+    # Skip the (b) probe under tests (NX_DOCTOR_SKIP_NETWORK=1) and when
+    # the nix Mozilla bundle is unavailable. We need an explicit Mozilla-only
+    # bundle to override system trust (Linux /etc/ssl/certs already imports
+    # MITM via update-ca-certificates; macOS Keychain dumps include admin-
+    # installed MITM). Without it we'd just retest the same certs the
+    # system already trusts and always return PASS.
+    if [ "${NX_DOCTOR_SKIP_NETWORK:-0}" = "1" ]; then
+      echo "pass"
+      return
+    fi
+    local _mozilla_bundle="" _candidate
+    for _candidate in \
+      "$HOME/.nix-profile/etc/ssl/certs/ca-bundle.crt" \
+      "$HOME/.nix-profile/etc/ssl/certs/ca-certificates.crt"; do
+      if [ -f "$_candidate" ]; then
+        _mozilla_bundle="$_candidate"
+        break
+      fi
+    done
+    if [ -z "$_mozilla_bundle" ] || ! command -v openssl >/dev/null 2>&1; then
+      echo "pass"
+      return
+    fi
+    local _probe_url="${NIX_ENV_TLS_PROBE_URL:-https://www.google.com}"
+    local _host="${_probe_url#https://}"
+    _host="${_host#http://}"
+    _host="${_host%%/*}"
+    # `openssl s_client -CAfile` is the portable Mozilla-pinned probe -
+    # works on Linux, macOS, and WSL because openssl always uses ONLY the
+    # specified file (ignores SSL_CERT_FILE / SSL_CERT_DIR). curl --cacert
+    # was previously tried but is silently ignored by macOS system curl
+    # (Secure Transport backend) and additive-with-SSL_CERT_FILE on
+    # Debian. See _io_curl_probe_pinned in nix/lib/io.sh.
+    if echo | openssl s_client -CAfile "$_mozilla_bundle" -connect "${_host}:443" \
+      -servername "$_host" -verify_return_error </dev/null >/dev/null 2>&1; then
+      # Mozilla-pinned probe succeeded - no MITM, ca-custom.crt correctly absent.
+      echo "pass"
+      return
+    fi
+    # Strict probe failed; distinguish cert vs network with insecure retry.
+    if curl -ksS --max-time 5 "$_probe_url" >/dev/null 2>&1; then
+      printf 'fail\tMITM proxy detected but ca-custom.crt missing\tre-run nix/setup.sh to extract proxy certs into ~/.config/certs/ca-custom.crt and refresh ca-bundle.crt\n'
+    else
+      # Network problem (DNS/captive portal) - not a cert issue.
+      echo "pass"
+    fi
     return
   fi
   if [ ! -e "$_dir/ca-bundle.crt" ]; then
     _detail="ca-bundle.crt missing"
-    _fix="run cert_intercept (from .assets/config/shell_cfg/functions.sh) to rebuild ~/.config/certs/ca-bundle.crt"
+    _fix="re-run nix/setup.sh (or source .assets/lib/certs.sh && build_ca_bundle) to rebuild ~/.config/certs/ca-bundle.crt"
   fi
   if [ ! -f "$HOME/.vscode-server/server-env-setup" ] ||
     ! grep -q 'NODE_EXTRA_CA_CERTS' "$HOME/.vscode-server/server-env-setup" 2>/dev/null; then

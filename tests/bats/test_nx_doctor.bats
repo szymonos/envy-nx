@@ -485,7 +485,7 @@ EOF
   [[ "$output" == *"FAIL  cert_bundle"* ]]
   [[ "$output" == *"ca-bundle.crt missing"* ]]
   [[ "$output" == *"NODE_EXTRA_CA_CERTS not in server-env-setup"* ]]
-  [[ "$output" == *"cert_intercept"* ]]
+  [[ "$output" == *"build_ca_bundle"* ]]
   [[ "$output" == *"re-run nix/setup.sh"* ]]
 }
 

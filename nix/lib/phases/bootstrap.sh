@@ -104,6 +104,31 @@ phase_bootstrap_resolve_paths() {
   CONFIG_NIX="$ENV_DIR/config.nix"
 }
 
+# Build ca-bundle.crt and self-heal stale cert env vars BEFORE any nix or
+# git network call. Without this, a user who deletes ~/.config/certs/ca-bundle.crt
+# (or whose previous run left a stale path in NIX_SSL_CERT_FILE / git
+# http.sslCAInfo) hits opaque failures in nix profile commands during
+# install_jq, because the inherited env var points at a missing file and
+# nix's OpenSSL aborts before any of our error handlers print a message.
+# build_ca_bundle is cheap (Linux: ln -sf to system bundle; macOS: Keychain
+# dump via security) and works without nix being installed yet.
+phase_bootstrap_ensure_certs() {
+  # shellcheck source=../../../.assets/lib/certs.sh
+  source "$SCRIPT_ROOT/.assets/lib/certs.sh"
+  build_ca_bundle
+  # If env vars still point to a missing file (e.g. build_ca_bundle no-op'd
+  # on an unsupported Linux distro without /etc/ssl/certs), unset so nix
+  # tools fall back to their bundled cacert instead of aborting.
+  if [ -n "${NIX_SSL_CERT_FILE:-}" ] && [ ! -f "$NIX_SSL_CERT_FILE" ]; then
+    warn "NIX_SSL_CERT_FILE=$NIX_SSL_CERT_FILE points to missing file - unsetting for this run"
+    unset NIX_SSL_CERT_FILE
+  fi
+  if [ -n "${SSL_CERT_FILE:-}" ] && [ ! -f "$SSL_CERT_FILE" ]; then
+    warn "SSL_CERT_FILE=$SSL_CERT_FILE points to missing file - unsetting for this run"
+    unset SSL_CERT_FILE
+  fi
+}
+
 _source_nix_profile() {
   for nix_profile in \
     "$HOME/.nix-profile/etc/profile.d/nix.sh" \
