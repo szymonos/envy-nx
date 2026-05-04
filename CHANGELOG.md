@@ -5,6 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.5.4] - 2026-05-04
+
+Resilience release. Three fixes triggered by a real cross-major upgrade failure (a 1.3.x install ran `nx self update` against the 1.5.x repo and ended up half-synced - old `_nx_self_sync` knew only about the pre-1.4.0 file list, so the new `nx.sh` it just installed couldn't find `nx_pkg.sh` / `nx_scope.sh` / `nx_profile.sh` / `nx_lifecycle.sh`). Now: `_nx_self_sync` delegates to `nix/setup.sh --skip-repo-update` so the **latest** `phase_bootstrap_sync_env_dir` always determines the file list (cross-major safe by construction); `nx.sh` self-heals on missing family files with a concrete recovery instruction instead of cryptic `command not found` errors; `nx version` under zsh stopped erroring with `read-only variable: status` (renamed `local status` → `local ir_status` because `$status` is a zsh special read-only variable). Plus a new `check-zsh-compat` lint rule for the broader class - the existing zsh smoke test missed the bug because it ran without `install.json` and hit the early-return path before the broken `local` declaration.
+
 ### Added
 
 - `check-zsh-compat` hook: new rule flagging `local` declarations of zsh's special read-only variables (`status`, `pipestatus`, `LINENO`, `lineno`, `argv`). Using one of these as a local name errors at runtime under zsh with `read-only variable: <name>` because zsh refuses to shadow the special. The previous test for `_nx_lifecycle_version` under zsh ran in an environment without `install.json` and exited via the early-return path, never reaching the `local status=...` declaration that breaks - this static rule catches the same class of issue at lint time without needing the runtime smoke to find it.
