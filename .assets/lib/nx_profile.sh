@@ -106,6 +106,11 @@ function _nx_render_nix_block() {
     printf '[ -x "$HOME/.nix-profile/bin/fzf" ] && eval "$(fzf --%s)"\n' "$shell"
   fi
 
+  if [ -x "$HOME/.nix-profile/bin/fnm" ]; then
+    printf '\n# :fnm\n'
+    printf '[ -x "$HOME/.nix-profile/bin/fnm" ] && eval "$(fnm env --use-on-cd --shell %s)"\n' "$shell"
+  fi
+
   if [ -x "$HOME/.nix-profile/bin/uv" ]; then
     printf '\n# :uv\n'
     printf 'if [ -x "$HOME/.nix-profile/bin/uv" ]; then\n'

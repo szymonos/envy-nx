@@ -274,6 +274,23 @@ function _NxProfileRegenerate {
         }
     }
 
+    # -- nix:fnm - fnm node version manager ---
+    # nix installs fnm; fnm owns the runtime. The eval line wires `fnm env` so
+    # node/npm land on PATH and per-project `.nvmrc` switching activates on cd.
+    $nixBinFnm = [IO.Path]::Combine($nixBin, 'fnm')
+    if ([IO.File]::Exists($nixBinFnm)) {
+        $fnmRegion = [string[]]@(
+            '#region nix:fnm'
+            'if (Test-Path "$HOME/.nix-profile/bin/fnm" -PathType Leaf) {'
+            '    (& "$HOME/.nix-profile/bin/fnm" env --use-on-cd --shell power-shell) | Out-String | Invoke-Expression'
+            '}'
+            '#endregion'
+        )
+        if (_NxUpdateProfileRegion -Lines $profileContent -RegionName 'nix:fnm' -Content $fnmRegion) {
+            Write-Host "`e[32m  updated nix:fnm`e[0m"
+        }
+    }
+
     # Save CurrentUserAllHosts profile
     [IO.File]::WriteAllText(
         $profilePath,
@@ -368,7 +385,7 @@ function _NxProfileUninstall {
             [IO.File]::ReadAllLines($profilePath)
         )
         foreach ($region in @('nix:base', 'nix:path', 'nix:certs', 'nix:starship',
-                'nix:oh-my-posh', 'nix:uv', 'local-path')) {
+                'nix:oh-my-posh', 'nix:uv', 'nix:fnm', 'local-path')) {
             _NxRemoveProfileRegion -Lines $content -RegionName $region | Out-Null
         }
         [IO.File]::WriteAllText($profilePath, "$(($content -join "`n").Trim())`n")

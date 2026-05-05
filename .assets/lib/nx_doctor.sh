@@ -130,6 +130,15 @@ _check_install_record() {
   fi
 }
 
+# `# bins:` audit conventions (three tiers, single source of truth in scope .nix files):
+#   `# bins: foo bar`         strict - both checks audit (PATH + ~/.nix-profile/bin/)
+#   `# bins: foo bar%`        loose for `bar` - PATH check only; nix-profile check skips
+#                              (use when a manager hook installs the bin elsewhere,
+#                               e.g. fnm -> ~/.local/share/fnm/, tfswitch -> ~/.local/bin/)
+#   `# bins: (external-installer)`  skip both checks entirely
+#                              (use for empty scopes whose bin may not be on PATH at all,
+#                               e.g. conda before `conda init` ran, docker daemon)
+
 _check_scope_binaries() {
   # Parse "# bins:" comments from scope .nix files (single source of truth).
   local _scopes_dir="" _sd
@@ -145,16 +154,18 @@ _check_scope_binaries() {
     printf 'warn\tcannot verify (scope files or install.json not found)\tre-run nix/setup.sh to populate scope files and install.json\n'
     return
   fi
-  local _scopes _missing="" _scope _bin _bins
+  local _scopes _missing="" _scope _entry _bin _bins
   _scopes="$(jq -r '.scopes[]? // empty' "$DEV_ENV_DIR/install.json" 2>/dev/null)" || true
   for _scope in $_scopes; do
     [ -f "$_scopes_dir/$_scope.nix" ] || continue
     _bins="$(sed -n 's/^# bins: *//p' "$_scopes_dir/$_scope.nix")" || true
-    # Sentinel `(external-installer)` marks scopes managed by an installer
-    # other than nix (e.g. conda via miniforge), so neither command -v
-    # nor ~/.nix-profile/bin checks apply.
+    # `(external-installer)` sentinel: scope's bin may not be on PATH in any
+    # reliable context (conda pre-init, docker daemon-only). Skip both checks.
     case "$_bins" in '('*) continue ;; esac
-    for _bin in $_bins; do
+    for _entry in $_bins; do
+      # Strip trailing `%` marker if present - the marker only affects the
+      # nix-profile check; this loose check uses `command -v` either way.
+      _bin="${_entry%\%}"
       command -v "$_bin" >/dev/null 2>&1 || _missing="${_missing:+$_missing, }$_scope/$_bin"
     done
   done
@@ -173,6 +184,8 @@ _check_scope_bins_in_profile() {
   # scope is silently broken and `nx upgrade` / uninstall would leave the
   # user with a binary they cannot manage. Skipped when ~/.nix-profile is
   # absent (no nix install) or when the inputs scope_binaries needs are missing.
+  # Bins suffixed with `%` are skipped: those are installed by a manager hook
+  # (fnm, tfswitch, conda) and live outside ~/.nix-profile/bin/ by design.
   [ -d "$HOME/.nix-profile/bin" ] || return
   local _scopes_dir="" _sd
   for _sd in \
@@ -186,15 +199,17 @@ _check_scope_bins_in_profile() {
   if [ -z "$_scopes_dir" ] || [ ! -f "$DEV_ENV_DIR/install.json" ] || ! command -v jq >/dev/null 2>&1; then
     return
   fi
-  local _scopes _missing="" _scope _bin _bins
+  local _scopes _missing="" _scope _entry _bins
   _scopes="$(jq -r '.scopes[]? // empty' "$DEV_ENV_DIR/install.json" 2>/dev/null)" || true
   for _scope in $_scopes; do
     [ -f "$_scopes_dir/$_scope.nix" ] || continue
     _bins="$(sed -n 's/^# bins: *//p' "$_scopes_dir/$_scope.nix")" || true
-    # Sentinel `(external-installer)` - see _check_scope_binaries above.
+    # `(external-installer)` sentinel - see _check_scope_binaries above.
     case "$_bins" in '('*) continue ;; esac
-    for _bin in $_bins; do
-      [ -x "$HOME/.nix-profile/bin/$_bin" ] || _missing="${_missing:+$_missing, }$_scope/$_bin"
+    for _entry in $_bins; do
+      # `%` marker means "expected on PATH but not in ~/.nix-profile/bin/".
+      case "$_entry" in *%) continue ;; esac
+      [ -x "$HOME/.nix-profile/bin/$_entry" ] || _missing="${_missing:+$_missing, }$_scope/$_entry"
     done
   done
   if [ -z "$_missing" ]; then
