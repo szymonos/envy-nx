@@ -6,9 +6,9 @@ This tool provisions developer environments - if it breaks, developers cannot wo
 
 | Metric                       | Value                                                                       |
 | ---------------------------- | --------------------------------------------------------------------------- |
-| Unit test files              | 27 (18 bats + 9 Pester)                                                     |
-| Individual test cases        | 546 (407 bats + 139 Pester)                                                 |
-| Test code                    | 8,000+ lines                                                                |
+| Unit test files              | 30 (21 bats + 9 Pester)                                                     |
+| Individual test cases        | 583 (444 bats + 139 Pester)                                                 |
+| Test code                    | 8,300+ lines                                                                |
 | Custom pre-commit hooks      | 11 Python scripts                                                           |
 | CI matrix axes               | 5 (Linux daemon, Linux rootless, Linux tarball, macOS Sequoia, macOS Tahoe) |
 | Platforms validated per PR   | macOS (bash 3.2 + BSD), Ubuntu (bash 5 + GNU)                               |
@@ -18,7 +18,7 @@ This tool provisions developer environments - if it breaks, developers cannot wo
 
 ### Unit tests - bash (bats)
 
-18 bats test files cover the core logic: scope dependency resolution, `nx` CLI commands (pin, rollback, scope, install, remove), managed block injection and removal, profile migration, overlay system, health checks, certificate handling, and runtime-zsh smoke tests.
+21 bats test files cover the core logic: scope dependency resolution, `nx` CLI commands (pin, rollback, scope, install, remove) and tab completers, managed block injection and removal, profile migration, overlay system, health checks, certificate handling, manager-scope removal hooks (`conda`, `nodejs`, `python`), and runtime-zsh smoke tests.
 
 Phase functions from `nix/lib/phases/` are tested by sourcing them directly and overriding side-effect wrappers:
 
