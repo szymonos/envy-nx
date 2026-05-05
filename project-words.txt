@@ -72,7 +72,6 @@ nixpkgs
 nmap
 nodeenv
 nomatch
-openwolf
 otbs
 pasteable
 pcre
