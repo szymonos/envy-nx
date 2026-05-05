@@ -8,9 +8,10 @@
 
 # local settings
 settings.local.json
-.claude/settings.json
-.claude/rules/openwolf.md
-.wolf
+/.claude/rules/openwolf.md
+/.claude/settings.json
+/.wolf
+/CLAUDE.md
 
 # Intercepted MITM root certificates
 .assets/certs/
