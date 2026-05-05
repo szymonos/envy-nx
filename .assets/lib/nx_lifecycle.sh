@@ -128,11 +128,11 @@ function _nx_lifecycle_setup() {
     fi
   fi
 
-  local _setup_branch
-  _setup_branch="$(git -C "$_setup_target" rev-parse --abbrev-ref HEAD 2>/dev/null)" || _setup_branch=""
-  printf "\n\e[95;1m>> Running setup from %s" "$_setup_target"
-  [ -n "$_setup_branch" ] && printf " (%s)" "$_setup_branch"
-  printf "\e[0m\n\n"
+  # No "Running setup from ..." print here - phase_bootstrap_print_banner in
+  # nix/setup.sh emits the same line with the version field appended, so a
+  # print here would just duplicate it. The banner runs early in setup.sh
+  # (right after phase_bootstrap_resolve_paths) so it shows up at the same
+  # spot users were used to seeing this line.
   bash "$_setup_target/nix/setup.sh" "$@"
 }
 

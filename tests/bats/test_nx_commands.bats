@@ -1206,7 +1206,12 @@ EOF
 @test "setup runs setup.sh from install.json:repo_path when valid" {
   local fake_repo="$TEST_DIR/setup-repo"
   mkdir -p "$fake_repo/nix"
-  printf '#!/bin/sh\necho "SETUP_RAN $*"\n' >"$fake_repo/nix/setup.sh"
+  # Stub echoes its own location so the test can verify which setup.sh ran.
+  # Previously we relied on _nx_lifecycle_setup printing
+  # `>> Running setup from <path>`, but that print was removed in 1.6.0
+  # to avoid duplicating the new phase_bootstrap_print_banner output (the
+  # real setup.sh emits the path; stubs need to do it themselves).
+  printf '#!/bin/sh\necho "SETUP_RAN $* (from %s/nix/setup.sh)"\n' "$fake_repo" >"$fake_repo/nix/setup.sh"
   chmod +x "$fake_repo/nix/setup.sh"
   mkdir -p "$HOME/.config/dev-env"
   printf '{"repo_path": "%s"}\n' "$fake_repo" >"$HOME/.config/dev-env/install.json"
@@ -1220,7 +1225,8 @@ EOF
 @test "setup falls back to canonical clone when install.json:repo_path is unset" {
   local canonical="$HOME/source/repos/szymonos/envy-nx"
   mkdir -p "$canonical/nix"
-  printf '#!/bin/sh\necho "SETUP_RAN_CANONICAL"\n' >"$canonical/nix/setup.sh"
+  # See note in test 87 above re: stub echoing its own location.
+  printf '#!/bin/sh\necho "SETUP_RAN_CANONICAL (from %s/nix/setup.sh)"\n' "$canonical" >"$canonical/nix/setup.sh"
   chmod +x "$canonical/nix/setup.sh"
 
   run nx setup
