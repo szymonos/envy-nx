@@ -104,6 +104,25 @@ phase_bootstrap_resolve_paths() {
   CONFIG_NIX="$ENV_DIR/config.nix"
 }
 
+# Provenance line printed early in setup so the user (and CI logs) can see
+# which checkout + branch + version is actually running. Mirrors the same
+# shape that nx_lifecycle.sh:_nx_lifecycle_setup prints when launching
+# nix/setup.sh from the nx CLI; the version field is appended here so
+# `Running setup from <path> (<branch> [<version>])` matches `nx version`.
+# Always prints (no quiet_summary gate) - it's a one-line provenance marker
+# useful even in quiet mode.
+phase_bootstrap_print_banner() {
+  local _branch
+  _branch="$(git -C "$SCRIPT_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null)" || _branch=""
+  printf '\n\e[96mRunning setup from %s' "$SCRIPT_ROOT"
+  if [ -n "$_branch" ]; then
+    printf ' (\e[3;90m%s\e[0;96m [\e[3;90m%s\e[0;96m])' "$_branch" "$NIX_ENV_VERSION"
+  else
+    printf ' ([\e[3;90m%s\e[0;96m])' "$NIX_ENV_VERSION"
+  fi
+  printf '\e[0m\n'
+}
+
 # Build ca-bundle.crt and self-heal stale cert env vars BEFORE any nix or
 # git network call. Without this, a user who deletes ~/.config/certs/ca-bundle.crt
 # (or whose previous run left a stale path in NIX_SSL_CERT_FILE / git
@@ -234,6 +253,11 @@ phase_bootstrap_sync_env_dir() {
   mkdir -p "$ENV_DIR"
   cp "$NIX_SRC/flake.nix" "$ENV_DIR/"
   cp -r "$NIX_SRC/scopes" "$ENV_DIR/"
+  # Sync scopes.json so nx commands can validate against the canonical
+  # valid_scopes list at runtime (e.g. nx_scope.sh:add rejects overlay
+  # names that collide with managed scopes). _nx_find_lib resolves it
+  # via the same script_dir lookup as the .sh family files.
+  cp "$SCRIPT_ROOT/.assets/lib/scopes.json" "$ENV_DIR/"
   # Atomic install for files that user shells may source/exec concurrently:
   # nx.sh is read on every `nx` invocation; nx_pkg/scope/profile/lifecycle.sh
   # are sourced by nx.sh at startup; profile_block.sh is sourced by

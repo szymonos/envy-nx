@@ -112,6 +112,7 @@ triaging
 unioned
 unsets
 vdisk
+venv
 versinfo
 virtualenv
 worktree

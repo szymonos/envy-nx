@@ -114,6 +114,7 @@ _ir_flush "in_progress"
 phase_bootstrap_refresh_repo "$@"
 phase_bootstrap_check_root
 phase_bootstrap_resolve_paths "$SCRIPT_ROOT"
+phase_bootstrap_print_banner
 phase_bootstrap_ensure_certs
 phase_bootstrap_detect_nix
 phase_bootstrap_verify_store

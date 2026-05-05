@@ -1042,3 +1042,47 @@ NIX
   [ -f "$ENV_DIR/scopes/local_active.nix" ]
   [ ! -f "$ENV_DIR/scopes/local_orphan.nix" ]
 }
+
+# =============================================================================
+# phase_bootstrap_print_banner
+# =============================================================================
+
+@test "banner: prints SCRIPT_ROOT, branch, and NIX_ENV_VERSION when in a git repo" {
+  # Create a throwaway git repo with a known branch + tag so the banner has
+  # deterministic output. Mirrors what `git describe --tags --dirty` reports
+  # at the start of nix/setup.sh.
+  local _repo="$BATS_TEST_TMPDIR/banner-repo"
+  mkdir -p "$_repo"
+  git -C "$_repo" init -q -b main
+  git -C "$_repo" config user.email t@t
+  git -C "$_repo" config user.name t
+  : >"$_repo/file"
+  git -C "$_repo" add file
+  git -C "$_repo" commit -qm initial
+  git -C "$_repo" tag v1.0.0
+  git -C "$_repo" checkout -qb feat/banner-test
+
+  SCRIPT_ROOT="$_repo"
+  NIX_ENV_VERSION="$(git -C "$_repo" describe --tags --dirty)"
+  run phase_bootstrap_print_banner
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Running setup from $_repo"* ]]
+  [[ "$output" == *"feat/banner-test"* ]]
+  [[ "$output" == *"v1.0.0"* ]]
+}
+
+@test "banner: omits branch parens content but still prints version when not a git repo" {
+  # Tarball-install case: SCRIPT_ROOT exists but isn't a git work tree.
+  # rev-parse --abbrev-ref returns empty -> the banner prints
+  # `Running setup from <path> ([<version>])`.
+  local _dir="$BATS_TEST_TMPDIR/no-git"
+  mkdir -p "$_dir"
+  SCRIPT_ROOT="$_dir"
+  NIX_ENV_VERSION="1.6.0-tarball"
+  run phase_bootstrap_print_banner
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Running setup from $_dir"* ]]
+  [[ "$output" == *"1.6.0-tarball"* ]]
+  # No branch token should appear inside the parens.
+  [[ "$output" != *"(\e[3;90m"*"-"* ]] || true
+}

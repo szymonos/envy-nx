@@ -470,7 +470,39 @@ Register-ArgumentCompleter -CommandName nx -Native -ScriptBlock {
         default {
             if ($tokens[1].Value -eq 'self' -and $tokens[2].Value -eq 'update') { '--force' }
             elseif ($tokens[1].Value -eq 'setup') {
-                '--az', '--bun', '--conda', '--docker', '--gcloud', '--k8s-base', '--k8s-dev', '--k8s-ext', '--nodejs', '--pwsh', '--python', '--rice', '--shell', '--terraform', '--zsh', '--all', '--upgrade', '--allow-unfree', '--unattended', '--skip-repo-update', '--update-modules', '--omp-theme', '--starship-theme', '--remove', '--help'
+                $prev = $tokens[$pos - 1].Value
+                switch ($prev) {
+                    '--omp-theme' {
+                        'base', 'nerd', 'powerline'
+                    }
+                    '--starship-theme' {
+                        'base', 'nerd'
+                    }
+                    '--remove' {
+                        $envDir = "$HOME/.config/nix-env"
+                                        $cfgFile = "$envDir/config.nix"
+                                        $scopeNames = @()
+                                        if (Test-Path $cfgFile) {
+                                            $inScopes = $false
+                                            (Get-Content $cfgFile) | ForEach-Object {
+                                                if ($_ -match 'scopes\s*=\s*\[') { $inScopes = $true }
+                                                if ($inScopes -and $_ -match '^\s*"([^"]+)"') { $scopeNames += $Matches[1] -replace '^local_', '' }
+                                                if ($inScopes -and $_ -match '\]') { $inScopes = $false }
+                                            }
+                                        }
+                                        $scopesDir = "$envDir/scopes"
+                                        if (Test-Path $scopesDir) {
+                                            Get-ChildItem "$scopesDir/local_*.nix" -ErrorAction SilentlyContinue | ForEach-Object {
+                                                $n = $_.BaseName -replace '^local_', ''
+                                                if ($n -notin $scopeNames) { $scopeNames += $n }
+                                            }
+                                        }
+                                        $scopeNames
+                    }
+                    default {
+                        '--az', '--bun', '--conda', '--docker', '--gcloud', '--k8s-base', '--k8s-dev', '--k8s-ext', '--nodejs', '--pwsh', '--python', '--rice', '--shell', '--terraform', '--zsh', '--all', '--upgrade', '--allow-unfree', '--unattended', '--skip-repo-update', '--update-modules', '--omp-theme', '--starship-theme', '--remove', '--help'
+                    }
+                }
             }
             elseif ($tokens[1].Value -eq 'doctor') {
                 '--strict', '--json'

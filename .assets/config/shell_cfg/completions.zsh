@@ -118,35 +118,60 @@ function _nx() {
     fi
     ;;
   setup)
-    local -a setup_flags
-    setup_flags=(
-      '--az:Azure CLI + azcopy'
-      '--bun:Bun JavaScript/TypeScript runtime'
-      '--conda:Miniforge'
-      '--docker:Docker post-install check'
-      '--gcloud:Google Cloud CLI'
-      '--k8s-base:kubectl, kubelogin, k9s, kubecolor'
-      '--k8s-dev:argo, cilium, flux, helm, hubble, kustomize, trivy'
-      '--k8s-ext:minikube, k3d, kind'
-      '--nodejs:Node.js'
-      '--pwsh:PowerShell'
-      '--python:uv + prek'
-      '--rice:btop, cmatrix, cowsay, fastfetch'
-      '--shell:fzf, eza, bat, ripgrep, yq'
-      '--terraform:terraform, tflint'
-      '--zsh:zsh plugins'
-      '--all:enable all scopes'
-      '--upgrade:upgrade all packages'
-      '--allow-unfree:allow unfree packages'
-      '--unattended:skip interactive steps'
-      '--skip-repo-update:skip the git fetch + fast-forward of the source repo'
-      '--update-modules:update PowerShell modules'
-      '--omp-theme:oh-my-posh theme name'
-      '--starship-theme:starship theme name'
-      '--remove:remove scopes'
-      '--help:show help'
-    )
-    _describe 'setup flag' setup_flags
+    case "${words[CURRENT-1]}" in
+    --omp-theme)
+      _values 'theme' base nerd powerline
+      ;;
+    --starship-theme)
+      _values 'theme' base nerd
+      ;;
+    --remove)
+      local _env="$HOME/.config/nix-env"
+      local -a _scopes
+      _scopes=("${(@f)$(sed -n '/scopes[[:space:]]*=[[:space:]]*\[/,/\]/{
+        s/^[[:space:]]*"\([^"]*\)".*/\1/p
+      }' "$_env/config.nix" 2>/dev/null | sed 's/^local_//')}")
+      local _f _n
+      for _f in "$_env/scopes"/local_*.nix(N); do
+        _n="${${_f:t:r}#local_}"
+        if ! (( ${_scopes[(Ie)$_n]} )); then
+          _scopes+=("$_n")
+        fi
+      done
+      _describe 'scope name' _scopes
+      ;;
+    *)
+      local -a setup_flags
+      setup_flags=(
+        '--az:Azure CLI + azcopy'
+        '--bun:Bun JavaScript/TypeScript runtime'
+        '--conda:Miniforge'
+        '--docker:Docker post-install check'
+        '--gcloud:Google Cloud CLI'
+        '--k8s-base:kubectl, kubelogin, k9s, kubecolor'
+        '--k8s-dev:argo, cilium, flux, helm, hubble, kustomize, trivy'
+        '--k8s-ext:minikube, k3d, kind'
+        '--nodejs:Node.js'
+        '--pwsh:PowerShell'
+        '--python:uv + prek'
+        '--rice:btop, cmatrix, cowsay, fastfetch'
+        '--shell:fzf, eza, bat, ripgrep, yq'
+        '--terraform:terraform, tflint'
+        '--zsh:zsh plugins'
+        '--all:enable all scopes'
+        '--upgrade:upgrade all packages'
+        '--allow-unfree:allow unfree packages'
+        '--unattended:skip interactive steps'
+        '--skip-repo-update:skip the git fetch + fast-forward of the source repo'
+        '--update-modules:update PowerShell modules'
+        '--omp-theme:oh-my-posh theme name'
+        '--starship-theme:starship theme name'
+        '--remove:remove scopes'
+        '--help:show help'
+      )
+      _describe 'setup flag' setup_flags
+      ;;
+    esac
     ;;
   self)
     if (( CURRENT == 3 )); then
