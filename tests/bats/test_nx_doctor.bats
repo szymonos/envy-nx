@@ -249,6 +249,150 @@ EOF
   [[ "$output" != *"conda/(external-installer)"* ]]
 }
 
+@test "scope_binaries + scope_bins_in_profile audit fnm (the manager) but not node (the runtime)" {
+  # The nodejs scope lists `# bins: fnm`, mirroring python.nix listing `uv`
+  # rather than `python`: nix installs the version manager, the manager owns
+  # the runtime. Both audits must check fnm (since it lives in
+  # ~/.nix-profile/bin) and ignore node/npm (which live under ~/.local/share/fnm/).
+  _write_flake_lock
+  cat >"$DEV_ENV_DIR/install.json" <<'EOF'
+{
+  "status": "success",
+  "phase": "complete",
+  "scopes": ["shell", "nodejs"]
+}
+EOF
+  cat >"$ENV_DIR/scopes/shell.nix" <<'EOF'
+# Shell tools
+# bins: fzf
+{ pkgs }: with pkgs; [ fzf ]
+EOF
+  cat >"$ENV_DIR/scopes/nodejs.nix" <<'EOF'
+# Node.js - node managed by fnm, not nix
+# bins: fnm
+{ pkgs }: with pkgs; [ fnm ]
+EOF
+  _write_nix_profile_bins fzf fnm
+  # extend PATH so `command -v fnm` succeeds in the scope_binaries check -
+  # mirrors a real install where ~/.nix-profile/bin is on the user's PATH.
+  PATH="$HOME/.nix-profile/bin:$PATH" run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"PASS  scope_binaries"* ]]
+  [[ "$output" == *"PASS  scope_bins_in_profile"* ]]
+  # node/npm must NOT appear as missing - they're not nix-managed.
+  [[ "$output" != *"nodejs/node"* ]]
+  [[ "$output" != *"nodejs/npm"* ]]
+}
+
+@test "scope_bins_in_profile fails when fnm is missing from ~/.nix-profile/bin" {
+  # Regression: if a user nukes ~/.nix-profile/bin/fnm without removing the
+  # nodejs scope, the doctor must surface it - fnm is the contract the scope
+  # provides, even though node itself lives elsewhere.
+  _write_flake_lock
+  cat >"$DEV_ENV_DIR/install.json" <<'EOF'
+{
+  "status": "success",
+  "phase": "complete",
+  "scopes": ["nodejs"]
+}
+EOF
+  cat >"$ENV_DIR/scopes/nodejs.nix" <<'EOF'
+# Node.js - node managed by fnm, not nix
+# bins: fnm
+{ pkgs }: with pkgs; [ fnm ]
+EOF
+  # ~/.nix-profile/bin/ exists but fnm is not in it
+  _write_nix_profile_bins
+  run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"FAIL  scope_bins_in_profile"* ]]
+  [[ "$output" == *"nodejs/fnm"* ]]
+}
+
+# -- `%` marker semantics ----------------------------------------------------
+#
+# `# bins: foo bar%` means: foo is checked strictly (must be in
+# ~/.nix-profile/bin/) AND loosely (must be on PATH), bar is checked only
+# loosely (PATH); the strict check skips it. Used for manager-installed
+# runtimes (fnm -> node, tfswitch -> terraform) that live outside nix-profile.
+
+@test "scope_binaries strips % marker and checks via command -v" {
+  # `# bins: tfswitch tflint terraform%` - all three should resolve via
+  # command -v when each is reachable via PATH (regardless of whether they
+  # live in nix-profile or elsewhere like ~/.local/bin).
+  _write_flake_lock
+  cat >"$DEV_ENV_DIR/install.json" <<'EOF'
+{
+  "status": "success",
+  "phase": "complete",
+  "scopes": ["terraform"]
+}
+EOF
+  cat >"$ENV_DIR/scopes/terraform.nix" <<'EOF'
+# Terraform - terraform binary downloaded by tfswitch into ~/.local/bin/
+# bins: tfswitch tflint terraform%
+{ pkgs }: with pkgs; [ tfswitch tflint ]
+EOF
+  _write_nix_profile_bins tfswitch tflint
+  # terraform lives in a separate dir to mirror tfswitch's install layout.
+  mkdir -p "$HOME/.local/bin"
+  : >"$HOME/.local/bin/terraform"
+  chmod +x "$HOME/.local/bin/terraform"
+  PATH="$HOME/.nix-profile/bin:$HOME/.local/bin:$PATH" run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"PASS  scope_binaries"* ]]
+  [[ "$output" == *"PASS  scope_bins_in_profile"* ]]
+}
+
+@test "scope_bins_in_profile skips %-marked bins (terraform under ~/.local/bin/ is fine)" {
+  # tfswitch and tflint are nix-managed (must be in ~/.nix-profile/bin/),
+  # but terraform% is not - so its absence from nix-profile must NOT trigger
+  # FAIL. Regression for the original bug report ("FAIL terraform/terraform").
+  _write_flake_lock
+  cat >"$DEV_ENV_DIR/install.json" <<'EOF'
+{
+  "status": "success",
+  "phase": "complete",
+  "scopes": ["terraform"]
+}
+EOF
+  cat >"$ENV_DIR/scopes/terraform.nix" <<'EOF'
+# bins: tfswitch tflint terraform%
+{ pkgs }: with pkgs; [ tfswitch tflint ]
+EOF
+  # Only the nix-managed pair lands in nix-profile; terraform deliberately not.
+  _write_nix_profile_bins tfswitch tflint
+  PATH="$HOME/.nix-profile/bin:$PATH" run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"PASS  scope_bins_in_profile"* ]]
+  # terraform must NOT show up as "not in ~/.nix-profile/bin" - the % marker
+  # opts it out of that check by design.
+  [[ "$output" != *"terraform/terraform"* ]]
+}
+
+@test "scope_binaries warns on %-marked bin missing from PATH; profile check still passes" {
+  # If a %-marked bin is not on PATH at all (manager hook never ran or user
+  # nuked the binary), scope_binaries must WARN with `<scope>/<bin>` so the
+  # user sees it. scope_bins_in_profile still passes - the % marker excludes
+  # the bin from the nix-profile check unconditionally.
+  # Uses a clearly-fake bin name (cf. test 9's `_nx_doctor_test_nonexistent_bin_`)
+  # so the assertion doesn't depend on whether terraform happens to be on the
+  # test runner's PATH.
+  _write_flake_lock
+  cat >"$DEV_ENV_DIR/install.json" <<'EOF'
+{
+  "status": "success",
+  "phase": "complete",
+  "scopes": ["fakemgr"]
+}
+EOF
+  cat >"$ENV_DIR/scopes/fakemgr.nix" <<'EOF'
+# bins: fakemgr _nx_doctor_test_marker_bin_%
+{ pkgs }: with pkgs; [ ]
+EOF
+  _write_nix_profile_bins fakemgr
+  PATH="$HOME/.nix-profile/bin:$PATH" run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"WARN  scope_binaries"* ]]
+  [[ "$output" == *"fakemgr/_nx_doctor_test_marker_bin_"* ]]
+  [[ "$output" == *"PASS  scope_bins_in_profile"* ]]
+}
+
 # -- shell_profile check ----------------------------------------------------
 
 @test "shell_profile passes with exactly one managed block" {

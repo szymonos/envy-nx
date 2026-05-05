@@ -9,6 +9,7 @@ blocklists
 bootstrapper
 bootstrappers
 btop
+cafile
 certifi
 chsh
 cloudsdk
@@ -25,6 +26,7 @@ devbox
 diskpart
 distrobox
 distros
+eacces
 egsave
 elif
 elop
@@ -34,6 +36,7 @@ execvpe
 fastfetch
 fileno
 fixcertpy
+fnm
 forkable
 gbda
 gheof

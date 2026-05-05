@@ -97,11 +97,17 @@ Skip reading it for typo fixes, doc-only edits, and conversational questions.
 ```bash
 make lint                  # Run pre-commit hooks on changed files (use before committing)
 make lint-all              # Run all pre-commit hooks on all files (slow)
-make test                  # Run all tests (unit + Docker smoke)
-make test-nix              # Test nix/setup.sh in Docker
+make test-unit             # Run bats + Pester unit tests (fast, no Docker) - agent-runnable
+make test-nix              # Docker smoke test for nix path - USER ONLY, do not run automatically
+make test                  # Wraps test-unit + test-nix - USER ONLY (pulls in Docker)
 make hooks                 # List available hook IDs (use with HOOK=<id>)
 make help                  # List all available make targets
 ```
+
+**Agent guardrail - Docker smoke tests:** never invoke `make test-nix` or `make test` from an agent
+session. Both pull a Docker image and run a full `nix/setup.sh` provisioning pass; they take
+several minutes and the user runs them on demand before merging. Agent-side verification stops at
+`make lint` + `make test-unit` (or a scoped `bats tests/bats/<file>.bats`).
 
 All `lint*` targets accept `HOOK=<id>` to run a single hook (e.g. `make lint-all HOOK=check-zsh-compat`) - seconds instead of minutes when verifying one hook's scope or rule changes across the whole tree. Run `make hooks` first to discover the available IDs.
 

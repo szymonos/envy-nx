@@ -35,6 +35,11 @@ phase_configure_per_scope() {
     conda)
       _io_run "$CONFIGURE_DIR/conda.sh" || warn "conda configuration failed"
       ;;
+    nodejs)
+      # shellcheck disable=SC2154  # unattended set by phase_bootstrap_parse_args
+      _io_run "$CONFIGURE_DIR/nodejs.sh" "${unattended:-false}" ||
+        warn "nodejs configuration failed"
+      ;;
     az)
       _io_run "$CONFIGURE_DIR/az.sh" || warn "az configuration failed"
       ;;
