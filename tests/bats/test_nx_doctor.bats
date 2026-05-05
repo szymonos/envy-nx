@@ -359,7 +359,16 @@ EOF
 EOF
   # Only the nix-managed pair lands in nix-profile; terraform deliberately not.
   _write_nix_profile_bins tfswitch tflint
-  PATH="$HOME/.nix-profile/bin:$PATH" run bash "$DOCTOR_SCRIPT"
+  # Place a fake `terraform` in ~/.local/bin so `command -v terraform` succeeds
+  # in the scope_binaries (loose) check - mirrors a real install where
+  # tfswitch downloads terraform there. Without this, macOS CI runners (which
+  # don't have terraform anywhere) cause scope_binaries to WARN with
+  # `terraform/terraform`, which leaks into $output and trips the negative
+  # assertion below.
+  mkdir -p "$HOME/.local/bin"
+  : >"$HOME/.local/bin/terraform"
+  chmod +x "$HOME/.local/bin/terraform"
+  PATH="$HOME/.nix-profile/bin:$HOME/.local/bin:$PATH" run bash "$DOCTOR_SCRIPT"
   [[ "$output" == *"PASS  scope_bins_in_profile"* ]]
   # terraform must NOT show up as "not in ~/.nix-profile/bin" - the % marker
   # opts it out of that check by design.
