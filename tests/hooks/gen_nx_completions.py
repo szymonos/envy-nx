@@ -200,16 +200,34 @@ def emit_bash(manifest):
             )
             out.append(f"    {bash_compgen(sv_names)}")
 
-    # 3. verb-level flags (currently: setup) - completed at any position >= 2
+    # 3. verb-level flags (currently: setup, doctor) - completed at any position >= 2
+    # When a flag declares `value_completer` (e.g. setup --remove takes a scope
+    # name), dispatch on `prev` so tabbing AFTER the flag completes its argument
+    # instead of re-suggesting more flags. Falls through to the static flag list
+    # when `prev` is not one of the value-completer flags.
     for v in verbs_with_flags(manifest):
         flag_names = [f["long"] for f in v["flags"]]
         if v.get("flags") and any(f.get("short") for f in v["flags"]):
             flag_names.extend(f["short"] for f in v["flags"] if f.get("short"))
+        flags_with_completer = [f for f in v["flags"] if f.get("value_completer")]
         for vname in all_names(v):
             out.append(
                 f'  elif [ "$COMP_CWORD" -ge 2 ] && [ "${{COMP_WORDS[1]}}" = "{vname}" ]; then'
             )
-            out.append(f"    {bash_compgen(flag_names)}")
+            if flags_with_completer:
+                out.append('    case "$prev" in')
+                for f in flags_with_completer:
+                    out.append(f"    {f['long']})")
+                    out.append(
+                        _indent_block(BASH_COMPLETER[f["value_completer"]], "      ")
+                    )
+                    out.append("      ;;")
+                out.append("    *)")
+                out.append(f"      {bash_compgen(flag_names)}")
+                out.append("      ;;")
+                out.append("    esac")
+            else:
+                out.append(f"    {bash_compgen(flag_names)}")
 
     # 4. subverb flags (e.g. self update --force) at COMP_CWORD >= 3
     for v, sv in subverbs_with_flags(manifest):
@@ -379,14 +397,36 @@ def emit_zsh(manifest):
                 pass
             out.append("    fi")
 
-        # verb-level flags (e.g. setup)
+        # verb-level flags (e.g. setup, doctor)
+        # When any flag declares `value_completer`, dispatch on the previous word
+        # so tabbing AFTER the flag completes its argument (e.g. nx setup --remove
+        # <TAB> -> installed scopes) instead of re-suggesting more flags.
         if v.get("flags"):
-            out.append(f"    local -a {v['name']}_flags")
-            out.append(f"    {v['name']}_flags=(")
-            for f in v["flags"]:
-                out.append(f"      '{f['long']}:{f['summary']}'")
-            out.append("    )")
-            out.append(f"    _describe '{v['name']} flag' {v['name']}_flags")
+            flags_with_completer = [f for f in v["flags"] if f.get("value_completer")]
+            if flags_with_completer:
+                out.append('    case "${words[CURRENT-1]}" in')
+                for f in flags_with_completer:
+                    out.append(f"    {f['long']})")
+                    out.append(
+                        _indent_block(ZSH_COMPLETER[f["value_completer"]], "      ")
+                    )
+                    out.append("      ;;")
+                out.append("    *)")
+                out.append(f"      local -a {v['name']}_flags")
+                out.append(f"      {v['name']}_flags=(")
+                for f in v["flags"]:
+                    out.append(f"        '{f['long']}:{f['summary']}'")
+                out.append("      )")
+                out.append(f"      _describe '{v['name']} flag' {v['name']}_flags")
+                out.append("      ;;")
+                out.append("    esac")
+            else:
+                out.append(f"    local -a {v['name']}_flags")
+                out.append(f"    {v['name']}_flags=(")
+                for f in v["flags"]:
+                    out.append(f"      '{f['long']}:{f['summary']}'")
+                out.append("    )")
+                out.append(f"    _describe '{v['name']} flag' {v['name']}_flags")
 
         # verb-level arg completer (e.g. remove)
         for vv, a in verbs_with_arg_completer(manifest):
@@ -505,12 +545,29 @@ def emit_ps_region(manifest):
             f"$tokens[2].Value -eq '{sv['name']}') {{ {ps_quoted(flag_names)} }}"
         )
         first = False
-    # verb-level flags continue at pos >= 3 (e.g. setup)
+    # verb-level flags continue at pos >= 3 (e.g. setup, doctor)
+    # When the previous committed token is a flag with `value_completer`,
+    # dispatch to that completer (e.g. `nx setup --remove <TAB>` -> installed
+    # scopes) instead of re-suggesting more flags.
     for v in verbs_with_flags(manifest):
         flag_names = [f["long"] for f in v["flags"]]
+        flags_with_completer = [f for f in v["flags"] if f.get("value_completer")]
         kw = "if" if first else "elseif"
         lines.append(f"            {kw} ($tokens[1].Value -eq '{v['name']}') {{")
-        lines.append(f"                {ps_quoted(flag_names)}")
+        if flags_with_completer:
+            lines.append("                $prev = $tokens[$pos - 1].Value")
+            lines.append("                switch ($prev) {")
+            for f in flags_with_completer:
+                lines.append(f"                    '{f['long']}' {{")
+                for line in PS_COMPLETER[f["value_completer"]].split("\n"):
+                    lines.append(f"                        {line}")
+                lines.append("                    }")
+            lines.append("                    default {")
+            lines.append(f"                        {ps_quoted(flag_names)}")
+            lines.append("                    }")
+            lines.append("                }")
+        else:
+            lines.append(f"                {ps_quoted(flag_names)}")
         lines.append("            }")
         first = False
     # subverb arg completers

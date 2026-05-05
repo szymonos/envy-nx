@@ -164,6 +164,59 @@ EOF
   [ -f "$ENV_DIR/local/scopes/my_tools.nix" ]
 }
 
+@test "scope add rejects names that collide with managed scopes" {
+  # nx_scope.sh:add must reject overlay names matching scopes.json:valid_scopes
+  # to prevent silent shadowing of canonical scopes (e.g. local_python.nix
+  # shadowing nix/scopes/python.nix on the next nix/setup.sh run).
+  # _nx_find_lib resolves scopes.json from the dev tree (alongside nx_scope.sh),
+  # so no fixture setup is needed - the real valid_scopes list is consulted.
+  cat >"$ENV_DIR/config.nix" <<'EOF'
+{
+  isInit = false;
+  scopes = [];
+}
+EOF
+  run nx scope add python
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"managed scope"* ]]
+  [[ "$output" == *"python"* ]]
+  # Overlay file must NOT have been created.
+  [ ! -f "$ENV_DIR/local/scopes/python.nix" ]
+  [ ! -f "$ENV_DIR/scopes/local_python.nix" ]
+  # config.nix must NOT mention local_python.
+  ! grep -q 'local_python' "$ENV_DIR/config.nix"
+}
+
+@test "scope add rejects hyphenated managed scope names (k8s-base -> k8s_base)" {
+  # Hyphens are normalized to underscores BEFORE the validation runs, so
+  # `nx scope add k8s-base` should still hit the managed-scope rejection.
+  cat >"$ENV_DIR/config.nix" <<'EOF'
+{
+  isInit = false;
+  scopes = [];
+}
+EOF
+  run nx scope add k8s-base
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"managed scope"* ]]
+  [ ! -f "$ENV_DIR/local/scopes/k8s_base.nix" ]
+}
+
+@test "scope add allows non-managed names (overlay-only)" {
+  # Sanity: rejection must be selective. A name that's NOT in valid_scopes
+  # (e.g. user-chosen 'my_devtools') should still create the overlay normally.
+  cat >"$ENV_DIR/config.nix" <<'EOF'
+{
+  isInit = false;
+  scopes = [];
+}
+EOF
+  run nx scope add my_devtools
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Created scope"* ]]
+  [ -f "$ENV_DIR/local/scopes/my_devtools.nix" ]
+}
+
 @test "scope add uses NIX_ENV_OVERLAY_DIR when set" {
   local custom_dir="$TEST_DIR/custom-overlay"
   mkdir -p "$custom_dir"

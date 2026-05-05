@@ -74,6 +74,11 @@ phase_scopes_apply_removes() {
           _io_run "$SCRIPT_ROOT/nix/configure/nodejs_remove.sh" "${unattended:-false}" ||
             warn "nodejs removal cleanup failed"
           ;;
+        python)
+          # shellcheck disable=SC2154  # unattended set by phase_bootstrap_parse_args
+          _io_run "$SCRIPT_ROOT/nix/configure/python_remove.sh" "${unattended:-false}" ||
+            warn "python removal cleanup failed"
+          ;;
         esac
       else
         warn "scope '$sc' is not currently configured - skipping"

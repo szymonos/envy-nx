@@ -214,6 +214,21 @@ EOF
     }
     local name="${1//-/_}"
     shift
+    # Reject overlay names that collide with managed scopes (defined in
+    # nix/scopes/<name>.nix and listed in scopes.json:valid_scopes).
+    # Without this guard, `nx scope add python` silently creates
+    # ~/.config/nix-env/local/scopes/python.nix and adds local_python to
+    # config.nix - the shadow then competes with the canonical python scope
+    # on the next nix/setup.sh run. Skipped if scopes.json is unavailable
+    # (very-first-run before phase_bootstrap_sync_env_dir, or jq missing).
+    local _scopes_json
+    _scopes_json="$(_nx_find_lib scopes.json 2>/dev/null)" || _scopes_json=""
+    if [ -n "$_scopes_json" ] && command -v jq >/dev/null 2>&1; then
+      if jq -e --arg n "$name" '.valid_scopes | index($n)' "$_scopes_json" >/dev/null 2>&1; then
+        printf "\e[31m'%s' is a managed scope (defined in nix/scopes/%s.nix). Pick a different name for your overlay.\e[0m\n" "$name" "$name" >&2
+        return 1
+      fi
+    fi
     local ov_dir="$env_dir/local"
     if [ -n "${NIX_ENV_OVERLAY_DIR:-}" ] && [ -d "$NIX_ENV_OVERLAY_DIR" ]; then
       ov_dir="$NIX_ENV_OVERLAY_DIR"

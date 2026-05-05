@@ -111,22 +111,23 @@ Implications for any change you make:
 
 **Configure dispatch table** (in `phase_configure_per_scope`):
 
-| Configure script                 | Trigger condition      | Notes                                                           |
-| -------------------------------- | ---------------------- | --------------------------------------------------------------- |
-| `nix/configure/gh.sh`            | always                 | GitHub CLI auth (skipped when `--unattended`)                   |
-| `nix/configure/git.sh`           | always                 | git user.name / user.email (skipped when unattended)            |
-| `nix/configure/docker.sh`        | scope: docker          | Group + daemon socket setup                                     |
-| `nix/configure/conda.sh`         | scope: conda           | Sources `functions.sh`, runs miniforge installer                |
-| `nix/configure/conda_remove.sh`  | scope: conda --remove  | Reverses conda init, deletes ~/miniforge3                       |
-| `nix/configure/nodejs.sh`        | scope: nodejs          | `fnm install --lts` + `fnm default lts-latest` (idempotent)     |
-| `nix/configure/nodejs_remove.sh` | scope: nodejs --remove | Prompts, then deletes `~/.local/share/fnm` (versions + aliases) |
-| `nix/configure/az.sh`            | scope: az              | Calls `install_azurecli_uv.sh`                                  |
-| `nix/configure/terraform.sh`     | scope: terraform       | tfswitch -> ~/.local/bin/terraform                              |
-| `nix/configure/omp.sh`           | scope: oh_my_posh      | Reads `.assets/config/omp_cfg/`                                 |
-| `nix/configure/starship.sh`      | scope: starship        | Reads `.assets/config/starship_cfg/`                            |
-| `nix/configure/profiles.sh`      | always                 | Copies `shell_cfg/`; certs; delegates blocks to `nx`            |
-| `nix/configure/profiles.zsh`     | scope: zsh             | Copies zsh configs; installs zsh plugins                        |
-| `nix/configure/profiles.ps1`     | scope: pwsh            | Copies pwsh_cfg/; delegates regions to `_aliases_nix.ps1`       |
+| Configure script                 | Trigger condition      | Notes                                                                                                                                                            |
+| -------------------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `nix/configure/gh.sh`            | always                 | GitHub CLI auth (skipped when `--unattended`)                                                                                                                    |
+| `nix/configure/git.sh`           | always                 | git user.name / user.email (skipped when unattended)                                                                                                             |
+| `nix/configure/docker.sh`        | scope: docker          | Group + daemon socket setup                                                                                                                                      |
+| `nix/configure/conda.sh`         | scope: conda           | Sources `functions.sh`, runs miniforge installer                                                                                                                 |
+| `nix/configure/conda_remove.sh`  | scope: conda --remove  | Reverses conda init, deletes ~/miniforge3                                                                                                                        |
+| `nix/configure/nodejs.sh`        | scope: nodejs          | `fnm install --lts` + `fnm default lts-latest` (idempotent)                                                                                                      |
+| `nix/configure/nodejs_remove.sh` | scope: nodejs --remove | Prompts, then deletes `~/.local/share/fnm` (versions + aliases)                                                                                                  |
+| `nix/configure/python_remove.sh` | scope: python --remove | Prompts, then deletes `$UV_CACHE_DIR`, `$UV_TOOL_DIR`, `$UV_PYTHON_INSTALL_DIR` (defaults: `~/.cache/uv`, `~/.local/share/uv/tools`, `~/.local/share/uv/python`) |
+| `nix/configure/az.sh`            | scope: az              | Calls `install_azurecli_uv.sh`                                                                                                                                   |
+| `nix/configure/terraform.sh`     | scope: terraform       | tfswitch -> ~/.local/bin/terraform                                                                                                                               |
+| `nix/configure/omp.sh`           | scope: oh_my_posh      | Reads `.assets/config/omp_cfg/`                                                                                                                                  |
+| `nix/configure/starship.sh`      | scope: starship        | Reads `.assets/config/starship_cfg/`                                                                                                                             |
+| `nix/configure/profiles.sh`      | always                 | Copies `shell_cfg/`; certs; delegates blocks to `nx`                                                                                                             |
+| `nix/configure/profiles.zsh`     | scope: zsh             | Copies zsh configs; installs zsh plugins                                                                                                                         |
+| `nix/configure/profiles.ps1`     | scope: pwsh            | Copies pwsh_cfg/; delegates regions to `_aliases_nix.ps1`                                                                                                        |
 
 **Post-install dispatch** (in `post_install.sh`):
 
@@ -207,7 +208,7 @@ The `# bins:` comment is the **single source of truth** for `nx doctor`'s `scope
 
 `%` is glob-safe (no shell-meta meaning), so the existing `for _bin in $_bins` parser handles it without quoting churn.
 
-**Empty-scope pattern.** `docker`, `conda`, `distrobox` are intentionally `{ pkgs }: [ ]`. The scope still exists so users opt in via `--docker` etc. - it triggers the matching `configure/<name>.sh`, is recorded in `config.nix`, counts toward `nx scope` and `nx doctor`. **Manager-installs-runtime pattern.** `python` (`uv` + `prek`), `nodejs` (`fnm` + `node%` `npm%`), and `terraform` (`tfswitch` + `tflint` + `terraform%`) follow a related shape: nix installs the version manager strictly, the manager owns the runtime under `~/.local/...` and is audited via the `%` marker. **Removal hooks** are dispatched by `phase_scopes_apply_removes` when a scope is removed via `--remove` (currently `conda` has `conda_remove.sh` and `nodejs` has `nodejs_remove.sh`; both prompt before deleting user state).
+**Empty-scope pattern.** `docker`, `conda`, `distrobox` are intentionally `{ pkgs }: [ ]`. The scope still exists so users opt in via `--docker` etc. - it triggers the matching `configure/<name>.sh`, is recorded in `config.nix`, counts toward `nx scope` and `nx doctor`. **Manager-installs-runtime pattern.** `python` (`uv` + `prek`), `nodejs` (`fnm` + `node%` `npm%`), and `terraform` (`tfswitch` + `tflint` + `terraform%`) follow a related shape: nix installs the version manager strictly, the manager owns the runtime under `~/.local/...` and is audited via the `%` marker. **Removal hooks** are dispatched by `phase_scopes_apply_removes` when a scope is removed via `--remove` (currently `conda`, `nodejs`, and `python` have `*_remove.sh` hooks; all three prompt before deleting user state and honor `--unattended`).
 
 **Dependency resolution** (`scopes.json:dependency_rules`, single-pass - chains work because each trigger lists transitive deps explicitly):
 
@@ -807,42 +808,42 @@ This project follows [Keep a Changelog](https://keepachangelog.com) format and [
 
 ### 12.1. nix-path (bash 3.2 + BSD compatible required)
 
-| File                                                                                         | Role                                                                            |
-| -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| `nix/setup.sh`                                                                               | Main entry point (slim orchestrator, sources phase libraries)                   |
-| `nix/lib/io.sh`                                                                              | Structured logging + side-effect wrappers (tests override)                      |
-| `nix/lib/phases/bootstrap.sh`                                                                | Repo auto-refresh, root guard, paths, nix detect/install, jq, args              |
-| `nix/lib/phases/platform.sh`                                                                 | OS detection, overlay discovery, hook runner                                    |
-| `nix/lib/phases/scopes.sh`                                                                   | Load/merge scopes, resolve deps, write config.nix                               |
-| `nix/lib/phases/nix_profile.sh`                                                              | Flake update, nix profile upgrade, MITM probe                                   |
-| `nix/lib/phases/configure.sh`                                                                | gh/git/per-scope configure dispatch                                             |
-| `nix/lib/phases/profiles.sh`                                                                 | bash/zsh/PowerShell shell profile setup                                         |
-| `nix/lib/phases/post_install.sh`                                                             | Common post-install + nix GC (bounded store; see `docs/decisions.md`)           |
-| `nix/lib/phases/summary.sh`                                                                  | Mode detection + final status output                                            |
-| `nix/configure/{gh,git,docker,conda,nodejs,az,terraform,omp,starship,profiles}.{sh,zsh,ps1}` | Per-scope post-install hooks                                                    |
-| `nix/configure/{conda,nodejs}_remove.sh`                                                     | Removal hooks (conda: deletes ~/miniforge3; nodejs: deletes ~/.local/share/fnm) |
-| `nix/uninstall.sh`                                                                           | Removes nix-env environment, optionally Nix itself                              |
-| `.assets/lib/scopes.{json,sh}`                                                               | Scope catalog (json) + helpers (sh)                                             |
-| `.assets/lib/nx_surface.json`                                                                | nx CLI verb/flag/subverb manifest                                               |
-| `.assets/lib/install_record.sh`                                                              | Install provenance writer                                                       |
-| `.assets/lib/setup_log.sh`                                                                   | Log file lifecycle                                                              |
-| `.assets/lib/helpers.sh`                                                                     | `download_file`, `gh_login_user`, `install_atomic`                              |
-| `.assets/lib/profile_block.sh`                                                               | Managed-block library (sourced by profiles.sh/.zsh, nx)                         |
-| `.assets/lib/env_block.sh`                                                                   | Generic env block (sourced by setup_profile_user; legacy)                       |
-| `.assets/lib/certs.sh`                                                                       | CA bundle builder + VS Code Server cert setup                                   |
-| `.assets/lib/vscode.sh`                                                                      | VS Code Server env helpers                                                      |
-| `.assets/lib/nx.sh`                                                                          | nx CLI entry point: helpers + family sourcing + dispatcher                      |
-| `.assets/lib/nx_pkg.sh`                                                                      | nx verbs: search/install/remove/upgrade/list/prune/gc/rollback                  |
-| `.assets/lib/nx_scope.sh`                                                                    | nx verbs: scope/overlay/pin                                                     |
-| `.assets/lib/nx_profile.sh`                                                                  | nx profile verb + managed-block rendering                                       |
-| `.assets/lib/nx_lifecycle.sh`                                                                | nx verbs: setup/self/doctor/version/help                                        |
-| `.assets/lib/nx_doctor.sh`                                                                   | Health-check registry (`nx doctor`)                                             |
-| `.assets/config/shell_cfg/aliases_{nix,git,kubectl}.sh`                                      | Shell aliases (sourced into managed blocks)                                     |
-| `.assets/config/shell_cfg/functions.sh`                                                      | Shared shell functions (cert_intercept, fixcertpy)                              |
-| `.assets/config/shell_cfg/completions.{bash,zsh}`                                            | Tab completions for nx (**generated** from `nx_surface.json`)                   |
-| `.assets/setup/setup_common.sh`                                                              | Post-install setup (called via `nix/setup.sh`)                                  |
-| `.assets/setup/setup_profile_user.ps1`                                                       | PowerShell user profile (certs, local-path, etc.)                               |
-| `.assets/provision/install_copilot.sh`                                                       | Post-install: GitHub Copilot CLI                                                |
+| File                                                                                         | Role                                                                                                        |
+| -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `nix/setup.sh`                                                                               | Main entry point (slim orchestrator, sources phase libraries)                                               |
+| `nix/lib/io.sh`                                                                              | Structured logging + side-effect wrappers (tests override)                                                  |
+| `nix/lib/phases/bootstrap.sh`                                                                | Repo auto-refresh, root guard, paths, nix detect/install, jq, args                                          |
+| `nix/lib/phases/platform.sh`                                                                 | OS detection, overlay discovery, hook runner                                                                |
+| `nix/lib/phases/scopes.sh`                                                                   | Load/merge scopes, resolve deps, write config.nix                                                           |
+| `nix/lib/phases/nix_profile.sh`                                                              | Flake update, nix profile upgrade, MITM probe                                                               |
+| `nix/lib/phases/configure.sh`                                                                | gh/git/per-scope configure dispatch                                                                         |
+| `nix/lib/phases/profiles.sh`                                                                 | bash/zsh/PowerShell shell profile setup                                                                     |
+| `nix/lib/phases/post_install.sh`                                                             | Common post-install + nix GC (bounded store; see `docs/decisions.md`)                                       |
+| `nix/lib/phases/summary.sh`                                                                  | Mode detection + final status output                                                                        |
+| `nix/configure/{gh,git,docker,conda,nodejs,az,terraform,omp,starship,profiles}.{sh,zsh,ps1}` | Per-scope post-install hooks                                                                                |
+| `nix/configure/{conda,nodejs,python}_remove.sh`                                              | Removal hooks (conda: ~/miniforge3; nodejs: ~/.local/share/fnm; python: uv cache + tools + managed Pythons) |
+| `nix/uninstall.sh`                                                                           | Removes nix-env environment, optionally Nix itself                                                          |
+| `.assets/lib/scopes.{json,sh}`                                                               | Scope catalog (json) + helpers (sh)                                                                         |
+| `.assets/lib/nx_surface.json`                                                                | nx CLI verb/flag/subverb manifest                                                                           |
+| `.assets/lib/install_record.sh`                                                              | Install provenance writer                                                                                   |
+| `.assets/lib/setup_log.sh`                                                                   | Log file lifecycle                                                                                          |
+| `.assets/lib/helpers.sh`                                                                     | `download_file`, `gh_login_user`, `install_atomic`                                                          |
+| `.assets/lib/profile_block.sh`                                                               | Managed-block library (sourced by profiles.sh/.zsh, nx)                                                     |
+| `.assets/lib/env_block.sh`                                                                   | Generic env block (sourced by setup_profile_user; legacy)                                                   |
+| `.assets/lib/certs.sh`                                                                       | CA bundle builder + VS Code Server cert setup                                                               |
+| `.assets/lib/vscode.sh`                                                                      | VS Code Server env helpers                                                                                  |
+| `.assets/lib/nx.sh`                                                                          | nx CLI entry point: helpers + family sourcing + dispatcher                                                  |
+| `.assets/lib/nx_pkg.sh`                                                                      | nx verbs: search/install/remove/upgrade/list/prune/gc/rollback                                              |
+| `.assets/lib/nx_scope.sh`                                                                    | nx verbs: scope/overlay/pin                                                                                 |
+| `.assets/lib/nx_profile.sh`                                                                  | nx profile verb + managed-block rendering                                                                   |
+| `.assets/lib/nx_lifecycle.sh`                                                                | nx verbs: setup/self/doctor/version/help                                                                    |
+| `.assets/lib/nx_doctor.sh`                                                                   | Health-check registry (`nx doctor`)                                                                         |
+| `.assets/config/shell_cfg/aliases_{nix,git,kubectl}.sh`                                      | Shell aliases (sourced into managed blocks)                                                                 |
+| `.assets/config/shell_cfg/functions.sh`                                                      | Shared shell functions (cert_intercept, fixcertpy)                                                          |
+| `.assets/config/shell_cfg/completions.{bash,zsh}`                                            | Tab completions for nx (**generated** from `nx_surface.json`)                                               |
+| `.assets/setup/setup_common.sh`                                                              | Post-install setup (called via `nix/setup.sh`)                                                              |
+| `.assets/setup/setup_profile_user.ps1`                                                       | PowerShell user profile (certs, local-path, etc.)                                                           |
+| `.assets/provision/install_copilot.sh`                                                       | Post-install: GitHub Copilot CLI                                                                            |
 
 ### 12.2. linux-only (bash 4+ OK)
 
