@@ -351,7 +351,10 @@ _check_cert_bundle() {
     # was previously tried but is silently ignored by macOS system curl
     # (Secure Transport backend) and additive-with-SSL_CERT_FILE on
     # Debian. See _io_curl_probe_pinned in nix/lib/io.sh.
-    if echo | openssl s_client -CAfile "$_mozilla_bundle" -connect "${_host}:443" \
+    # `</dev/null` (not `echo |`) feeds empty stdin - the previous `echo |` AND
+    # `</dev/null` was redundant (the redirect overrides the pipe) and produced
+    # a "write error: Broken pipe" line in CI logs from the orphan echo.
+    if openssl s_client -CAfile "$_mozilla_bundle" -connect "${_host}:443" \
       -servername "$_host" -verify_return_error </dev/null >/dev/null 2>&1; then
       # Mozilla-pinned probe succeeded - no MITM, ca-custom.crt correctly absent.
       echo "pass"
