@@ -45,6 +45,14 @@ for ($i = 0; ((Get-Module PSReadLine -ListAvailable).Count -eq 1) -and $i -lt 5;
     Write-Host 'installing PSReadLine...'
     Install-PSResource -Name PSReadLine
 }
+# Install posh-git.
+# Gated on git being available (posh-git is a no-op without git) and on posh-git not already being installed.
+# `Install-PSResource` defaults to CurrentUser scope when -Scope is omitted.
+# Loop up to 5x for transient PSGallery hiccups, same shape as PSReadLine above.
+for ($i = 0; (Get-Command git -CommandType Application -ErrorAction SilentlyContinue) -and -not (Get-Module posh-git -ListAvailable) -and $i -lt 5; $i++) {
+    Write-Host 'installing posh-git...'
+    Install-PSResource -Name posh-git
+}
 
 #region $PROFILE.CurrentUserCurrentHost
 # load existing profile
