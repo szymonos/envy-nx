@@ -466,6 +466,8 @@ These choices are load-bearing - changing one cascades. Each entry is a *constra
 
 **Default unfree = false.** `allowUnfree` is opt-in via `--allow-unfree` (sticky in `config.nix`). Avoids silent license-compliance exposure, binary cache misses, and reproducibility gaps. Terraform (the most common unfree request) is handled outside the nix store via tfswitch -> `~/.local/bin`.
 
+**Pwsh invocation goes through `_io_pwsh_nop`.** Bare `pwsh` calls from bash are forbidden. The single helper lives in `.assets/lib/helpers.sh` (sourced by both the nix-path phases and the out-of-process `setup_common.sh`). It prefers `~/.nix-profile/bin/pwsh` when present and clears `LD_LIBRARY_PATH` inside the session - nix-built pwsh's .NET runtime re-injects `/nix/store` library paths at startup, which then leak into child processes (nix commands, glibc-mismatched). When nix-built pwsh is absent (Coder, system-installed pwsh on Ubuntu/Debian/Fedora), it falls back to `command -v pwsh` and skips the LD_LIBRARY_PATH dance - system pwsh has no nix-store indirection. Hand-rolled `pwsh -nop -c ...` calls miss the LD_LIBRARY_PATH guard *and* miss the system-pwsh fallback (callers fail with `~/.nix-profile/bin/pwsh: No such file or directory` on Coder). The unwrapped `share/powershell/pwsh` binary is also forbidden - it lacks the libicu/openssl indirection the wrapper sets up and aborts on startup; `nix/setup.sh` proactively strips `share/powershell` from PATH at entry.
+
 ## 6. How to add X - recipes
 
 Follow these exact steps. They are built from real change sets.

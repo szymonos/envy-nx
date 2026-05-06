@@ -1,7 +1,8 @@
 #!/usr/bin/env bats
-# Tests for _io_pwsh_nop / _pwsh_nop wrappers.
-# Verifies that the wrappers use the nix bin/pwsh wrapper (not the unwrapped
-# share/powershell/pwsh) and clear LD_LIBRARY_PATH inside the pwsh session.
+# Tests for _io_pwsh_nop wrapper (in .assets/lib/helpers.sh).
+# Verifies that the wrapper prefers the nix bin/pwsh wrapper, clears
+# LD_LIBRARY_PATH inside the nix-pwsh session, and falls back to system
+# pwsh (no LD_LIBRARY_PATH dance) when nix-pwsh is not installed.
 # shellcheck disable=SC2034
 bats_require_minimum_version 1.5.0
 
@@ -11,10 +12,9 @@ setup_file() {
 
 setup() {
   TEST_HOME="$(mktemp -d)"
-
-  # source io.sh to get _io_pwsh_nop
-  # shellcheck source=../../nix/lib/io.sh
-  source "$REPO_ROOT/nix/lib/io.sh"
+  HOME="$TEST_HOME"
+  # shellcheck source=../../.assets/lib/helpers.sh
+  source "$REPO_ROOT/.assets/lib/helpers.sh"
 }
 
 teardown() {
@@ -22,14 +22,10 @@ teardown() {
 }
 
 # =============================================================================
-# _io_pwsh_nop wrapper path resolution
+# nix-pwsh path resolution
 # =============================================================================
 
 @test "_io_pwsh_nop: uses nix-profile bin/pwsh wrapper path" {
-  # stub pwsh to record how it was called
-  local log="$BATS_TEST_TMPDIR/pwsh_calls.log"
-  : >"$log"
-  HOME="$TEST_HOME"
   mkdir -p "$TEST_HOME/.nix-profile/bin"
   cat >"$TEST_HOME/.nix-profile/bin/pwsh" <<'STUB'
 #!/usr/bin/env bash
@@ -37,16 +33,13 @@ echo "CALLED: $0 $*" >>"$(dirname "$0")/../../pwsh_calls.log"
 STUB
   chmod +x "$TEST_HOME/.nix-profile/bin/pwsh"
 
-  # re-source to pick up new HOME
-  source "$REPO_ROOT/nix/lib/io.sh"
   _io_pwsh_nop -c 'Write-Host test' 2>/dev/null || true
 
   [[ -f "$TEST_HOME/pwsh_calls.log" ]]
   grep -q "$TEST_HOME/.nix-profile/bin/pwsh" "$TEST_HOME/pwsh_calls.log"
 }
 
-@test "_io_pwsh_nop: does not resolve pwsh from PATH" {
-  HOME="$TEST_HOME"
+@test "_io_pwsh_nop: prefers nix-profile pwsh over PATH-resolvable pwsh" {
   mkdir -p "$TEST_HOME/.nix-profile/bin"
 
   # put a fake pwsh on PATH that would be found first
@@ -58,7 +51,6 @@ echo "WRONG_PWSH" >"$BATS_TEST_TMPDIR/wrong_pwsh_called"
 STUB
   chmod +x "$fake_dir/pwsh"
 
-  # put the real stub at nix-profile
   cat >"$TEST_HOME/.nix-profile/bin/pwsh" <<'STUB'
 #!/usr/bin/env bash
 echo "RIGHT_PWSH" >"$BATS_TEST_TMPDIR/right_pwsh_called"
@@ -66,7 +58,6 @@ STUB
   chmod +x "$TEST_HOME/.nix-profile/bin/pwsh"
 
   PATH="$fake_dir:$PATH"
-  source "$REPO_ROOT/nix/lib/io.sh"
   _io_pwsh_nop -c 'test' 2>/dev/null || true
 
   [[ -f "$BATS_TEST_TMPDIR/right_pwsh_called" ]]
@@ -74,13 +65,11 @@ STUB
 }
 
 # =============================================================================
-# LD_LIBRARY_PATH clearing inside pwsh
+# LD_LIBRARY_PATH clearing inside nix-pwsh
 # =============================================================================
 
-@test "_io_pwsh_nop: -c mode prepends LD_LIBRARY_PATH clear" {
-  HOME="$TEST_HOME"
+@test "_io_pwsh_nop: -c mode prepends LD_LIBRARY_PATH clear (nix-pwsh)" {
   mkdir -p "$TEST_HOME/.nix-profile/bin"
-  # stub that captures the -c argument
   cat >"$TEST_HOME/.nix-profile/bin/pwsh" <<'STUB'
 #!/usr/bin/env bash
 for arg in "$@"; do
@@ -91,7 +80,6 @@ done
 STUB
   chmod +x "$TEST_HOME/.nix-profile/bin/pwsh"
 
-  source "$REPO_ROOT/nix/lib/io.sh"
   local output
   output="$(_io_pwsh_nop -c 'Write-Host hello')"
 
@@ -99,8 +87,7 @@ STUB
   [[ "$output" == *'Write-Host hello'* ]]
 }
 
-@test "_io_pwsh_nop: script mode prepends LD_LIBRARY_PATH clear" {
-  HOME="$TEST_HOME"
+@test "_io_pwsh_nop: script mode prepends LD_LIBRARY_PATH clear (nix-pwsh)" {
   mkdir -p "$TEST_HOME/.nix-profile/bin"
   cat >"$TEST_HOME/.nix-profile/bin/pwsh" <<'STUB'
 #!/usr/bin/env bash
@@ -112,7 +99,6 @@ done
 STUB
   chmod +x "$TEST_HOME/.nix-profile/bin/pwsh"
 
-  source "$REPO_ROOT/nix/lib/io.sh"
   local output
   output="$(_io_pwsh_nop /some/script.ps1 -Param)"
 
@@ -122,29 +108,76 @@ STUB
 }
 
 # =============================================================================
-# _pwsh_nop (setup_common.sh variant)
+# System-pwsh fallback (no nix-profile pwsh installed)
 # =============================================================================
 
-@test "_pwsh_nop: uses nix-profile bin/pwsh wrapper path" {
-  HOME="$TEST_HOME"
-  mkdir -p "$TEST_HOME/.nix-profile/bin"
-  cat >"$TEST_HOME/.nix-profile/bin/pwsh" <<'STUB'
+@test "_io_pwsh_nop: falls back to system pwsh when nix-profile pwsh missing" {
+  # No ~/.nix-profile/bin/pwsh. Stage a fake "system" pwsh on PATH.
+  local fake_dir="$BATS_TEST_TMPDIR/system_bin"
+  mkdir -p "$fake_dir"
+  cat >"$fake_dir/pwsh" <<'STUB'
 #!/usr/bin/env bash
-echo "CALLED_VIA: $0" >>"$BATS_TEST_TMPDIR/pwsh_nop_calls.log"
+echo "CALLED: $0" >>"$BATS_TEST_TMPDIR/system_pwsh.log"
 STUB
-  chmod +x "$TEST_HOME/.nix-profile/bin/pwsh"
+  chmod +x "$fake_dir/pwsh"
 
-  source "$REPO_ROOT/.assets/setup/setup_common.sh" 2>/dev/null || true
-  # source just the wrapper function directly
-  eval "$(sed -n '/_pwsh_nop()/,/^}/p' "$REPO_ROOT/.assets/setup/setup_common.sh")"
-  _pwsh_nop -c 'test' 2>/dev/null || true
+  PATH="$fake_dir:$PATH"
+  _io_pwsh_nop -c 'test' 2>/dev/null || true
 
-  [[ -f "$BATS_TEST_TMPDIR/pwsh_nop_calls.log" ]]
-  grep -q "$TEST_HOME/.nix-profile/bin/pwsh" "$BATS_TEST_TMPDIR/pwsh_nop_calls.log"
+  [[ -f "$BATS_TEST_TMPDIR/system_pwsh.log" ]]
+  grep -q "$fake_dir/pwsh" "$BATS_TEST_TMPDIR/system_pwsh.log"
+}
+
+@test "_io_pwsh_nop: system-pwsh fallback omits LD_LIBRARY_PATH prefix" {
+  local fake_dir="$BATS_TEST_TMPDIR/system_bin"
+  mkdir -p "$fake_dir"
+  cat >"$fake_dir/pwsh" <<'STUB'
+#!/usr/bin/env bash
+for arg in "$@"; do
+  [[ "$arg" == "-c" ]] && continue
+  [[ "$arg" == "-nop" ]] && continue
+  echo "$arg"
+done
+STUB
+  chmod +x "$fake_dir/pwsh"
+
+  PATH="$fake_dir:$PATH"
+  local output
+  output="$(_io_pwsh_nop -c 'Write-Host hello')"
+
+  [[ "$output" != *'LD_LIBRARY_PATH'* ]]
+  [[ "$output" == *'Write-Host hello'* ]]
+}
+
+@test "_io_pwsh_nop: returns 1 with clear error when no pwsh anywhere" {
+  # No nix-profile pwsh and an empty bin dir on PATH so command -v finds nothing.
+  # We keep the rest of PATH empty (not unset) so teardown's `rm` can still
+  # resolve via bash's command hash from setup.
+  local empty_dir="$BATS_TEST_TMPDIR/empty_bin"
+  mkdir -p "$empty_dir"
+  local saved_path="$PATH"
+  PATH="$empty_dir"
+  run _io_pwsh_nop -c 'test'
+  PATH="$saved_path"
+
+  [[ "$status" -ne 0 ]]
+  [[ "$output" == *"pwsh not found"* ]]
 }
 
 # =============================================================================
-# PATH cleanup in nix/setup.sh
+# setup_common.sh sources helpers.sh and gets _io_pwsh_nop
+# =============================================================================
+
+@test "setup_common.sh: sources helpers.sh and exposes _io_pwsh_nop" {
+  # Verify the source line is present and resolves to a real file.
+  grep -q 'source "\$SCRIPT_ROOT/.assets/lib/helpers.sh"' "$REPO_ROOT/.assets/setup/setup_common.sh"
+  [[ -f "$REPO_ROOT/.assets/lib/helpers.sh" ]]
+  # And that helpers.sh actually defines the wrapper.
+  grep -Eq '^_io_pwsh_nop\(\)' "$REPO_ROOT/.assets/lib/helpers.sh"
+}
+
+# =============================================================================
+# PATH cleanup in nix/setup.sh (regression coverage for share/powershell strip)
 # =============================================================================
 
 @test "setup.sh: strips share/powershell from PATH" {

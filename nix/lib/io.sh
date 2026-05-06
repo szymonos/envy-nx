@@ -66,27 +66,10 @@ _io_curl_probe_pinned() {
     -servername "$_host" -verify_return_error </dev/null >/dev/null 2>&1
 }
 
-# Invoke pwsh -nop via the nix wrapper, clearing LD_LIBRARY_PATH inside pwsh.
-# Must use the nix bin/pwsh wrapper (not share/powershell/pwsh) because the
-# wrapper sets LD_LIBRARY_PATH for .NET dependencies (libicu, openssl, etc.).
-# When run from a pwsh parent, PATH may resolve to the unwrapped inner binary
-# which lacks these library paths and aborts at startup.
-# The $env:LD_LIBRARY_PATH = $null inside pwsh prevents .NET from leaking
-# nix store library paths into child processes.
-# Usage: _io_pwsh_nop script.ps1 [-Param]  or  _io_pwsh_nop -c 'command'
-_io_pwsh_nop() {
-  local _pwsh="$HOME/.nix-profile/bin/pwsh"
-  if [[ "${1:-}" == "-c" ]]; then
-    shift
-    "$_pwsh" -nop -c '$env:LD_LIBRARY_PATH = $null; '"$1"
-  else
-    local _cmd
-    printf -v _cmd '$env:LD_LIBRARY_PATH = $null; & "%s"' "$1"
-    shift
-    [[ $# -gt 0 ]] && _cmd+=" $*"
-    "$_pwsh" -nop -c "$_cmd"
-  fi
-}
+# _io_pwsh_nop lives in .assets/lib/helpers.sh -- shared with setup_common.sh,
+# which runs out-of-process from nix/setup.sh and so cannot see io.sh's symbols.
+# helpers.sh is sourced right after io.sh in nix/setup.sh, so the function is
+# available by the time any phase invokes pwsh.
 
 # Marker prefix written by _io_step (in helpers.sh). _io_run recognizes it
 # in captured stderr and surfaces the LAST one on failure as "failed at step".
