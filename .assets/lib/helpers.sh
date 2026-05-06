@@ -5,6 +5,7 @@
 #   gh_login_user      -- log in to GitHub as the specified user using gh CLI
 #   install_atomic     -- copy a file via temp-file + same-filesystem rename
 #                         so concurrent readers never see a partial file
+#   _io_pwsh_nop       -- invoke pwsh -nop with nix vs. system pwsh handling
 
 # *Function to install a file atomically: write to temp + rename.
 # Same-filesystem rename(2) is atomic on POSIX, so any process that
@@ -232,4 +233,45 @@ function _with_timeout() {
 _IO_STEP_PREFIX="__IO_STEP__::"
 _io_step() {
   printf '%s%s\n' "$_IO_STEP_PREFIX" "$*" >&2
+}
+
+# Invoke pwsh -nop, handling nix-built and system pwsh differences.
+#
+# Nix-built pwsh's .NET runtime re-injects /nix/store library paths into
+# LD_LIBRARY_PATH at startup, which then leaks into child processes (nix
+# commands, glibc-mismatched). We must clear it inside the pwsh session
+# AND invoke the nix wrapper at ~/.nix-profile/bin/pwsh -- NOT the
+# unwrapped share/powershell/pwsh, which lacks libicu/openssl indirection
+# and aborts on startup. System-packaged pwsh has neither issue, so the
+# LD_LIBRARY_PATH dance is unnecessary.
+#
+# Resolution order:
+#   1. ~/.nix-profile/bin/pwsh exists -> use it, LD_LIBRARY_PATH cleared.
+#   2. Otherwise `command -v pwsh` (system install) -> use as-is.
+#   3. Neither -> return 1 with a clear error message.
+#
+# Usage: _io_pwsh_nop script.ps1 [-Param ...]
+#        _io_pwsh_nop -c '<inline command>'
+_io_pwsh_nop() {
+  local _pwsh _prefix=""
+  if [[ -x "$HOME/.nix-profile/bin/pwsh" ]]; then
+    _pwsh="$HOME/.nix-profile/bin/pwsh"
+    _prefix='$env:LD_LIBRARY_PATH = $null; '
+  else
+    _pwsh="$(command -v pwsh 2>/dev/null)"
+    if [[ -z "$_pwsh" ]]; then
+      printf "\e[31mError: pwsh not found (no ~/.nix-profile/bin/pwsh and not on PATH).\e[0m\n" >&2
+      return 1
+    fi
+  fi
+  if [[ "${1:-}" == "-c" ]]; then
+    shift
+    "$_pwsh" -nop -c "${_prefix}$1"
+  else
+    local _cmd
+    printf -v _cmd '%s& "%s"' "$_prefix" "$1"
+    shift
+    [[ $# -gt 0 ]] && _cmd+=" $*"
+    "$_pwsh" -nop -c "$_cmd"
+  fi
 }
