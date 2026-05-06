@@ -41,6 +41,8 @@ NIX_PATH_PATTERNS: tuple[str, ...] = (
 
 
 class Rule(NamedTuple):
+    """A regex pattern paired with a human-readable violation description."""
+
     pattern: re.Pattern[str]
     description: str
 
@@ -163,6 +165,7 @@ def check_file(filepath: Path) -> list[str]:
 
 
 def main(argv: list[str]) -> int:
+    """Scan nix-path shell scripts and report bash 3.2 / BSD violations."""
     repo_root = Path(__file__).resolve().parents[2]
     nix_files = _resolve_nix_path_files(repo_root)
 

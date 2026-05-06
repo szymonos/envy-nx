@@ -1,6 +1,7 @@
 """
-Generate nx tab completions and `nx help` text for bash, zsh, and
-PowerShell from .assets/lib/nx_surface.json.
+Generate nx tab completions and `nx help` text from nx_surface.json.
+
+Targets bash, zsh, and PowerShell.
 
 Outputs:
   - .assets/config/shell_cfg/completions.bash    (full file, overwritten)
@@ -82,6 +83,7 @@ def all_names(verb_or_subverb):
 
 
 def find_verb(manifest, name):
+    """Return the verb dict whose canonical name or alias matches `name`."""
     for v in manifest["verbs"]:
         if name in all_names(v):
             return v
@@ -89,6 +91,7 @@ def find_verb(manifest, name):
 
 
 def find_subverb(verb, name):
+    """Return the subverb dict under `verb` matching `name` or an alias."""
     for sv in verb.get("subverbs", []):
         if name in all_names(sv):
             return sv
@@ -96,14 +99,17 @@ def find_subverb(verb, name):
 
 
 def verbs_with_subverbs(manifest):
+    """Return verbs that declare a non-empty `subverbs` list."""
     return [v for v in manifest["verbs"] if v.get("subverbs")]
 
 
 def verbs_with_flags(manifest):
+    """Return verbs that declare a non-empty `flags` list."""
     return [v for v in manifest["verbs"] if v.get("flags")]
 
 
 def verbs_with_arg_completer(manifest):
+    """Return (verb, arg) pairs for verbs whose first arg has a completer."""
     out = []
     for v in manifest["verbs"]:
         for a in v.get("args", []):
@@ -114,6 +120,7 @@ def verbs_with_arg_completer(manifest):
 
 
 def subverbs_with_arg_completer(manifest):
+    """Return (verb, subverb, arg) triples for subverb args with a completer."""
     out = []
     for v in manifest["verbs"]:
         for sv in v.get("subverbs", []):
@@ -125,6 +132,7 @@ def subverbs_with_arg_completer(manifest):
 
 
 def subverbs_with_flags(manifest):
+    """Return (verb, subverb) pairs for subverbs that declare flags."""
     out = []
     for v in manifest["verbs"]:
         for sv in v.get("subverbs", []):
@@ -138,29 +146,41 @@ def subverbs_with_flags(manifest):
 # ---------------------------------------------------------------------------
 
 BASH_COMPLETER = {
-    "installed_packages": _dedent("""
-        local _pkgs
-        _pkgs="$(sed -n 's/^[[:space:]]*"\\([^"]*\\)".*/\\1/p' "$HOME/.config/nix-env/packages.nix" 2>/dev/null)"
-        [ -n "$_pkgs" ] && while IFS= read -r line; do COMPREPLY+=("$line"); done < <(compgen -W "$_pkgs" -- "$cur")
-    """),
-    "all_scopes": _dedent("""
-        local _scopes _env="$HOME/.config/nix-env" _nl=$'\\n'
-        _scopes="$(sed -n '/scopes[[:space:]]*=[[:space:]]*\\[/,/\\]/{ s/^[[:space:]]*"\\([^"]*\\)".*/\\1/p; }' "$_env/config.nix" 2>/dev/null | sed 's/^local_//')"
-        local _f _n
-        for _f in "$_env/scopes"/local_*.nix; do
-          [ -f "$_f" ] || continue
-          _n="$(basename "$_f" .nix)"
-          _n="${_n#local_}"
-          echo "$_scopes" | grep -qx "$_n" 2>/dev/null || _scopes="${_scopes:+$_scopes$_nl}$_n"
-        done
-        [ -n "$_scopes" ] && while IFS= read -r line; do COMPREPLY+=("$line"); done < <(compgen -W "$_scopes" -- "$cur")
-    """),
-    "theme_omp": _dedent("""
-        while IFS= read -r line; do COMPREPLY+=("$line"); done < <(compgen -W "base nerd powerline" -- "$cur")
-    """),
-    "theme_starship": _dedent("""
-        while IFS= read -r line; do COMPREPLY+=("$line"); done < <(compgen -W "base nerd" -- "$cur")
-    """),
+    "installed_packages": (
+        "local _pkgs\n"
+        '_pkgs="$(sed -n \'s/^[[:space:]]*"\\([^"]*\\)".*/\\1/p\' '
+        '"$HOME/.config/nix-env/packages.nix" 2>/dev/null)"\n'
+        '[ -n "$_pkgs" ] && '
+        'while IFS= read -r line; do COMPREPLY+=("$line"); done'
+        ' < <(compgen -W "$_pkgs" -- "$cur")'
+    ),
+    "all_scopes": (
+        "local _scopes _env=\"$HOME/.config/nix-env\" _nl=$'\\n'\n"
+        '_scopes="$(sed -n '
+        "'/scopes[[:space:]]*=[[:space:]]*\\[/,/\\]/"
+        '{ s/^[[:space:]]*"\\([^"]*\\)".*/\\1/p; }\' '
+        '"$_env/config.nix" 2>/dev/null | '
+        "sed 's/^local_//')\"\n"
+        "local _f _n\n"
+        'for _f in "$_env/scopes"/local_*.nix; do\n'
+        '  [ -f "$_f" ] || continue\n'
+        '  _n="$(basename "$_f" .nix)"\n'
+        '  _n="${_n#local_}"\n'
+        '  echo "$_scopes" | grep -qx "$_n" 2>/dev/null'
+        ' || _scopes="${_scopes:+$_scopes$_nl}$_n"\n'
+        "done\n"
+        '[ -n "$_scopes" ] && '
+        'while IFS= read -r line; do COMPREPLY+=("$line"); done'
+        ' < <(compgen -W "$_scopes" -- "$cur")'
+    ),
+    "theme_omp": (
+        'while IFS= read -r line; do COMPREPLY+=("$line"); done'
+        ' < <(compgen -W "base nerd powerline" -- "$cur")'
+    ),
+    "theme_starship": (
+        'while IFS= read -r line; do COMPREPLY+=("$line"); done'
+        ' < <(compgen -W "base nerd" -- "$cur")'
+    ),
 }
 
 
@@ -172,7 +192,8 @@ def bash_compgen(words):
     )
 
 
-def emit_bash(manifest):
+def emit_bash(manifest):  # noqa: C901 -- structural: bash completer has many shell-form branches
+    """Render the full bash completer file from the nx_surface manifest."""
     out = ["# bash tab completions for the nx command", GEN_NOTICE_SH.rstrip(), ""]
     out.append("function _nx_completions() {")
     out.append("  local cur prev")
@@ -212,7 +233,8 @@ def emit_bash(manifest):
         flags_with_completer = [f for f in v["flags"] if f.get("value_completer")]
         for vname in all_names(v):
             out.append(
-                f'  elif [ "$COMP_CWORD" -ge 2 ] && [ "${{COMP_WORDS[1]}}" = "{vname}" ]; then'
+                '  elif [ "$COMP_CWORD" -ge 2 ] && '
+                f'[ "${{COMP_WORDS[1]}}" = "{vname}" ]; then'
             )
             if flags_with_completer:
                 out.append('    case "$prev" in')
@@ -235,7 +257,8 @@ def emit_bash(manifest):
         for vname in all_names(v):
             for svname in all_names(sv):
                 out.append(
-                    f'  elif [ "$COMP_CWORD" -ge 3 ] && [ "${{COMP_WORDS[1]}}" = "{vname}" ] '
+                    '  elif [ "$COMP_CWORD" -ge 3 ] '
+                    f'&& [ "${{COMP_WORDS[1]}}" = "{vname}" ] '
                     f'&& [ "${{COMP_WORDS[2]}}" = "{svname}" ]; then'
                 )
                 out.append(f"    {bash_compgen(flag_names)}")
@@ -253,7 +276,8 @@ def emit_bash(manifest):
         )
         for vname in all_names(verb):
             out.append(
-                f'  elif [ "$COMP_CWORD" -ge 3 ] && [ "${{COMP_WORDS[1]}}" = "{vname}" ] '
+                '  elif [ "$COMP_CWORD" -ge 3 ] '
+                f'&& [ "${{COMP_WORDS[1]}}" = "{vname}" ] '
                 f"&& {{ {match_clause}; }}; then"
             )
             out.append(_indent_block(BASH_COMPLETER[completer], "    "))
@@ -288,11 +312,13 @@ fi
 """
 
 ZSH_COMPLETER = {
-    "installed_packages": _dedent("""
-        local -a _pkgs
-        _pkgs=("${(@f)$(sed -n 's/^[[:space:]]*"\\([^"]*\\)".*/\\1/p' "$HOME/.config/nix-env/packages.nix" 2>/dev/null)}")
-        [[ -n "${_pkgs[*]}" ]] && _describe 'package' _pkgs
-    """),
+    "installed_packages": (
+        "local -a _pkgs\n"
+        '_pkgs=("${(@f)$(sed -n '
+        '\'s/^[[:space:]]*"\\([^"]*\\)".*/\\1/p\' '
+        '"$HOME/.config/nix-env/packages.nix" 2>/dev/null)}")\n'
+        "[[ -n \"${_pkgs[*]}\" ]] && _describe 'package' _pkgs"
+    ),
     "all_scopes": _dedent("""
         local _env="$HOME/.config/nix-env"
         local -a _scopes
@@ -313,7 +339,8 @@ ZSH_COMPLETER = {
 }
 
 
-def emit_zsh(manifest):
+def emit_zsh(manifest):  # noqa: C901 -- structural: zsh completer has many shell-form branches
+    """Render the full zsh completer file from the nx_surface manifest."""
     out = [ZSH_PREAMBLE.rstrip(), GEN_NOTICE_SH.rstrip(), ""]
     out.append("function _nx() {")
     out.append("  local -a subcmds")
@@ -392,8 +419,9 @@ def emit_zsh(manifest):
                     out.append(f"        _describe 'flag' {sv['name']}_flags")
                     out.append("      fi")
             elif sv_flags and sv_arg:
-                # both completers and flags: fold flags into the existing CURRENT >= 4 block
-                # (rare path, only matters if a subverb has both - currently none do)
+                # both completers and flags: fold flags into the existing
+                # CURRENT >= 4 block (rare path, only matters if a subverb
+                # has both - currently none do)
                 pass
             out.append("    fi")
 
@@ -461,15 +489,18 @@ PS_COMPLETER = {
         "                if (Test-Path $cfgFile) {\n"
         "                    $inScopes = $false\n"
         "                    (Get-Content $cfgFile) | ForEach-Object {\n"
-        "                        if ($_ -match 'scopes\\s*=\\s*\\[') { $inScopes = $true }\n"
+        "                        if ($_ -match 'scopes\\s*=\\s*\\[') "
+        "{ $inScopes = $true }\n"
         '                        if ($inScopes -and $_ -match \'^\\s*"([^"]+)"\') { '
         "$scopeNames += $Matches[1] -replace '^local_', '' }\n"
-        "                        if ($inScopes -and $_ -match '\\]') { $inScopes = $false }\n"
+        "                        if ($inScopes -and $_ -match '\\]') "
+        "{ $inScopes = $false }\n"
         "                    }\n"
         "                }\n"
         '                $scopesDir = "$envDir/scopes"\n'
         "                if (Test-Path $scopesDir) {\n"
-        '                    Get-ChildItem "$scopesDir/local_*.nix" -ErrorAction SilentlyContinue | ForEach-Object {\n'
+        '                    Get-ChildItem "$scopesDir/local_*.nix" '
+        "-ErrorAction SilentlyContinue | ForEach-Object {\n"
         "                        $n = $_.BaseName -replace '^local_', ''\n"
         "                        if ($n -notin $scopeNames) { $scopeNames += $n }\n"
         "                    }\n"
@@ -482,6 +513,7 @@ PS_COMPLETER = {
 
 
 def ps_quoted(items):
+    """Return PowerShell-quoted comma-separated items: foo, bar -> 'foo', 'bar'."""
     return ", ".join(f"'{n}'" for n in items)
 
 
@@ -514,7 +546,8 @@ def emit_ps_region(manifest):
         sv_names = [n for sv in v["subverbs"] for n in all_names(sv)]
         kw = "if" if first else "elseif"
         lines.append(
-            f"            {kw} ($tokens[1].Value -eq '{v['name']}') {{ {ps_quoted(sv_names)} }}"
+            f"            {kw} ($tokens[1].Value -eq '{v['name']}')"
+            f" {{ {ps_quoted(sv_names)} }}"
         )
         first = False
     for v in verbs_with_flags(manifest):
@@ -534,7 +567,8 @@ def emit_ps_region(manifest):
         first = False
     lines.append("        }")
 
-    # default (pos >= 3): subverb flags, subverb arg completer, verb-level flags + arg completer continuation
+    # default (pos >= 3): subverb flags, subverb arg completer, verb-level flags
+    # + arg completer continuation
     lines.append("        default {")
     first = True
     for v, sv in subverbs_with_flags(manifest):
@@ -595,10 +629,12 @@ def emit_ps_region(manifest):
 
     lines.append("    }")
     lines.append(
-        '    $completions | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {'
+        '    $completions | Where-Object { $_ -like "$wordToComplete*" }'
+        " | ForEach-Object {"
     )
     lines.append(
-        "        [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)"
+        "        [System.Management.Automation.CompletionResult]::new("
+        "$_, $_, 'ParameterValue', $_)"
     )
     lines.append("    }")
     lines.append("}")
@@ -612,7 +648,8 @@ def emit_ps_region(manifest):
 
 
 def _help_args_repr(verb):
-    """Derive the args column for `nx help` from a manifest verb.
+    """
+    Derive the args column for `nx help` from a manifest verb.
 
     `help_args` overrides everything (used by `setup` to emit `[flags...]`
     since its primary surface is passthrough flags, not positional args).
@@ -641,7 +678,8 @@ def _help_summary(verb):
 
 
 def _verb_handler(verb):
-    """Resolve the bash handler function for a top-level verb.
+    """
+    Resolve the bash handler function for a top-level verb.
 
     Convention:
       - verbs with subverbs route to `_nx_<name>_dispatch` (the family file
@@ -662,19 +700,22 @@ def _verb_handler(verb):
 
 
 def _verb_forwards_args(verb):
-    """A verb forwards `"$@"` to its handler iff it accepts further input:
-    args, flags, or subverbs. Static-payload verbs (`list`, `prune`, `version`,
-    `help`, `gc`, `rollback`) get no forwarding so the dispatcher matches
-    function intent.
+    """
+    Return True when the verb forwards `"$@"` to its handler.
+
+    A verb forwards iff it accepts further input: args, flags, or subverbs.
+    Static-payload verbs (`list`, `prune`, `version`, `help`, `gc`,
+    `rollback`) get no forwarding so the dispatcher matches function intent.
     """
     return bool(verb.get("args") or verb.get("flags") or verb.get("subverbs"))
 
 
 def _ps_helper_for_subverb(name):
-    """Map a `nx profile <subverb>` name to the PowerShell helper function
-    invoked by the dispatcher. Mirrors the bash convention but PS uses
-    PascalCase. The PS dispatcher is pure routing after the uninstall arm
-    is extracted to its own helper.
+    """
+    Map a `nx profile <subverb>` name to its PowerShell helper function.
+
+    Mirrors the bash convention but PS uses PascalCase. The PS dispatcher
+    is pure routing after the uninstall arm is extracted to its own helper.
     """
     return {
         "regenerate": "_NxProfileRegenerate",
@@ -690,7 +731,8 @@ def _ps_helper_for_subverb(name):
 
 
 def emit_nx_main(manifest):
-    """Emit the case arms inside `function nx_main`'s `case "$cmd" in ... esac`.
+    """
+    Emit the case arms inside `function nx_main`'s `case "$cmd" in ... esac`.
 
     Output is the marker-wrapped block that NX_MAIN_REGION_RE captures:
     first line starts at `# >>>` (no leading whitespace - regex anchors
@@ -699,7 +741,8 @@ def emit_nx_main(manifest):
     owns the whole case body.
     """
     out = [
-        "# >>> nx-main generated >>> (regenerate: python3 -m tests.hooks.gen_nx_completions)"
+        "# >>> nx-main generated >>>"
+        " (regenerate: python3 -m tests.hooks.gen_nx_completions)"
     ]
     for v in manifest["verbs"]:
         names = " | ".join(all_names(v))
@@ -723,7 +766,8 @@ def emit_nx_main(manifest):
 
 
 def emit_ps_profile_dispatch(manifest):
-    """Emit the `switch ($subCmd) { ... }` arms for `nx profile` subverbs.
+    """
+    Emit the `switch ($subCmd) { ... }` arms for `nx profile` subverbs.
 
     Wrapped in `#region nx:dispatch ... #endregion nx:dispatch` so the
     surrounding switch statement (header + `default` arm) stays hand-written.
@@ -754,7 +798,8 @@ def emit_ps_profile_dispatch(manifest):
 
 
 def _lib_files_list(manifest):
-    """The canonical list of files synced into ~/.config/nix-env/.
+    """
+    The canonical list of files synced into ~/.config/nix-env/.
 
     nx.sh + family files (from manifest-implied family set) + always-present
     profile_block.sh. nx_doctor.sh appends DOCTOR_AUXILIARY_FILES (flake.nix,
@@ -778,7 +823,8 @@ def _lib_files_list(manifest):
 
 
 def emit_lib_files_region(manifest, loop_var, include_aux=False):
-    """Emit the marker-wrapped `for X in <files>; do` line for one call site.
+    """
+    Emit the marker-wrapped `for X in <files>; do` line for one call site.
 
     Each of bootstrap.sh / nx_lifecycle.sh / nx_doctor.sh has its own loop
     var (`_nx_lib`, `f`, `_f`) and gets its own region wrapping just the
@@ -794,14 +840,16 @@ def emit_lib_files_region(manifest, loop_var, include_aux=False):
     # sits at 4 spaces because shfmt treats it as the first statement inside
     # the for-loop body and indents accordingly.
     return (
-        "# >>> nx-libs generated >>> (regenerate: python3 -m tests.hooks.gen_nx_completions)\n"
+        "# >>> nx-libs generated >>>"
+        " (regenerate: python3 -m tests.hooks.gen_nx_completions)\n"
         f"  for {loop_var} in {' '.join(files)}; do\n"
         "    # <<< nx-libs generated <<<"
     )
 
 
 def emit_lifecycle_help(manifest):
-    """Emit the `_nx_lifecycle_help` function body, marker-wrapped.
+    """
+    Emit the `_nx_lifecycle_help` function body, marker-wrapped.
 
     Output is the full bash function definition between
     `# >>> nx-help generated >>>` / `# <<< nx-help generated <<<`.
@@ -825,7 +873,8 @@ def emit_lifecycle_help(manifest):
 
     out = []
     out.append(
-        "# >>> nx-help generated >>> (regenerate: python3 -m tests.hooks.gen_nx_completions)"
+        "# >>> nx-help generated >>>"
+        " (regenerate: python3 -m tests.hooks.gen_nx_completions)"
     )
     out.append("function _nx_lifecycle_help() {")
     out.append("  cat <<'NX_HELP_EOF'")
@@ -842,8 +891,11 @@ def emit_lifecycle_help(manifest):
 
 
 def _replace_region(path, region_re, new_block, label):
-    """Replace a marker-wrapped region in `path` with `new_block`. Raises
-    SystemExit if the markers are not found (catches "forgot to add markers").
+    """
+    Replace a marker-wrapped region in `path` with `new_block`.
+
+    Raises SystemExit if the markers are not found (catches "forgot to
+    add markers").
     """
     text = path.read_text()
     if not region_re.search(text):
@@ -857,6 +909,7 @@ def _replace_region(path, region_re, new_block, label):
 
 
 def main():
+    """Regenerate every nx tab completion / dispatch / help artifact."""
     manifest = json.loads(MANIFEST.read_text())
 
     BASH_OUT.write_text(emit_bash(manifest))

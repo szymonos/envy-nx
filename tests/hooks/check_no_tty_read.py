@@ -1,6 +1,8 @@
 """
-Forbid `read ... </dev/tty` in shell scripts unless paired with a `# tty-ok`
-suppression marker.
+Forbid `read ... </dev/tty` in shell scripts unless paired with `# tty-ok`.
+
+`read ... </dev/tty` is forbidden in shell scripts unless paired with a
+`# tty-ok` suppression marker.
 
 Why: `read -r reply </dev/tty` opens the SESSION's controlling terminal
 directly, bypassing stdin redirects entirely. So `bash $SCRIPT </dev/null`
@@ -70,6 +72,7 @@ def _scan(path: Path) -> list[tuple[int, str]]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Scan shell scripts for unsuppressed `read ... </dev/tty` patterns."""
     args = argv or []
     if args:
         # pre-commit invocation: only check files passed in

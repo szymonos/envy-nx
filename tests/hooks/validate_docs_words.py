@@ -39,8 +39,15 @@ def main() -> None:
         cfg = json.loads(cspell_path.read_text())
         exclude = set(cfg.get("ignorePaths", []))
 
-    # gather all markdown files in the repo
-    files = sorted(root.rglob("*.md"))
+    # gather git-tracked markdown files (matches CI; ignores untracked/gitignored)
+    result = subprocess.run(
+        ["git", "ls-files", "-z"],
+        capture_output=True,
+        text=True,
+        cwd=root,
+        check=True,
+    )
+    files = sorted(root / p for p in result.stdout.split("\0") if p.endswith(".md"))
     files = [
         f
         for f in files

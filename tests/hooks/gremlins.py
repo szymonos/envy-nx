@@ -71,7 +71,8 @@ def is_text_file(path: str) -> bool:
 
 
 def fix_and_report(path: str) -> tuple[list[str], list[str]]:
-    """Auto-fix what we can, report what we cannot.
+    """
+    Auto-fix what we can, report what we cannot.
 
     Returns (fixed_reports, unfixable_reports).
     """
@@ -107,6 +108,7 @@ def fix_and_report(path: str) -> tuple[list[str], list[str]]:
 
 
 def check_gremlins(argv: Iterable[str]) -> int:
+    """Scan files for invisible/gremlin characters; auto-fix or report."""
     files = list(argv)
     all_fixed: list[str] = []
     all_unfixable: list[str] = []

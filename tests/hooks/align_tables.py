@@ -14,11 +14,13 @@ import unicodedata
 
 
 def _display_width(text: str) -> int:
-    """Return the monospace display width of *text*.
+    """
+    Return the monospace display width of *text*.
 
     Wide characters (most emoji, CJK) count as 2 columns.
     Zero-width characters (combining marks, variation selectors, ZWJ) count as 0.
-    A base character followed by VS16 (U+FE0F) is forced to width 2 (emoji presentation).
+    A base character followed by VS16 (U+FE0F) is forced to width 2
+    (emoji presentation).
     """
     width = 0
     chars = list(text)

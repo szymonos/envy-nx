@@ -51,6 +51,8 @@ from typing import NamedTuple
 
 
 class Rule(NamedTuple):
+    """A zsh-compat regex pattern with description and BASH_VERSION-guard flag."""
+
     pattern: re.Pattern[str]
     description: str
     guarded: bool = False
@@ -144,9 +146,13 @@ _RE_BASH_SOURCE_EQ_TEST = re.compile(r"\$\{?BASH_SOURCE\b.*\s==?\s")
 
 
 def _mask_squoted(line: str) -> str:
-    """Replace single-quoted string contents with spaces so rule patterns
-    don't match inside literal text (e.g. `printf 'complete -W "'`). Length
-    is preserved so column-style diagnostics would still align."""
+    """
+    Replace single-quoted string contents with spaces.
+
+    Stops rule patterns from matching inside literal text (e.g. `printf
+    'complete -W "'`). Length is preserved so column-style diagnostics
+    would still align.
+    """
     return _RE_SQUOTED.sub(lambda m: "'" + " " * (len(m.group(0)) - 2) + "'", line)
 
 
@@ -163,7 +169,7 @@ def _bash_source_safe(line: str, in_bash_source_guard: bool) -> bool:
     return False
 
 
-def check_file(filepath: Path) -> list[str]:
+def check_file(filepath: Path) -> list[str]:  # noqa: C901 -- structural: many guard/state branches
     """Check a single file for zsh compatibility violations."""
     problems: list[str] = []
     try:
@@ -254,6 +260,7 @@ def _zsh_syntax_check(filepath: Path) -> list[str]:
 
 
 def main(argv: list[str]) -> int:
+    """Run zsh-compat rule scan plus optional `zsh -n` over given files."""
     if not argv:
         return 0
 

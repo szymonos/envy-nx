@@ -5,7 +5,8 @@ Input:  nix path-info --json --recursive on stdin (dict keyed by store path)
 Output: SPDX 2.3 JSON on stdout
 
 # :example
-nix path-info --json --recursive "$(nix build --print-out-paths)" | python3 -m tests.hooks.nix_closure_to_spdx > sbom.spdx.json
+nix path-info --json --recursive "$(nix build --print-out-paths)" \
+  | python3 -m tests.hooks.nix_closure_to_spdx > sbom.spdx.json
 # :generate closure list alongside
 nix path-info --recursive "$(nix build --print-out-paths)" | sort > closure.txt
 """
@@ -20,6 +21,7 @@ STORE_PATH_RE = re.compile(r"/nix/store/[a-z0-9]{32}-(.+)")
 
 
 def parse_name_version(store_path: str) -> tuple[str, str]:
+    """Split a Nix store path into (package_name, version) by trailing dash."""
     m = STORE_PATH_RE.match(store_path)
     if not m:
         return store_path, ""
@@ -32,11 +34,13 @@ def parse_name_version(store_path: str) -> tuple[str, str]:
 
 
 def spdx_id(name: str) -> str:
+    """Return an SPDXRef- identifier built from a sanitized package name."""
     safe = re.sub(r"[^a-zA-Z0-9._-]", "-", name)
     return f"SPDXRef-{safe}"
 
 
 def main() -> int:
+    """Read nix path-info JSON from stdin; emit an SPDX 2.3 document."""
     try:
         data = json.load(sys.stdin)
     except json.JSONDecodeError as e:
