@@ -53,6 +53,8 @@ setup() {
 
   # set up variables needed by phases
   ENV_DIR="$TEST_ENV_DIR"
+  DEV_ENV_DIR="$TEST_HOME/.config/dev-env"
+  mkdir -p "$DEV_ENV_DIR"
   CONFIG_NIX="$ENV_DIR/config.nix"
   allow_unfree="false"
   _ir_skip=false
@@ -742,6 +744,45 @@ _scope_pkgs() {
   SECONDS=0
   phase_nix_profile_apply
   grep -q 'nix profile add path:' "$BATS_TEST_TMPDIR/nix.log"
+  grep -q 'nix profile upgrade nix-env' "$BATS_TEST_TMPDIR/nix.log"
+}
+
+@test "nix_profile: apply skips upgrade when narHash matches last-applied" {
+  : >"$BATS_TEST_TMPDIR/nix.log"
+  # Pretend nix-env is already installed so we don't take the add branch.
+  _io_nix() {
+    case "$*" in
+    'profile list --json') echo '{"elements":[{"originalUrl":"path:.../nix-env"}]}' ;;
+    'flake metadata '*' --json') echo '{"locked":{"narHash":"sha256-FAKE"}}' ;;
+    *) echo "nix $*" >>"$BATS_TEST_TMPDIR/nix.log" ;;
+    esac
+  }
+  command -v jq >/dev/null 2>&1 || skip "jq required for narHash extraction"
+  mkdir -p "$DEV_ENV_DIR"
+  echo "sha256-FAKE" >"$DEV_ENV_DIR/last-applied-narhash"
+  upgrade_packages="false"
+  SECONDS=0
+  run phase_nix_profile_apply
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == *"narHash unchanged"* ]]
+  ! grep -q 'nix profile upgrade nix-env' "$BATS_TEST_TMPDIR/nix.log"
+}
+
+@test "nix_profile: apply runs upgrade when --upgrade is set even if narHash matches" {
+  : >"$BATS_TEST_TMPDIR/nix.log"
+  _io_nix() {
+    case "$*" in
+    'profile list --json') echo '{"elements":[{"originalUrl":"path:.../nix-env"}]}' ;;
+    'flake metadata '*' --json') echo '{"locked":{"narHash":"sha256-FAKE"}}' ;;
+    *) echo "nix $*" >>"$BATS_TEST_TMPDIR/nix.log" ;;
+    esac
+  }
+  command -v jq >/dev/null 2>&1 || skip "jq required for narHash extraction"
+  mkdir -p "$DEV_ENV_DIR"
+  echo "sha256-FAKE" >"$DEV_ENV_DIR/last-applied-narhash"
+  upgrade_packages="true"
+  SECONDS=0
+  phase_nix_profile_apply
   grep -q 'nix profile upgrade nix-env' "$BATS_TEST_TMPDIR/nix.log"
 }
 
