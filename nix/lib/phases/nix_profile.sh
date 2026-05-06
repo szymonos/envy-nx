@@ -46,6 +46,13 @@ phase_nix_profile_update_flake() {
 }
 
 phase_nix_profile_apply() {
+  # narHash is the flake's content hash (stable across mtime bumps). Stored
+  # OUTSIDE ENV_DIR (~/.config/dev-env/, alongside install.json) so writing
+  # it doesn't itself advance the path:flake's lastModified.
+  local _narhash _last_narhash _cookie="$DEV_ENV_DIR/last-applied-narhash"
+  _narhash="$(_io_nix flake metadata "$ENV_DIR" --json 2>/dev/null | jq -r '.locked.narHash // empty' 2>/dev/null)" || _narhash=""
+  _last_narhash="$(cat "$_cookie" 2>/dev/null || true)"
+
   if ! _io_nix profile list --json 2>/dev/null | grep -q 'nix-env'; then
     _io_nix profile add "path:$ENV_DIR" 2>&1 ||
       {
@@ -54,12 +61,26 @@ phase_nix_profile_apply() {
         exit 1
       }
   fi
-  _io_nix profile upgrade nix-env ||
-    {
-      _ir_error="nix profile upgrade failed"
-      err "$_ir_error"
-      exit 1
-    }
+
+  # Skip the upgrade only when we have positive evidence it would be a
+  # no-op (narHash matches the last applied AND user didn't pass --upgrade).
+  # If narHash is unavailable (jq missing, flake metadata failed) we fall
+  # through to running the upgrade as before -- graceful degradation.
+  if [[ -n "$_narhash" && "$_narhash" = "$_last_narhash" && "${upgrade_packages:-false}" != "true" ]]; then
+    ok "nix profile already in sync (narHash unchanged) - skipped upgrade"
+  else
+    _io_nix profile upgrade nix-env ||
+      {
+        _ir_error="nix profile upgrade failed"
+        err "$_ir_error"
+        exit 1
+      }
+  fi
+
+  if [[ -n "$_narhash" ]]; then
+    mkdir -p "$DEV_ENV_DIR"
+    printf '%s\n' "$_narhash" >"$_cookie"
+  fi
   ok "nix profile updated in ${SECONDS}s"
 }
 

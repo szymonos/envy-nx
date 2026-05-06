@@ -67,7 +67,9 @@ minisign
 mkdocs
 mktemp
 modularizes
+mtimes
 namerefs
+narhash
 nixos
 nixpkgs
 nmap

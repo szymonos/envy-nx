@@ -32,6 +32,16 @@ install_atomic() {
     rm -f "$tmp"
     return 1
   fi
+  # Skip the rename when dst already has identical content. cp -p + mv -f
+  # would otherwise stamp dst with the source's mtime even on a no-op
+  # write -- and any mtime bump under ~/.config/nix-env/ advances the
+  # path:flake's lastModified, which makes single-user `nix profile
+  # upgrade nix-env` re-realize the buildEnv (new generation, ~175 MiB
+  # churn through gc) on every setup run.
+  if [ -f "$dst" ] && cmp -s "$tmp" "$dst"; then
+    rm -f "$tmp"
+    return 0
+  fi
   mv -f "$tmp" "$dst"
 }
 
