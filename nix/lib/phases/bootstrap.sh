@@ -134,6 +134,8 @@ phase_bootstrap_print_banner() {
 phase_bootstrap_ensure_certs() {
   # shellcheck source=../../../.assets/lib/certs.sh
   source "$SCRIPT_ROOT/.assets/lib/certs.sh"
+  # Merge before build_ca_bundle so macOS rebuild picks up the local certs.
+  merge_local_certs "$SCRIPT_ROOT/.assets/certs"
   build_ca_bundle
   # If env vars still point to a missing file (e.g. build_ca_bundle no-op'd
   # on an unsupported Linux distro without /etc/ssl/certs), unset so nix
