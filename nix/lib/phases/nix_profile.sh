@@ -115,7 +115,7 @@ phase_nix_profile_mitm_probe() {
       local _bypass_ok=false
       _io_curl_probe_insecure "$NIX_ENV_TLS_PROBE_URL" && _bypass_ok=true
       if [[ "$_bypass_ok" == "true" ]]; then
-        warn "SSL verification failed - MITM proxy detected, intercepting certificates..."
+        info "corporate TLS proxy detected on $NIX_ENV_TLS_PROBE_URL - importing its certificates into ~/.config/certs/ca-custom.crt so nix-built tools can connect (this is expected on corporate networks)"
         # shellcheck source=../../../.assets/config/shell_cfg/functions.sh
         source "$SCRIPT_ROOT/.assets/config/shell_cfg/functions.sh"
         cert_intercept

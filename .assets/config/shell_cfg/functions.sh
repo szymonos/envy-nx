@@ -213,29 +213,27 @@ function cert_intercept() {
   # ensure cert directory exists
   mkdir -p "$HOME/.config/certs"
 
-  # read existing serials from bundle for deduplication
+  # PEM-walk (not `openssl storeutl -text`): storeutl emits
+  # `<decimal> (0x<lowercase-hex>)`, which can't substring-match the
+  # uppercase-hex format `openssl x509 -serial` produces (used for new
+  # candidates below + by the WSL fork's ConvertTo-PEM headers). Walking
+  # PEM blocks keeps the format normalized end-to-end.
   local _existing_serials=" "
   if [ -f "$cert_bundle" ]; then
-    while IFS= read -r serial; do
-      [ -n "$serial" ] && _existing_serials+="$serial "
-    done < <(openssl storeutl -noout -text -certs "$cert_bundle" 2>/dev/null | sed -n 's/.*Serial Number: *//p' || true)
-    # fallback: parse PEM blocks and extract serials individually
-    if [ "$_existing_serials" = " " ]; then
-      local current_pem=""
-      while IFS= read -r line; do
-        if [[ "$line" == "-----BEGIN CERTIFICATE-----" ]]; then
-          current_pem="$line"
-        elif [[ "$line" == "-----END CERTIFICATE-----" ]]; then
-          current_pem+=$'\n'"$line"
-          local ser
-          ser=$(openssl x509 -noout -serial <<<"$current_pem" 2>/dev/null | cut -d= -f2)
-          [ -n "$ser" ] && _existing_serials+="$ser "
-          current_pem=""
-        elif [[ -n "$current_pem" ]]; then
-          current_pem+=$'\n'"$line"
-        fi
-      done <"$cert_bundle"
-    fi
+    local current_pem=""
+    while IFS= read -r line; do
+      if [[ "$line" == "-----BEGIN CERTIFICATE-----" ]]; then
+        current_pem="$line"
+      elif [[ "$line" == "-----END CERTIFICATE-----" ]]; then
+        current_pem+=$'\n'"$line"
+        local ser
+        ser=$(openssl x509 -noout -serial <<<"$current_pem" 2>/dev/null | cut -d= -f2)
+        [ -n "$ser" ] && _existing_serials+="$ser "
+        current_pem=""
+      elif [[ -n "$current_pem" ]]; then
+        current_pem+=$'\n'"$line"
+      fi
+    done <"$cert_bundle"
   fi
 
   for uri in "${uris[@]}"; do

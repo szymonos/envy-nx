@@ -130,6 +130,19 @@ process {
             $_
         }
     }
+    # add stored local certificates from .assets/certs/ (gitignored)
+    $localCertDir = '.assets/certs'
+    if (Test-Path $localCertDir -PathType Container) {
+        Get-ChildItem $localCertDir -File -Filter '*.crt' | ForEach-Object {
+            try {
+                $cert = ConvertFrom-PEM -Path $_.FullName
+                $certSet.Add($cert) | Out-Null
+            } catch {
+                Write-Warning "failed to parse $($_.Name): $($_.Exception.Message)"
+            }
+        }
+    }
+
     # check if root certificate from chain is in the cert store
     Write-Host "`e[1mIntercepted certificates from TLS chain`e[0m"
     foreach ($cert in $certSet) {

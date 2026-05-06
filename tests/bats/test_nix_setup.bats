@@ -905,7 +905,7 @@ STUB
 
   local fake_root="$BATS_TEST_TMPDIR/fake_root_ensure"
   mkdir -p "$fake_root/.assets/lib"
-  echo 'build_ca_bundle() { touch "$HOME/.config/certs/ca-bundle.crt"; }' >"$fake_root/.assets/lib/certs.sh"
+  echo 'merge_local_certs() { :; }; build_ca_bundle() { touch "$HOME/.config/certs/ca-bundle.crt"; }' >"$fake_root/.assets/lib/certs.sh"
   SCRIPT_ROOT="$fake_root"
 
   phase_bootstrap_ensure_certs
@@ -925,7 +925,7 @@ STUB
   # Stub build_ca_bundle as a no-op (simulating an unsupported distro
   # where neither /etc/ssl/certs/* nor security exist) so the file stays
   # missing - the self-heal branch is what we want to exercise.
-  echo 'build_ca_bundle() { :; }' >"$fake_root/.assets/lib/certs.sh"
+  echo 'merge_local_certs() { :; }; build_ca_bundle() { :; }' >"$fake_root/.assets/lib/certs.sh"
   SCRIPT_ROOT="$fake_root"
 
   run phase_bootstrap_ensure_certs
@@ -948,7 +948,7 @@ STUB
 
   local fake_root="$BATS_TEST_TMPDIR/fake_root_keep"
   mkdir -p "$fake_root/.assets/lib"
-  echo 'build_ca_bundle() { :; }' >"$fake_root/.assets/lib/certs.sh"
+  echo 'merge_local_certs() { :; }; build_ca_bundle() { :; }' >"$fake_root/.assets/lib/certs.sh"
   SCRIPT_ROOT="$fake_root"
 
   phase_bootstrap_ensure_certs

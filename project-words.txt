@@ -21,6 +21,7 @@ compreply
 coreutils
 cowsay
 cword
+dedup
 desync
 devbox
 diskpart
@@ -72,6 +73,7 @@ nixpkgs
 nmap
 nodeenv
 nomatch
+noout
 otbs
 pasteable
 pcre
@@ -99,6 +101,7 @@ slsa
 sonoma
 sourceable
 stdlib
+storeutl
 subshells
 subverb
 subverbs
