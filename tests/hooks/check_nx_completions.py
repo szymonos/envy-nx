@@ -1,6 +1,7 @@
 """
-Verify every artifact `gen_nx_completions` produces matches what's
-committed - completers, `nx help`, `nx_main` dispatcher, PS profile
+Verify every gen_nx_completions artifact matches what is committed.
+
+Covers completers, `nx help`, `nx_main` dispatcher, PS profile
 dispatch, and the lib-file lists across bootstrap/lifecycle/doctor.
 
 Catches drift in either direction:
@@ -39,6 +40,7 @@ def _check_region(path, region_re, expected, label, failures):
 
 
 def main():
+    """Compare each generated artifact against gen_nx_completions output."""
     manifest = json.loads(gen.MANIFEST.read_text())
     failures = []
 

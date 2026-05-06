@@ -23,7 +23,8 @@ SCOPES_DIR = REPO_ROOT / "nix" / "scopes"
 BINS_RE = re.compile(r"^# bins:\s+\S", re.MULTILINE)
 
 
-def validate() -> int:
+def validate() -> int:  # noqa: C901 -- structural: many independent consistency checks
+    """Cross-check scopes.json against scope .nix files; return 1 on errors."""
     if not SCOPES_JSON.exists():
         print(f"ERROR: {SCOPES_JSON} not found", file=sys.stderr)
         return 1
@@ -59,7 +60,8 @@ def validate() -> int:
         for target in rule["add"]:
             if target not in valid:
                 errors.append(
-                    f"dependency rule target '{target}' (from '{trigger}') not in valid_scopes"
+                    f"dependency rule target '{target}' (from '{trigger}') "
+                    "not in valid_scopes"
                 )
 
     # every scope must have a .nix file with a '# bins:' comment

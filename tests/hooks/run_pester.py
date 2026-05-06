@@ -79,6 +79,7 @@ def build_source_map() -> dict[str, list[Path]]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run Pester tests covering the PowerShell files passed in."""
     if not shutil.which("pwsh"):
         print("pwsh not found, skipping Pester tests", file=sys.stderr)
         return 0
@@ -147,7 +148,8 @@ def main(argv: list[str] | None = None) -> int:
             'Write-Host "`e[31m$($errs.Count) runspace(s) crashed:`e[0m"; '
             'foreach ($e in $errs) { Write-Host "  $e" }; '
             "exit 1 } "
-            "$failed = ($bag.ToArray() | Measure-Object -Property FailedCount -Sum).Sum; "
+            "$failed = ($bag.ToArray() | "
+            "Measure-Object -Property FailedCount -Sum).Sum; "
             "if ($failed -gt 0) { exit 1 }"
         )
 

@@ -66,7 +66,8 @@ def _validate_section_order(
             if cur < last_order:
                 prev_name = SECTION_ORDER[last_order]
                 errors.append(
-                    f"  line {lineno}: [{release}] '### {section}' must come before '### {prev_name}'"
+                    f"  line {lineno}: [{release}] '### {section}' must come "
+                    f"before '### {prev_name}'"
                 )
             last_order = cur
 
@@ -123,6 +124,7 @@ def validate_headings(changelog: Path) -> list[str]:
 
 
 def has_unreleased_content(changelog: Path) -> bool:
+    """Return True if CHANGELOG has any non-blank lines under ## [Unreleased]."""
     if not changelog.exists():
         return False
     lines = changelog.read_text().splitlines()
@@ -152,6 +154,7 @@ def _staged_files() -> set[str]:
 
 
 def main(argv: list[str]) -> int:
+    """Validate CHANGELOG heading structure and Unreleased coverage."""
     rc = 0
 
     # always validate heading structure when CHANGELOG.md is in scope
@@ -181,7 +184,8 @@ def main(argv: list[str]) -> int:
                         f"    ... and {len(runtime_files) - 10} more", file=sys.stderr
                     )
                 print(
-                    "\nAdd a CHANGELOG entry or use the skip-changelog label to bypass.",
+                    "\nAdd a CHANGELOG entry or use the skip-changelog label "
+                    "to bypass.",
                     file=sys.stderr,
                 )
                 rc = 1

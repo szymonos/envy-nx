@@ -66,6 +66,7 @@ def build_source_map() -> dict[str, list[Path]]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run bats tests covering the source files passed (or all changed)."""
     if not shutil.which("bats"):
         print("bats not found, skipping tests", file=sys.stderr)
         return 0
