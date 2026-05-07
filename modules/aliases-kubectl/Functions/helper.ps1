@@ -642,7 +642,7 @@ New-Alias -Name kcsctxcns -Value Set-KubectlContextCurrentNamespace
 New-Alias -Name kex -Value Connect-KubernetesContainer
 New-Alias -Name kdbg -Value Debug-KubernetesPod
 New-Alias -Name klo -Value Get-KubectlPodLogs
-if (Test-Path '/usr/bin/kubens' -PathType Leaf) {
+if (Test-Path "$HOME/.nix-profile/bin/kubens" -PathType Leaf) {
     New-Alias -Name kn -Value Set-KubensContextCurrentNamespace
 } else {
     New-Alias -Name kn -Value Set-KubectlContextCurrentNamespace

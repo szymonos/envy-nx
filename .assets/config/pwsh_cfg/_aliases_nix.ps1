@@ -65,12 +65,6 @@ if (Test-Path "$_nb/fastfetch" -PathType Leaf) {
 if (Test-Path "$_nb/pwsh" -PathType Leaf) {
     function p { & /usr/bin/env pwsh -NoProfileLoadTime @args }
 }
-if (Test-Path "$_nb/kubectx" -PathType Leaf) {
-    Set-Alias -Name kc -Value kubectx
-}
-if (Test-Path "$_nb/kubens" -PathType Leaf) {
-    Set-Alias -Name kn -Value kubens
-}
 if (Test-Path "$_nb/kubecolor" -PathType Leaf) {
     Set-Alias -Name kubectl -Value kubecolor
 }

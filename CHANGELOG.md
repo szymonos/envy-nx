@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **PowerShell tab completion for `kn` and `kc` aliases.** The `aliases-kubectl` module already owns these aliases and points them at functions whose parameters carry `[ArgumentCompleter({ ArgK8sGetContexts @args })]` / `[ArgumentCompleter({ ArgK8sGetNamespaces @args })]` attributes, so completion is built in. Two unrelated bugs were silencing it on nix-managed setups:
+  - `.assets/config/pwsh_cfg/_aliases_nix.ps1` was unconditionally setting `kc → kubectx` / `kn → kubens` whenever the nix-installed binaries existed (`Set-Alias -Name kc -Value kubectx`, etc.). Those aliases shadowed the module's function-backed `kc`/`kn`, leaving tab completion bound to the bare native binaries -- which have no PowerShell completer because kubectx/kubens upstream ship bash/zsh/fish completion only. Removed both `Set-Alias` lines so the module's aliases survive intact; the `kubecolor` alias right next to them stays because it doesn't conflict with anything in the module.
+  - `modules/aliases-kubectl/Functions/helper.ps1:645` chose between `Set-KubensContextCurrentNamespace` (calls `kubens`) and the kubectl-only fallback `Set-KubectlContextCurrentNamespace` based on `Test-Path '/usr/bin/kubens'`. On nix-installed setups kubens lives at `~/.nix-profile/bin/kubens`, so the system-path check returned false and `kn` silently dropped the kubens-based UI even when kubens was on PATH. Replaced with `Get-Command kubens -CommandType Application -ErrorAction SilentlyContinue`, which finds kubens anywhere on PATH (system, nix profile, user-local).
+
 ## [1.6.1] - 2026-05-06
 
 ### Added

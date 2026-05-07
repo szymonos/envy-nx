@@ -58,6 +58,7 @@ kandji
 kubecolor
 kubectx
 kubelogin
+kubens
 kustomize
 kyverno
 lastexitcode
