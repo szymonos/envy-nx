@@ -39,9 +39,10 @@ def main() -> None:
         cfg = json.loads(cspell_path.read_text())
         exclude = set(cfg.get("ignorePaths", []))
 
-    # gather git-tracked markdown files (matches CI; ignores untracked/gitignored)
+    # gather every working-tree .md not excluded by .gitignore
+    # (so brand-new untracked docs count too)
     result = subprocess.run(
-        ["git", "ls-files", "-z"],
+        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
         capture_output=True,
         text=True,
         cwd=root,
