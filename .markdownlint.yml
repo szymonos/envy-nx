@@ -5,4 +5,6 @@ default: true
 MD013: false # Line Length
 MD024: # Multiple headings with the same content
   siblings_only: true
+MD033: # Inline HTML (allow `div` for Material grid cards / md_in_html)
+  allowed_elements: [div]
 MD046: false # Code block style
