@@ -70,6 +70,9 @@ process {
             Write-Warning "Failed to update module ${module}: $_"
         }
     }
+    # replace '/usr/bin/kubens' with "$HOME/.nix-profile/bin/kubens" in helper.ps1 of aliases-kubectl module
+    sed -i "s|'/usr/bin/kubens'|`"`$HOME/.nix-profile/bin/kubens`"|g" modules/aliases-kubectl/Functions/helper.ps1
+    Get-ChildItem -Path './modules' -Filter '*.ps1' -File -Recurse | Select-String -Pattern '/usr/bin' -SimpleMatch
 }
 
 clean {
