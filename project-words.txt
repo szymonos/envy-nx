@@ -6,6 +6,7 @@ azcopy
 azurecli
 behaviour
 blocklists
+bootcamp
 bootstrapper
 bootstrappers
 btop
@@ -20,6 +21,7 @@ compinit
 compreply
 coreutils
 cowsay
+cutover
 cword
 dedup
 desync
@@ -38,13 +40,16 @@ fastfetch
 fileno
 fixcertpy
 fnm
+fontawesome
 forkable
 gbda
 gheof
 gtimeout
 gtkd
+hackathons
 hashtable
 hkcu
+httpx
 hyperv
 intune
 isatty
@@ -112,6 +117,7 @@ szymonos
 tflint
 tfswitch
 tlsv
+toolbelt
 triaging
 unioned
 unsets
@@ -119,4 +125,5 @@ vdisk
 venv
 versinfo
 virtualenv
+winget
 worktree

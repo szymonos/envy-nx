@@ -71,6 +71,24 @@ Automatic MITM proxy detection and certificate configuration is production-ready
 
 Every tagged release produces a signed tarball, SBOM (`sbom.spdx.json`), closure manifest (`closure.txt`), and SHA-256 checksums. Artifacts are signed with cosign keyless signing (OIDC-based) and verifiable with `cosign verify-blob`. See [Releasing](releasing.md) for the full pipeline.
 
+## Value at organizational scale
+
+Most of the value documented above accrues to a single developer: their setup is faster, their environment is reproducible, their proxy works. Those benefits are real but bounded - they would be matched by any well-maintained personal dotfiles repo.
+
+The disproportionate returns appear when the same tool is the default across teams, departments, and employment types. At that point, the same property - every developer running the same tool against the same scope grammar - becomes the lever for fleet-scale operations:
+
+| Benefit                                      | Mechanism                                                       |
+| -------------------------------------------- | --------------------------------------------------------------- |
+| One environment regardless of OS or role     | Same `nx` CLI, same scopes, same aliases on every platform      |
+| Workstation disaster recovery in minutes     | One command on a fresh OS reproduces the prior environment      |
+| Local-to-CI environment parity               | CI runners provisioned from the same scopes and pin as dev      |
+| Reproducible enablement events               | Single-command prep that the trainer can validate end-to-end    |
+| Tool standardization and migration as deploy | Scope edit + migration hook + `nx setup`                        |
+| Patch and audit as a fleet, not a survey     | Pin bump + `install.json` provenance answers compliance queries |
+| AI coding assistants get more reliable       | Standardized tool surface for `rg`, `fd`, `gh`, `uv`, `bun`     |
+
+See **[Benefits at every scale](benefits.md)** for the full prose treatment, including the individual and team levels.
+
 ## What needs enterprise investment
 
 ### Nix approval (strategic, highest impact)
