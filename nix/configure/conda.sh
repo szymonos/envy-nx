@@ -74,7 +74,7 @@ if [[ -n "$conda_bin" ]]; then
   _fix_conda_certs
   _io_step "updating conda packages"
   info "updating conda..."
-  "$conda_bin" update --name base --channel conda-forge conda --yes --update-all 2>/dev/null || warn "conda update failed"
+  "$conda_bin" update --name base --channel conda-forge conda --yes --update-all || warn "conda update failed"
   # update may replace cacert.pem - re-patch
   _io_step "re-patching certifi after conda update"
   _fix_conda_certs

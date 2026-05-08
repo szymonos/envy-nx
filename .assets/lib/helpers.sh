@@ -81,7 +81,7 @@ download_file() {
 
   while [ $retry_count -le $max_retries ]; do
     # download file
-    status_code=$(curl -w '%{http_code}' -#Lko "$target_dir/$file_name" "$uri" 2>/dev/null)
+    status_code=$(curl -w '%{http_code}' -#Lko "$target_dir/$file_name" "$uri")
 
     # check the HTTP status code
     case $status_code in

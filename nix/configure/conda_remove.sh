@@ -58,7 +58,7 @@ fi
 # undo `conda init bash zsh` (writes the managed block out of ~/.bashrc / ~/.zshrc)
 # guarded with || true since a partially broken install may still report failure
 if [ -x "$CONDA_DIR/bin/conda" ]; then
-  "$CONDA_DIR/bin/conda" init --reverse bash zsh 2>/dev/null || true
+  "$CONDA_DIR/bin/conda" init --reverse bash zsh || true
 fi
 
 rm -rf "$CONDA_DIR"
