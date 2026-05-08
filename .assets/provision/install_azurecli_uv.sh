@@ -49,7 +49,7 @@ dependencies = [
 
 [tool.uv]
 compile-bytecode = true
-native-tls = true
+system-certs = true
 prerelease = "allow"
 EOF
 
