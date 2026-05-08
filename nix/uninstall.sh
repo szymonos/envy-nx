@@ -266,7 +266,7 @@ run_phase1() {
       if [[ "$DRY_RUN" == "true" ]]; then
         printf "\e[90m  would remove nix profile entry 'nix-env'\e[0m\n"
       else
-        nix profile remove nix-env 2>/dev/null && ok "  removed nix profile entry 'nix-env'"
+        nix profile remove nix-env && ok "  removed nix profile entry 'nix-env'"
         hash -r
       fi
     fi

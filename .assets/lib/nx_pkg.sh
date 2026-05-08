@@ -11,7 +11,7 @@ function _nx_pkg_search() {
     return 1
   }
   local query="$*"
-  nix search nixpkgs "$query" --json 2>/dev/null |
+  nix search nixpkgs "$query" --json |
     jq -r 'to_entries[] | "[1m* \(.key | split(".")[-1])[0m (\(.value.version))\n  \(.value.description // "")\n"'
 }
 

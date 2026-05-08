@@ -34,16 +34,16 @@ alpine)
   apk add --no-cache $APP >&2 2>/dev/null
   ;;
 arch)
-  pacman -Sy --needed --noconfirm $APP >&2 2>/dev/null
+  pacman -Sy --needed --noconfirm $APP >&2
   ;;
 fedora)
-  dnf install -y $APP >&2 2>/dev/null
+  dnf install -y $APP >&2
   ;;
 debian | ubuntu)
   export DEBIAN_FRONTEND=noninteractive
-  apt-get update >&2 && apt-get install -y $APP >&2 2>/dev/null
+  apt-get update >&2 && apt-get install -y $APP >&2
   ;;
 opensuse)
-  zypper --non-interactive in -y $APP >&2 2>/dev/null
+  zypper --non-interactive in -y $APP >&2
   ;;
 esac
