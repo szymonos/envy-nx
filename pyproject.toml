@@ -48,4 +48,4 @@ docstring-code-format = true
 docstring-code-line-length = "dynamic"
 
 [tool.uv]
-native-tls = true
+system-certs = true
