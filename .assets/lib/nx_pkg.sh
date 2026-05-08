@@ -98,12 +98,15 @@ function _nx_pkg_upgrade() {
   printf "\e[96mupgrading packages...\e[0m\n"
   local _pinned_rev=""
   [ -f "$_NX_ENV_DIR/pinned_rev" ] && _pinned_rev="$(tr -d '[:space:]' <"$_NX_ENV_DIR/pinned_rev")"
+  # nix writes progress (the live progress bar and per-path "copying path"
+  # lines) to stderr; let it through so the user sees what's happening
+  # during the network-bound flake update.
   if [ -n "$_pinned_rev" ]; then
     printf "\e[96mpinning nixpkgs to %s\e[0m\n" "$_pinned_rev"
-    nix flake lock --override-input nixpkgs "github:nixos/nixpkgs/$_pinned_rev" --flake "$_NX_ENV_DIR" 2>/dev/null ||
+    nix flake lock --override-input nixpkgs "github:nixos/nixpkgs/$_pinned_rev" --flake "$_NX_ENV_DIR" ||
       printf "\e[33mflake lock failed - using existing lock\e[0m\n" >&2
   else
-    nix flake update --flake "$_NX_ENV_DIR" 2>/dev/null ||
+    nix flake update --flake "$_NX_ENV_DIR" ||
       printf "\e[33mflake update failed (network issue?) - using existing lock\e[0m\n" >&2
   fi
   nix profile upgrade nix-env || {

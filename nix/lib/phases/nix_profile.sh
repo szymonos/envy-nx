@@ -35,11 +35,14 @@ phase_nix_profile_print_mode() {
 phase_nix_profile_update_flake() {
   SECONDS=0
   if should_update_flake "$upgrade_packages"; then
+    # nix writes progress (the live progress bar and per-path "copying path"
+    # lines) to stderr; let it through so the user sees what's happening
+    # during the network-bound flake update.
     if [[ -n "$PINNED_REV" ]]; then
-      _io_nix flake lock --override-input nixpkgs "github:nixos/nixpkgs/$PINNED_REV" --flake "$ENV_DIR" 2>/dev/null ||
+      _io_nix flake lock --override-input nixpkgs "github:nixos/nixpkgs/$PINNED_REV" --flake "$ENV_DIR" ||
         warn "flake lock failed - using existing lock"
     else
-      _io_nix flake update --flake "$ENV_DIR" 2>/dev/null ||
+      _io_nix flake update --flake "$ENV_DIR" ||
         warn "flake update failed (network issue?) - using existing lock"
     fi
   fi
