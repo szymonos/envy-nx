@@ -114,18 +114,14 @@ Describe 'Get-SortedScopes' {
         @($sorted)[0] | Should -Be 'python'
     }
 
-    It 'returns empty for empty set' {
-        $set = [System.Collections.Generic.HashSet[string]]::new()
-        $set.Add('_') | Out-Null  # need non-empty to pass validation
-        $set.Remove('_') | Out-Null
-        # HashSet is now empty but was once non-empty
-        # PowerShell Mandatory validation rejects truly empty collections
-        # so we test with a single-element set and verify count
-        $set.Add('python') | Out-Null
+    It 'rejects truly-empty set due to Mandatory validation; single-element set returns one item' {
+        # PowerShell Mandatory validation rejects truly empty collections, so
+        # the smallest input we can drive the function with is a one-element
+        # set. Asserting count=1 documents that contract.
+        $set = [System.Collections.Generic.HashSet[string]]::new([string[]]@('python'))
         $sorted = Get-SortedScopes -ScopeSet $set
-        $set.Remove('python') | Out-Null
-        # just verify the function works; empty set cannot be passed due to validation
         @($sorted) | Should -HaveCount 1
+        @($sorted)[0] | Should -Be 'python'
     }
 
     It 'full install order is respected' {
