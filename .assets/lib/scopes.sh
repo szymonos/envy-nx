@@ -32,7 +32,21 @@ once per machine (seconds), and is documented in ARCHITECTURE.md under
 
 SCOPES_JSON="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/scopes.json"
 
-if ! command -v jq &>/dev/null; then
+# Test seam for `command -v <name> [name...]`. Returns 0 if any of the
+# named binaries resolve via PATH; 1 otherwise. Mirrors `_nx_has_cmd`
+# in nx_doctor.sh (deliberately duplicated rather than shared - both
+# files are sourcing-time-independent and adding a cross-file source
+# dependency would compromise their standalone properties). Closes
+# FU-002 from the 2026-05-09 test-quality cycle.
+_nx_has_cmd() {
+  local _name
+  for _name in "$@"; do
+    command -v "$_name" >/dev/null 2>&1 && return 0
+  done
+  return 1
+}
+
+if ! _nx_has_cmd jq; then
   printf '\e[31;1mjq is required but not installed.\e[0m\n' >&2
   exit 1
 fi
