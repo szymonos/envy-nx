@@ -525,54 +525,11 @@ EOF
 }
 
 @test "profile regenerate creates managed blocks" {
-  # create profile_block.sh stub
-  mkdir -p "$HOME/.config/nix-env"
-  cat >"$HOME/.config/nix-env/profile_block.sh" <<'PBEOF'
-_pb_begin_tag() { printf '# >>> %s >>>' "$1"; }
-_pb_end_tag()   { printf '# <<< %s <<<' "$1"; }
-_pb_count_occurrences() {
-  local rc="$1" marker="$2" tag
-  tag="$(_pb_begin_tag "$marker")"
-  grep -cF "$tag" "$rc" 2>/dev/null || true
-}
-_pb_normalize_trailing() {
-  awk '/^[[:space:]]*$/{blank++;next}{for(i=0;i<blank;i++)print"";blank=0;print}'
-}
-manage_block() {
-  local rc="$1" marker="$2" action="$3" content_file="${4:-}"
-  [ -f "$rc" ] || touch "$rc"
-  local begin_tag end_tag
-  begin_tag="$(_pb_begin_tag "$marker")"
-  end_tag="$(_pb_end_tag "$marker")"
-  case "$action" in
-  remove)
-    local count
-    count="$(_pb_count_occurrences "$rc" "$marker")"
-    [ "$count" -eq 0 ] 2>/dev/null && return 0
-    local tmp; tmp="$(mktemp)"
-    awk -v begin="$begin_tag" -v end="$end_tag" '
-      $0==begin{skip=1;next} skip&&$0==end{skip=0;next} !skip{print}
-    ' "$rc" | _pb_normalize_trailing >"$tmp"
-    mv -f "$tmp" "$rc"
-    ;;
-  upsert)
-    local tmp new_block count
-    count="$(_pb_count_occurrences "$rc" "$marker")"
-    tmp="$(mktemp)"
-    new_block="$(printf '%s\n' "$begin_tag"; cat "$content_file"; printf '%s\n' "$end_tag")"
-    if [ "$count" -eq 0 ] 2>/dev/null; then
-      { [ -s "$rc" ] && cat "$rc" && printf '\n'; printf '%s\n' "$new_block"; } | _pb_normalize_trailing >"$tmp"
-    else
-      awk -v begin="$begin_tag" -v end="$end_tag" -v replacement="$new_block" '
-        BEGIN{done=0;skip=0} $0==begin{if(!done){print replacement;done=1} skip=1;next}
-        skip&&$0==end{skip=0;next} !skip{print}
-      ' "$rc" | _pb_normalize_trailing >"$tmp"
-    fi
-    mv -f "$tmp" "$rc"
-    ;;
-  esac
-}
-PBEOF
+  # nx.sh's _nx_profile_regenerate sources profile_block.sh via _nx_find_lib,
+  # which resolves to the real .assets/lib/profile_block.sh next to the
+  # already-sourced nx.sh. Mirror the pattern from test_profile_block.bats /
+  # test_profile_migration.bats so this test exercises the production
+  # manage_block contract instead of an inline stub of it.
   touch "$HOME/.bashrc"
   run nx profile regenerate
   [ "$status" -eq 0 ]
