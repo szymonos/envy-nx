@@ -25,3 +25,12 @@ Two decision types live here:
 ## Entries
 
 <!-- Entries accumulate below as `/review act` triage produces defer/dispute decisions. Newest at the bottom. -->
+
+## A-001: Defer `_check_version_skew` timeout-logic deduplication
+
+- **Date:** 2026-05-09
+- **Shard:** nx-cli
+- **Decision:** defer
+- **Original finding:** F-014 (low/maintainability, `.assets/lib/nx_doctor.sh:474`) - the `timeout 5 gh ...` fragment in `_check_version_skew` duplicates `_with_timeout` from `helpers.sh:220-230`.
+- **Rationale:** Bundle with FU-003's architectural decision. The right shape of the fix depends on whether `nx_doctor.sh` may source `helpers.sh` (which would contradict the standalone-after-install property documented in ARCHITECTURE.md §5) or whether `nx_profile regenerate --dry-run` becomes the bridge. Fixing F-014 in isolation now risks doing the work twice.
+- **Re-evaluate when:** FU-003 (`managed_block_drift` doctor check) is resolved and the doctor-vs-helpers coupling question has an answer.
