@@ -6,102 +6,41 @@
 bats_require_minimum_version 1.5.0
 
 setup() {
-  _NX_ENV_DIR="$(mktemp -d)"
+  TEST_DIR="$(mktemp -d)"
+  export HOME="$TEST_DIR"
+
+  # Point nx.sh at .assets/lib/ so the family files load and override
+  # _NX_ENV_DIR / _NX_PKG_FILE before sourcing so the constants resolve to
+  # the per-test temp dir (nx.sh sets them once at source time).
+  export NX_LIB_DIR="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)/.assets/lib"
+  _NX_ENV_DIR="$TEST_DIR/nix-env"
   _NX_PKG_FILE="$_NX_ENV_DIR/packages.nix"
   mkdir -p "$_NX_ENV_DIR/scopes"
 
-  # source helpers inline (same as aliases_nix.sh) to avoid side effects
-  _nx_read_pkgs() {
-    [ -f "$_NX_PKG_FILE" ] && sed -n 's/^[[:space:]]*"\([^"]*\)".*/\1/p' "$_NX_PKG_FILE"
-  }
+  # shellcheck source=../../.assets/lib/nx.sh
+  source "$NX_LIB_DIR/nx.sh"
 
-  _nx_write_pkgs() {
-    local tmp
-    tmp="$(mktemp)"
-    printf '[\n' >"$tmp"
-    sort -u | while IFS= read -r name; do
-      [ -n "$name" ] && printf '  "%s"\n' "$name" >>"$tmp"
-    done
-    printf ']\n' >>"$tmp"
-    mv "$tmp" "$_NX_PKG_FILE"
-  }
+  # nx.sh hard-codes the constants from $HOME at source time; reassert the
+  # test overrides so the production functions read/write the temp dir.
+  _NX_ENV_DIR="$TEST_DIR/nix-env"
+  _NX_PKG_FILE="$_NX_ENV_DIR/packages.nix"
 
-  _nx_scope_pkgs() {
-    local file="$1"
-    [ -f "$file" ] || return 0
-    sed -n '/\[/,/\]/{
-      s/^[[:space:]]*\([a-zA-Z][a-zA-Z0-9_-]*\).*/\1/p
-    }' "$file"
-  }
+  # Default stubs for nix-touching helpers - install/remove tests rely on
+  # these. Tests that need different behavior redefine after setup.
+  _nx_validate_pkg() { return 0; }
+  _nx_apply() { printf 'APPLY_CALLED\n'; }
 
-  _nx_scopes() {
-    local config_nix="$_NX_ENV_DIR/config.nix"
-    [ -f "$config_nix" ] || return 0
-    sed -n '/scopes[[:space:]]*=[[:space:]]*\[/,/\]/{
-      s/^[[:space:]]*"\([^"]*\)".*/\1/p
-    }' "$config_nix"
-  }
-
-  _nx_is_init() {
-    local config_nix="$_NX_ENV_DIR/config.nix"
-    [ -f "$config_nix" ] || {
-      echo "false"
-      return
-    }
-    sed -n -E 's/^[[:space:]]*isInit[[:space:]]*=[[:space:]]*(true|false).*/\1/p' "$config_nix"
-  }
-
+  # Test-only convenience wrappers that compose production functions.
   _nx_scopes_sorted() {
     _nx_scopes | sort
   }
-
   _nx_scope_pkgs_sorted() {
     _nx_scope_pkgs "$1" | sort
-  }
-
-  # helper: resolve scope file for editing
-  # returns 0 + path for overlay scope, 2 for repo-managed, 1 for not found
-  _nx_scope_edit_file() {
-    local name="${1//-/_}"
-    local ov_dir="${2:-$_NX_ENV_DIR/local}"
-    local ov_file="$ov_dir/scopes/$name.nix"
-    if [ -f "$ov_file" ]; then
-      echo "$ov_file"
-      return 0
-    fi
-    local repo_file="$_NX_ENV_DIR/scopes/$name.nix"
-    if [ -f "$repo_file" ]; then
-      return 2
-    fi
-    return 1
-  }
-
-  _nx_all_scope_pkgs() {
-    local scopes_dir="$_NX_ENV_DIR/scopes"
-    [ -d "$scopes_dir" ] || return 0
-    local pkg
-    while IFS= read -r pkg; do
-      [ -n "$pkg" ] && printf '%s\t%s\n' "$pkg" "base"
-    done < <(_nx_scope_pkgs "$scopes_dir/base.nix")
-    if [ "$(_nx_is_init)" = "true" ]; then
-      while IFS= read -r pkg; do
-        [ -n "$pkg" ] && printf '%s\t%s\n' "$pkg" "base_init"
-      done < <(_nx_scope_pkgs "$scopes_dir/base_init.nix")
-    fi
-    local scopes s
-    scopes="$(_nx_scopes)"
-    if [ -n "$scopes" ]; then
-      while IFS= read -r s; do
-        while IFS= read -r pkg; do
-          [ -n "$pkg" ] && printf '%s\t%s\n' "$pkg" "$s"
-        done < <(_nx_scope_pkgs "$scopes_dir/$s.nix")
-      done <<<"$scopes"
-    fi
   }
 }
 
 teardown() {
-  rm -rf "$_NX_ENV_DIR"
+  rm -rf "$TEST_DIR"
 }
 
 # =============================================================================
@@ -411,10 +350,10 @@ EOF
 }
 
 # =============================================================================
-# Install: scope-aware validation
+# Install: scope-aware validation - drives the real _nx_pkg_install
 # =============================================================================
 
-@test "install: detects package already in scope" {
+@test "install: warns when package is already in a scope and does not add it" {
   cat >"$_NX_ENV_DIR/scopes/base.nix" <<'EOF'
 { pkgs }: with pkgs; [
   git
@@ -427,16 +366,13 @@ EOF
   scopes = [];
 }
 EOF
-
-  # simulate install logic
-  local scope_pkgs
-  scope_pkgs="$(_nx_all_scope_pkgs)"
-  local in_scope
-  in_scope="$(printf '%s\n' "$scope_pkgs" | grep -m1 "^git	" 2>/dev/null | cut -f2)"
-  [ "$in_scope" = "base" ]
+  run _nx_pkg_install git
+  [[ "$output" == *"already installed in scope 'base'"* ]]
+  # should NOT add git to the user package list
+  [ ! -s "$_NX_PKG_FILE" ] || ! grep -q '"git"' "$_NX_PKG_FILE"
 }
 
-@test "install: allows package not in any scope" {
+@test "install: adds package not in any scope to the user list" {
   cat >"$_NX_ENV_DIR/scopes/base.nix" <<'EOF'
 { pkgs }: with pkgs; [
   git
@@ -448,15 +384,14 @@ EOF
   scopes = [];
 }
 EOF
-
-  local scope_pkgs
-  scope_pkgs="$(_nx_all_scope_pkgs)"
-  local in_scope
-  in_scope="$(printf '%s\n' "$scope_pkgs" | grep -m1 "^ripgrep	" 2>/dev/null | cut -f2)"
-  [ -z "$in_scope" ]
+  run _nx_pkg_install ripgrep
+  [[ "$output" == *"added ripgrep"* ]]
+  [[ "$output" == *"APPLY_CALLED"* ]]
+  run grep -q '"ripgrep"' "$_NX_PKG_FILE"
+  [ "$status" -eq 0 ]
 }
 
-@test "install: detects package in configured scope" {
+@test "install: warns when package is in a configured non-base scope" {
   cat >"$_NX_ENV_DIR/scopes/base.nix" <<'EOF'
 { pkgs }: with pkgs; [
   git
@@ -476,28 +411,32 @@ EOF
   ];
 }
 EOF
-
-  local scope_pkgs
-  scope_pkgs="$(_nx_all_scope_pkgs)"
-  local in_scope
-  in_scope="$(printf '%s\n' "$scope_pkgs" | grep -m1 "^bat	" 2>/dev/null | cut -f2)"
-  [ "$in_scope" = "shell" ]
+  run _nx_pkg_install bat
+  [[ "$output" == *"already installed in scope 'shell'"* ]]
 }
 
-@test "install: detects already-installed extra package" {
+@test "install: warns when the package is already in the user list (extra)" {
+  cat >"$_NX_ENV_DIR/scopes/base.nix" <<'EOF'
+{ pkgs }: with pkgs; [
+  git
+]
+EOF
+  cat >"$_NX_ENV_DIR/config.nix" <<'EOF'
+{
+  isInit = false;
+  scopes = [];
+}
+EOF
   printf 'ripgrep\nfd\n' | _nx_write_pkgs
-  local current
-  current="$(_nx_read_pkgs)"
-  run printf '%s\n' "$current"
-  # check the grep-based detection
-  printf '%s\n' "$current" | grep -qx "ripgrep"
+  run _nx_pkg_install ripgrep
+  [[ "$output" == *"ripgrep is already installed (extra)"* ]]
 }
 
 # =============================================================================
-# Remove: scope-aware validation
+# Remove: scope-aware validation - drives the real _nx_pkg_remove
 # =============================================================================
 
-@test "remove: detects scope-managed package" {
+@test "remove: refuses to remove a scope-managed package" {
   cat >"$_NX_ENV_DIR/scopes/base.nix" <<'EOF'
 { pkgs }: with pkgs; [
   git
@@ -516,16 +455,15 @@ EOF
   ];
 }
 EOF
-
-  local scope_pkgs
-  scope_pkgs="$(_nx_all_scope_pkgs)"
-  local in_scope
-  in_scope="$(printf '%s\n' "$scope_pkgs" | grep -m1 "^bat	" 2>/dev/null | cut -f2)"
-  [ "$in_scope" = "shell" ]
+  printf 'ripgrep\n' | _nx_write_pkgs
+  run _nx_pkg_remove bat
+  [[ "$output" == *"managed by scope 'shell'"* ]]
+  # bat must NOT be removed from anywhere; ripgrep stays in user list
+  run grep -q '"ripgrep"' "$_NX_PKG_FILE"
+  [ "$status" -eq 0 ]
 }
 
-@test "remove: allows removing extra package" {
-  printf 'ripgrep\nfd\n' | _nx_write_pkgs
+@test "remove: removes a non-scope package from the user list" {
   cat >"$_NX_ENV_DIR/scopes/base.nix" <<'EOF'
 { pkgs }: with pkgs; [
   git
@@ -537,12 +475,35 @@ EOF
   scopes = [];
 }
 EOF
+  printf 'ripgrep\nfd\n' | _nx_write_pkgs
+  run _nx_pkg_remove ripgrep
+  [[ "$output" == *"removed ripgrep"* ]]
+  [[ "$output" == *"APPLY_CALLED"* ]]
+  run ! grep -q '"ripgrep"' "$_NX_PKG_FILE"
+  run grep -q '"fd"' "$_NX_PKG_FILE"
+  [ "$status" -eq 0 ]
+}
 
-  local scope_pkgs
-  scope_pkgs="$(_nx_all_scope_pkgs)"
-  local in_scope
-  in_scope="$(printf '%s\n' "$scope_pkgs" | grep -m1 "^ripgrep	" 2>/dev/null | cut -f2)"
-  [ -z "$in_scope" ]
+@test "remove: filters scope-managed args and removes only the eligible ones" {
+  cat >"$_NX_ENV_DIR/scopes/base.nix" <<'EOF'
+{ pkgs }: with pkgs; [
+  git
+]
+EOF
+  cat >"$_NX_ENV_DIR/config.nix" <<'EOF'
+{
+  isInit = false;
+  scopes = [];
+}
+EOF
+  printf 'ripgrep\nfd\n' | _nx_write_pkgs
+  run _nx_pkg_remove git ripgrep fd
+  # git stays (scope-managed); ripgrep + fd come out of the user list
+  [[ "$output" == *"managed by scope 'base'"* ]]
+  [[ "$output" == *"removed ripgrep"* ]]
+  [[ "$output" == *"removed fd"* ]]
+  run ! grep -q '"ripgrep"' "$_NX_PKG_FILE"
+  run ! grep -q '"fd"' "$_NX_PKG_FILE"
 }
 
 # =============================================================================
@@ -616,7 +577,7 @@ EOF
 }
 
 # =============================================================================
-# scope edit: overlay vs repo-managed distinction
+# scope edit: overlay vs repo-managed distinction - drives _nx_scope_dispatch
 # =============================================================================
 
 @test "scope edit: opens overlay scope file" {
@@ -625,55 +586,23 @@ EOF
   cat >"$ov_dir/scopes/tools.nix" <<'EOF'
 { pkgs }: with pkgs; [ htop ]
 EOF
-  run _nx_scope_edit_file "tools" "$ov_dir"
+  # Stub EDITOR to a no-op so the test doesn't try to open vi.
+  EDITOR=true NIX_ENV_OVERLAY_DIR="$ov_dir" run _nx_scope_dispatch edit tools
   [ "$status" -eq 0 ]
-  [ "$output" = "$ov_dir/scopes/tools.nix" ]
+  [[ "$output" == *"Synced scope 'tools'"* ]]
 }
 
-@test "scope edit: repo-managed scope returns status 2" {
+@test "scope edit: repo-managed scope is read-only and returns non-zero" {
   cat >"$_NX_ENV_DIR/scopes/k8s_dev.nix" <<'EOF'
 { pkgs }: with pkgs; [ helm ]
 EOF
-  run _nx_scope_edit_file "k8s_dev" "$_NX_ENV_DIR/local"
-  [ "$status" -eq 2 ]
-}
-
-@test "scope edit: scope not found returns status 1" {
-  run _nx_scope_edit_file "nonexistent" "$_NX_ENV_DIR/local"
+  EDITOR=true run _nx_scope_dispatch edit k8s_dev
   [ "$status" -eq 1 ]
+  [[ "$output" == *"managed by the base repository"* ]]
 }
 
-# =============================================================================
-# Remove: scope-aware validation
-# =============================================================================
-
-@test "remove: filters out scope packages from args" {
-  cat >"$_NX_ENV_DIR/scopes/base.nix" <<'EOF'
-{ pkgs }: with pkgs; [
-  git
-]
-EOF
-  cat >"$_NX_ENV_DIR/config.nix" <<'EOF'
-{
-  isInit = false;
-  scopes = [];
-}
-EOF
-
-  # simulate the filtering logic from nx remove
-  local scope_pkgs
-  scope_pkgs="$(_nx_all_scope_pkgs)"
-  local args=("git" "ripgrep" "fd")
-  local filtered_args=()
-  local p
-  for p in "${args[@]}"; do
-    local in_scope
-    in_scope="$(printf '%s\n' "$scope_pkgs" | grep -m1 "^${p}	" 2>/dev/null | cut -f2)"
-    if [ -z "$in_scope" ]; then
-      filtered_args+=("$p")
-    fi
-  done
-  [ "${#filtered_args[@]}" -eq 2 ]
-  [ "${filtered_args[0]}" = "ripgrep" ]
-  [ "${filtered_args[1]}" = "fd" ]
+@test "scope edit: missing scope returns non-zero" {
+  EDITOR=true run _nx_scope_dispatch edit nonexistent
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"not found"* ]]
 }
