@@ -144,7 +144,13 @@ function _nx_filter_scope_args() {
   local scope_pkgs p in_scope
   scope_pkgs="$(_nx_all_scope_pkgs)"
   for p in "$@"; do
-    in_scope="$(printf '%s\n' "$scope_pkgs" | grep -m1 "^${p}	" 2>/dev/null | cut -f2)"
+    # Match the pkg name as a literal field-1 string, not a regex.
+    # nixpkgs names commonly contain regex metacharacters (`.`, `+`, `_`)
+    # - e.g. `python3.11`, `gcc-c++`. Using `grep -m1 "^${p}\t"` would
+    # let `python3` falsely match `python311` (and similar). awk with an
+    # explicit tab field separator is regex-free and explicit about the
+    # column-1 equality check.
+    in_scope="$(printf '%s\n' "$scope_pkgs" | awk -F'\t' -v p="$p" '$1==p{print $2; exit}')"
     if [ -n "$in_scope" ]; then
       case "$action" in
       install)
