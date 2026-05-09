@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 290" role="img" aria-label="PDCA loops: per-PR daily cycle alongside chunked review periodic cycle">
+  <title>PDCA loops: per-PR cycle and chunked review cycle</title>
+
+  <defs>
+    <marker id="arrowhead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#e8e8e8"/>
+    </marker>
+    <marker id="arrowhead-faded" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#e8e8e8" opacity="0.4"/>
+    </marker>
+  </defs>
+
+  <style>
+    .node-bg      { fill: rgba(255,255,255,0.08); stroke: #e8e8e8; stroke-width: 1.5; }
+    .node-bg-skip { fill: rgba(255,255,255,0.03); stroke: #e8e8e8; stroke-width: 1; stroke-dasharray: 4,3; opacity: 0.5; }
+    .label        { fill: #e8e8e8; font-family: -apple-system, system-ui, sans-serif; text-anchor: middle; }
+    .label-name   { font-weight: 700; font-size: 14px; }
+    .label-detail { font-size: 11px; }
+    .label-skip   { opacity: 0.45; font-style: italic; }
+    .arc          { fill: none; stroke: #e8e8e8; stroke-width: 1.5; }
+    .arc-faded    { fill: none; stroke: #e8e8e8; stroke-width: 1; opacity: 0.4; stroke-dasharray: 4,3; }
+    .title-text   { fill: #e8e8e8; font-family: -apple-system, system-ui, sans-serif; font-weight: 700; font-size: 15px; text-anchor: middle; }
+    .subtitle-text{ fill: #e8e8e8; font-family: -apple-system, system-ui, sans-serif; font-size: 11px; text-anchor: middle; opacity: 0.7; font-style: italic; }
+  </style>
+
+  <!-- ===== PER-PR CYCLE (left wheel, center 160,170) ===== -->
+  <text x="160" y="22" class="title-text">Per-PR cycle</text>
+  <text x="160" y="38" class="subtitle-text">daily, per diff</text>
+
+  <!-- Plan (12 o'clock) -->
+  <ellipse cx="160" cy="80" rx="62" ry="22" class="node-bg"/>
+  <text x="160" y="77" class="label label-name">Plan</text>
+  <text x="160" y="93" class="label label-detail">PR description</text>
+
+  <!-- Do (3 o'clock) -->
+  <ellipse cx="250" cy="170" rx="62" ry="22" class="node-bg"/>
+  <text x="250" y="167" class="label label-name">Do</text>
+  <text x="250" y="183" class="label label-detail">write the diff</text>
+
+  <!-- Check (6 o'clock) -->
+  <ellipse cx="160" cy="260" rx="62" ry="22" class="node-bg"/>
+  <text x="160" y="257" class="label label-name">Check</text>
+  <text x="160" y="273" class="label label-detail">PR review</text>
+
+  <!-- Act (9 o'clock) -->
+  <ellipse cx="70" cy="170" rx="62" ry="22" class="node-bg"/>
+  <text x="70" y="167" class="label label-name">Act</text>
+  <text x="70" y="183" class="label label-detail">merge / changes</text>
+
+  <!-- Arcs (clockwise: Plan -> Do -> Check -> Act -> Plan) -->
+  <path class="arc" d="M 215 95 Q 250 110 250 148" marker-end="url(#arrowhead)"/>
+  <path class="arc" d="M 250 192 Q 250 230 215 245" marker-end="url(#arrowhead)"/>
+  <path class="arc" d="M 105 245 Q 70 230 70 192" marker-end="url(#arrowhead)"/>
+  <path class="arc" d="M 70 148 Q 70 110 105 95" marker-end="url(#arrowhead)"/>
+
+  <!-- ===== CHUNKED REVIEW CYCLE (right wheel, center 540,170) ===== -->
+  <text x="540" y="22" class="title-text">Chunked review cycle</text>
+  <text x="540" y="38" class="subtitle-text">periodic, per shard</text>
+
+  <!-- Plan (12 o'clock) -->
+  <ellipse cx="540" cy="80" rx="62" ry="22" class="node-bg"/>
+  <text x="540" y="77" class="label label-name">Plan</text>
+  <text x="540" y="93" class="label label-detail">charter file</text>
+
+  <!-- Do (3 o'clock) - faded, n/a -->
+  <ellipse cx="630" cy="170" rx="62" ry="22" class="node-bg-skip"/>
+  <text x="630" y="167" class="label label-name label-skip">Do</text>
+  <text x="630" y="183" class="label label-detail label-skip">n/a</text>
+
+  <!-- Check (6 o'clock) -->
+  <ellipse cx="540" cy="260" rx="62" ry="22" class="node-bg"/>
+  <text x="540" y="257" class="label label-name">Check</text>
+  <text x="540" y="273" class="label label-detail">reviewer subagent</text>
+
+  <!-- Act (9 o'clock) -->
+  <ellipse cx="450" cy="170" rx="62" ry="22" class="node-bg"/>
+  <text x="450" y="167" class="label label-name">Act</text>
+  <text x="450" y="183" class="label label-detail">triage / fixer / verifier</text>
+
+  <!-- Arcs - Plan->Do and Do->Check faded since Do is n/a -->
+  <path class="arc-faded" d="M 595 95 Q 630 110 630 148" marker-end="url(#arrowhead-faded)"/>
+  <path class="arc-faded" d="M 630 192 Q 630 230 595 245" marker-end="url(#arrowhead-faded)"/>
+  <!-- Check->Act and Act->Plan are solid -->
+  <path class="arc" d="M 485 245 Q 450 230 450 192" marker-end="url(#arrowhead)"/>
+  <path class="arc" d="M 450 148 Q 450 110 485 95" marker-end="url(#arrowhead)"/>
+</svg>
