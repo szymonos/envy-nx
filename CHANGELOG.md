@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ### Fixed
 
 - `helpers.sh` no longer leaks `auth_status`, `gh_user`, `gh_cfg`, and `status_code` into callers' environments [F-001]. Pure additive `local` declarations in `gh_login_user` and `download_file`; no behavior change.
+- `scopes.sh` no longer leaks loop/intermediate variables into the caller [F-002]. Added `local rules rule trigger a _l` to `resolve_scope_deps`, `local valid s v` to `validate_scopes`, and an `unset _l` after the two file-level read loops at sourcing time.
 
 ## [1.7.1] - 2026-05-09
 
