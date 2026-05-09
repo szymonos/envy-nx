@@ -38,10 +38,14 @@ if ! command -v jq &>/dev/null; then
 fi
 
 # -- Load from JSON ----------------------------------------------------------
+# `_l` is the per-iteration read variable; unset after each loop so it
+# doesn't leak into the caller of `source scopes.sh` (`set -u` callers in
+# nix/setup.sh / linux_setup.sh would otherwise inherit it).
 VALID_SCOPES=()
 while IFS= read -r _l; do VALID_SCOPES+=("$_l"); done < <(jq -r '.valid_scopes[]' "$SCOPES_JSON")
 INSTALL_ORDER=()
 while IFS= read -r _l; do INSTALL_ORDER+=("$_l"); done < <(jq -r '.install_order[]' "$SCOPES_JSON")
+unset _l
 
 # -- Scope-set helpers (bash 3.2 compatible) ---------------------------------
 # _scope_set is a space-padded string: " scope1 scope2 scope3 "
@@ -61,14 +65,13 @@ scope_del() { _scope_set="${_scope_set/ $1 / }"; }
 # Expects: `_scope_set` string populated by the caller.
 # Optional: variable `omp_theme` (non-empty triggers oh_my_posh).
 resolve_scope_deps() {
+  local rules rule trigger a _l
   if [[ -n "${omp_theme:-}" ]]; then
     scope_add oh_my_posh
   fi
 
-  local rules
   rules=$(jq -c '.dependency_rules[]' "$SCOPES_JSON")
   while IFS= read -r rule; do
-    local trigger
     trigger=$(jq -r '.if' <<<"$rule")
     if scope_has "$trigger"; then
       local adds=()
@@ -100,7 +103,7 @@ sort_scopes() {
 # -- Validate scope names ---------------------------------------------------
 # Returns 0 if all arguments are valid scope names, 1 otherwise.
 validate_scopes() {
-  local valid
+  local valid s v
   for s in "$@"; do
     valid=false
     for v in "${VALID_SCOPES[@]}"; do
