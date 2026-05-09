@@ -111,7 +111,7 @@ F-006  symptom-only - the fixer added a guard at line 80, but the broken state
 F-006 needs another look. Three options:
 
 - **Push the branch as-is** and address F-006 in a follow-up commit (verifier's note goes in the PR body so reviewers see the gap up front).
-- **Re-run the fixer** with revised guidance: "the fix needs to handle the WSL2 path at line 145 too." The fixer makes a new commit; the verifier re-runs.
+- **Re-run the fixer** via `/review fix F-006`. The skill auto-loads the active findings JSON from `state.json`, shows you the verifier's prior `symptom-only` note inline, and prompts for revised guidance ("the fix needs to handle the WSL2 path at line 145 too"). The fixer makes a new commit suffixed `[F-006, retry-1]`, writes back the new `fixer_commit` and `retry_count`; the verifier re-runs and overwrites the prior verdict in the findings JSON.
 - **Demote F-006 to deferred** in `accepted.md` if you decide the partial fix is good enough for now and revisit next cycle.
 
 **Push.** You go with option 1, push the branch, open the PR. The PR body summarizes:
@@ -137,6 +137,32 @@ F-006 needs another look. Three options:
 
 **Total time:** ~35 minutes. The shard's `last_run` in `.wolf/reviews/state.json` is now today.
 
+### `/review fix <finding-id>` - retry on a verifier flag (optional)
+
+Skip this step entirely if every verifier verdict was `confirmed`. When the verifier flagged something (`symptom-only`, `regression-risk`, `over-corrected`, `not-applied`) and you want to retry rather than push-as-is or demote, this is the targeted retry command.
+
+Type `/review fix F-006`. The skill auto-loads the active findings JSON from `.wolf/reviews/state.json` (no path argument - it knows where you just were), looks up F-006, and shows you its current state inline:
+
+```text
+F-006 [high/correctness] wsl/wsl_setup.ps1:142
+fnm self-heal block doesn't check XDG_RUNTIME_DIR before chmod...
+Suggestion: wrap in a Linux-detection guard.
+
+Verifier verdict: symptom-only
+Verifier note: the fixer added a guard at line 80, but the broken state
+              at line 145 is still reachable via the alternative WSL2 code path.
+Prior commit: a3f2c1d
+Retry count: 0
+```
+
+Then asks for **revised guidance** via `AskUserQuestion` - free-text describing what the previous fix missed and what the new one should address. You write: "the fix needs to handle the WSL2 path at line 145 too - the existing guard only covers the systemd-init path."
+
+The fixer subagent re-runs with the original finding plus the revised guidance baked into its spawn prompt. Same gates as before (`make lint && make test-unit`). The new commit is suffixed `[F-006, retry-1]` so it's distinguishable from the original `[F-006]` in `git log`. The verifier re-runs on the new diff and overwrites its prior verdict in the findings JSON.
+
+If the verifier still flags the retry, run `/review fix F-006` again with further-revised guidance (`retry_count` becomes 2, commit becomes `[F-006, retry-2]`); or push as-is; or demote the finding to `accepted.md`.
+
+`/review fix` is targeted (single finding, no batch) and context-discovering (no path arg). It is NOT a redo of `/review act` - the original triage decisions stand; only the fixer phase re-runs for the one finding you named.
+
 ### `/review next` - the rotation shortcut
 
 Not a fifth phase - this is a shortcut for `status` + `<shard>` you'd use to *start* the next cycle, not to follow `act`. It reads `.wolf/reviews/state.json`, picks the shard with the oldest `last_run` (or never-run, breaking ties by `blast_radius` desc), and runs `/review <that-shard>` automatically. Use it when you trust the rotation; skip it when you have specific context about which shard needs attention now (e.g., a recent change to a particular surface).
@@ -158,6 +184,7 @@ That's one cycle - one shard reviewed end to end. Pick a cadence that fits the p
 | `.claude/skills/review/SKILL.md`              | committed | The `/review` slash command - orchestrates one full cycle                                    |
 | `.wolf/reviews/<date>-<shard>.json`           | ephemeral | Findings JSON. Per-machine, gitignored. Lifetime = until acted on                            |
 | `.wolf/reviews/state.json`                    | ephemeral | Per-clone rotation pointer (last-run timestamps per shard)                                   |
+| `.wolf/follow-ups/<home-shard>.json`          | ephemeral | Per-shard backlog of fixer-noticed items the next reviewer treats as candidate findings      |
 
 Why split: charters and accepted decisions must travel with the repo so a fresh clone doesn't re-discover them. Findings are forensic - once acted on (PR opened or deferred to `accepted.md`), the JSON has no further use.
 
@@ -209,13 +236,52 @@ Charters start as v1 drafts seeded from the existing codebase before any actual 
 
 Charters compound in value over time. The first cycle is the noisiest; by cycle 3-4 the de-noise list catches the recurring patterns and findings shrink to genuine new issues.
 
+## Cross-cycle followups
+
+The fixer often notices things during a cycle that don't fit the current finding's minimum-scope rule but warrant consideration eventually - helper extractions, refactors, cross-cutting cleanups. The framework persists these as **followups** so they aren't lost between cycles. Followups are automated end-to-end: the fixer emits them as structured output, the next reviewer for the relevant shard sees them, and they're closed via several paths.
+
+**File:** `.wolf/follow-ups/<home-shard>.json` - one file per shard that's the **suggested home** for a followup (not the source shard where the fixer noticed it). Cross-shard observations land in the right reviewer's inbox automatically. Per-machine ephemeral, gitignored, same lifetime convention as findings JSON. See [`SKILL.md` → "Followups JSON schema"](../../.claude/skills/review/SKILL.md) for the full schema.
+
+**Lifecycle:**
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> open: fixer creates follow-up
+
+    open --> closed_via_triage: triaged (apply/defer/dispute)
+    open --> closed_auto: verifier auto-resolved
+    open --> closed_manual: manually pruned
+
+    closed_via_triage --> [*]
+    closed_auto --> [*]
+    closed_manual --> [*]
+```
+
+Not shown: reviewer skip is a no-op - the FU stays `open` and `considered_in_cycles` grows by one. The diagram only depicts state transitions; skips don't transition. Detail behind each label is in the per-agent table below.
+
+**Where each agent touches the followups file:**
+
+| Agent / step                                 | What it does                                                                                                                                                                                                 |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Fixer** (during `/review act`)             | Emits a structured `followups` array in its final report. Each entry: `{description, suggested_home_shard, source_finding_ids}`.                                                                             |
+| **`/review act` step 4**                     | Persists the fixer's output. Appends each entry to `.wolf/follow-ups/<suggested_home_shard>.json` with a fresh shard-local `FU-NNN` id and `status: open`.                                                   |
+| **Reviewer** (start of `/review <shard>`)    | Reads `.wolf/follow-ups/<shard>.json`. For each open FU, decides: re-emit as a finding (with `[FU-NNN]` prefix) or skip. Appends today's date to each considered FU's history.                               |
+| **Triage** (during `/review act`)            | When the human triages a finding whose text starts with `[FU-NNN]`, the corresponding FU is closed: `status: closed`, `closed_via: triage-<applied/deferred/disputed>`.                                      |
+| **Verifier** (after fixer, in `/review act`) | Reads open FUs for this shard. For each, asks "did the fixer's diff incidentally resolve this?" Possible verdicts: `auto-resolved-by-diff` (close), `partially-resolved` (note), `not-resolved` (no change). |
+
+**Why the verifier and not the fixer closes auto-resolved FUs.** Same bias-control reason that the verifier exists in the first place. The fixer has tunnel vision (minimum-scope edit on its own finding) and won't notice incidental resolution. The verifier reads the diff cold and catches it. Independent check.
+
+**Persistence trade-off.** The followups file is gitignored. Lives only on the machine where reviews run. If a load-bearing followup must survive a machine wipe, promote it to a durable artifact at triage time: a PR, an issue, or a charter v2 entry. The followups file is the "remember next time" inbox, not the archive.
+
 ## Quick command reference
 
-| Command                       | What it does                                                                                               |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `/review status`              | Show a table of all shards with last-run dates, days-since, and last finding count. Start here.            |
-| `/review <shard>`             | Spawn the reviewer subagent for one shard. Writes findings to `.wolf/reviews/<date>-<shard>.json`.         |
-| `/review next`                | Pick the shard with the oldest last-run and review it. The "I trust the rotation, just go" shortcut.       |
-| `/review act <findings-path>` | Walk each finding interactively (apply / defer / dispute), then run fixer + verifier on the chosen subset. |
+| Command                       | What it does                                                                                                                                   |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/review status`              | Show a table of all shards with last-run dates, days-since, and last finding count. Start here.                                                |
+| `/review <shard>`             | Spawn the reviewer subagent for one shard. Writes findings to `.wolf/reviews/<date>-<shard>.json`.                                             |
+| `/review next`                | Pick the shard with the oldest last-run and review it. The "I trust the rotation, just go" shortcut.                                           |
+| `/review act <findings-path>` | Walk each finding interactively (apply / defer / dispute), then run fixer + verifier on the chosen subset.                                     |
+| `/review fix <finding-id>`    | Re-run the fixer on one finding with revised guidance, after a verifier flag. Auto-loads context from `state.json`; re-verifies automatically. |
 
 Full skill documentation: [`.claude/skills/review/SKILL.md`](../../.claude/skills/review/SKILL.md).

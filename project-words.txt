@@ -89,6 +89,7 @@ minisign
 mkdocs
 mktemp
 modularizes
+mortems
 mtimes
 multishells
 namerefs
