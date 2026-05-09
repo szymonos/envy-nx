@@ -17,7 +17,6 @@ setup() {
 }
 
 teardown() {
-  PATH="$BATS_TEST_DIRNAME:$PATH"
   rm -rf "$DEV_ENV_DIR"
 }
 
