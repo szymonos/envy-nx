@@ -360,7 +360,14 @@ Describe 'Sync-WslSshKeys' {
         $script:winKeyExists = $false
         Sync-WslSshKeys -Distro 'Ubuntu' -HasWslKey $false
         $script:wslInvoked | Should -Be $true
-        ($script:wslArgs -join ' ') | Should -Match 'setup_ssh.sh'
+        $argStr = $script:wslArgs -join ' '
+        $argStr | Should -Match 'setup_ssh.sh'
+        # The script must also copy the generated key BACK to the Windows
+        # /mnt/<drive>/<homepath>/.ssh path - covers the second half of the
+        # test name, which silently passed before this assertion was added.
+        $winSshPath = "/mnt/$($env:HOMEDRIVE.Replace(':', '').ToLower())$($env:HOMEPATH.Replace('\', '/'))/.ssh"
+        $argStr | Should -Match ([regex]::Escape("cp `"`$HOME/.ssh/id_ed25519`" $winSshPath/id_ed25519"))
+        $argStr | Should -Match ([regex]::Escape("cp `"`$HOME/.ssh/id_ed25519.pub`" $winSshPath/id_ed25519.pub"))
     }
 
     It 'is a no-op when both sides already have the key' {
