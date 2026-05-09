@@ -1,7 +1,5 @@
 adsi
-airgap
 anson
-argstr
 autoexec
 azcli
 azcopy
@@ -12,7 +10,6 @@ behaviour
 blocklists
 bootcamp
 bootstrapper
-bootstrappers
 btop
 cafile
 certifi
@@ -28,8 +25,6 @@ cowsay
 cutover
 cword
 dedup
-desync
-devbox
 diffable
 diskpart
 distrobox
@@ -49,7 +44,6 @@ fixcertpy
 fnm
 fontawesome
 footgun
-forkable
 frontmatter
 gbda
 gheof
@@ -65,7 +59,6 @@ incompat
 intune
 isatty
 jamf
-kandji
 keytimeout
 koalaman
 kubecolor
@@ -130,7 +123,6 @@ setuid
 shellcheck
 shfmt
 sigstore
-slsa
 sonoma
 sourceable
 stdlib

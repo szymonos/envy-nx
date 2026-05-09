@@ -1,8 +1,10 @@
-# Phase 2: Enterprise integration readiness
+# Enterprise integration design
 
-_Companion to `design/review_2026-04-23.md` and `design/phase_1_self_contained.md`. This document assumes Phase 1 is shipped (v1.0.0 tag, signed releases, hardened supply chain, honest docs)._
+_Single design source of truth for upstream's enterprise-readiness work. Fed by the [`enterprise-readiness`](reviews/charters/enterprise-readiness.md) review shard's `design-backlog` findings; consumed by maintainers when implementing extension seams. When work in this document is shipped, sections move to git history; new design entries grow the backlog over time._
 
-**Scope boundary.** Phase 2 is about making the upstream repo a **good citizen for downstream enterprise forks** without:
+_Implementation iterations (if/when phasing becomes useful) would live as sibling docs or in a future `design/enterprise/` directory; for now, this is a single document._
+
+**Scope boundary.** This document covers making the upstream repo a **good citizen for downstream enterprise forks** without:
 
 - integrating any specific IDP, MDM, telemetry backend, or artifact store,
 - shipping any proprietary or vendor-specific code,
@@ -10,7 +12,7 @@ _Companion to `design/review_2026-04-23.md` and `design/phase_1_self_contained.m
 
 The goal is a set of **stable, documented extension seams** such that an org fork (or third party) can add IDP catalog entries, signed overlays, fleet telemetry, MDM packaging, and policy enforcement **without patching or forking the core code**. Every seam is either a directory the core reads, an env var the core honours, a JSON contract the core emits, or a hook the core invokes.
 
-The existing `design/enterprise_notes.md` is the reference model; this document is the **implementation plan for the seams** that the notes rely on. The notes describe what an enterprise fork will build; this plan delivers the contracts that make that cheap.
+The existing [`design/enterprise_notes.md`](enterprise_notes.md) is the reference model; this document is the **implementation plan for the seams** that the notes rely on. The notes describe what an enterprise fork will build; this plan delivers the contracts that make that cheap.
 
 Each section follows the same shape: **Re-review → Design → Acceptance criteria → Task checklist**.
 
@@ -438,24 +440,71 @@ Schema versioned like the JSON contracts (§3): `schema_version: 1.0.0` at the t
 
 ---
 
-## 8. Effort and sequencing
+## 8. Recommended nixpkgs revision (fleet coordination)
 
-| § | Block                            | Est. effort    | Blocks          |
-| - | -------------------------------- | -------------- | --------------- |
-| 5 | Reserved env var contract        | 1 d            | nothing         |
-| 7 | Catalog surface                  | 0.5 d          | nothing         |
-| 2 | Hook lifecycle contract          | 2.5 d          | §1, §4          |
-| 1 | Overlay distribution contract    | 3 d            | §4              |
-| 3 | Telemetry / doctor JSON contract | 2 d            | nothing         |
-| 4 | Policy enforcement seam          | 1.5 d          | §2              |
-| 6 | Provenance and version identity  | 2 d            | Phase 1 §2 + §3 |
-|   | **Total for Phase 2**            | ~12.5 dev-days |                 |
+### 8.1 Re-review
 
-Recommended order: §7 → §5 → §2 → §1 → §4 → §3 → §6. Final tag: `v1.1.0` (minor - purely additive).
+`nx pin set <rev>` exists for opt-in coordinated nixpkgs versions across a team. The cost is that solo developers and fresh installs get whatever `nixpkgs-unstable` HEAD is at install time. Two devs on the same team installing on the same day get different lockfiles. For org-scale adoption this is a coordination problem - the tool sells "reproducibility" but delivers "your machine, today."
 
-### Exit criteria for Phase 2
+The honest-framing fix shipped in `59d95be` (the Nix-vs-Homebrew comparison table now distinguishes per-machine from cross-machine reproducibility). The remaining additive feature: ship a periodically-refreshed recommended nixpkgs revision so users can opt into a curated, recently-validated commit without team coordination overhead.
 
-A third party - with **no** changes to upstream - can:
+This belongs in Phase 2 because it's a fleet-coordination feature (constraint on standalone integrity from the `enterprise-readiness` charter: optional, costs nothing when unused, only kicks in when an org or team wires it up).
+
+### 8.2 Design
+
+A periodically-refreshed nixpkgs commit that the upstream repo recommends. Opt-in by users; the default flow remains "latest unstable" so solo devs still get current packages without ceremony.
+
+1. **`nix/recommended.lock`** - single line, the recommended nixpkgs commit SHA. Updated by CI on a schedule (monthly is reasonable; revisit cadence after a few cycles based on test-failure rate).
+
+2. **CI refresh workflow** - `.github/workflows/refresh_recommended_lock.yml`:
+   - Schedule: monthly cron.
+   - Action: bump `nix/recommended.lock` to the latest nixpkgs-unstable commit, then run the full Linux + macOS test matrix against it.
+   - On success: open a PR with the bump + the matrix's pass result as evidence.
+   - On failure: open an issue with the failing test details so a human can investigate before any user picks up a broken pin.
+
+3. **Opt-in via `nx pin set --recommended`** - reads the file, sets the user's pin to that commit. Persists via the existing `nx pin` mechanism - no new state layer.
+
+4. **No automatic adoption** - the recommended pin is read-on-demand. A user who never runs `nx pin set --recommended` is unaffected; their flow is unchanged.
+
+### 8.3 Acceptance criteria
+
+- `nix/recommended.lock` exists and contains a single commit SHA.
+- `.github/workflows/refresh_recommended_lock.yml` runs on schedule, opens a PR on success, an issue on test-matrix failure.
+- `nx pin set --recommended` reads the file and sets the user's pin via existing pin machinery.
+- `docs/decisions.md` "Why nixpkgs-unstable" section extended to mention recommended.lock as a soft-pin opt-in.
+- `docs/customization.md` documents the opt-in flow under a "Fleet coordination" subsection.
+- Bats tests cover the `--recommended` flag handling (file present / file missing / file malformed).
+
+### 8.4 Tasks
+
+- [ ] Add `nix/recommended.lock` (initial value: current nixpkgs-unstable HEAD at the time of shipping).
+- [ ] Implement `nx pin set --recommended` in `.assets/lib/nx_pkg.sh` (or wherever the pin verb lives).
+- [ ] Write `.github/workflows/refresh_recommended_lock.yml`: monthly cron, bump + run test matrix + open PR or issue.
+- [ ] Document the opt-in flow in `docs/customization.md` under a new "Fleet coordination" section.
+- [ ] Extend `docs/decisions.md` "Why nixpkgs-unstable" entry to mention the recommended-lock soft-pin path.
+- [ ] Bats tests for `--recommended` flag: happy path, missing file, malformed SHA.
+
+---
+
+## 9. Effort and sequencing
+
+| § | Block                            | Est. effort  | Blocks          |
+| - | -------------------------------- | ------------ | --------------- |
+| 5 | Reserved env var contract        | 1 d          | nothing         |
+| 7 | Catalog surface                  | 0.5 d        | nothing         |
+| 8 | Recommended nixpkgs revision     | 1.5 d        | nothing         |
+| 2 | Hook lifecycle contract          | 2.5 d        | §1, §4          |
+| 1 | Overlay distribution contract    | 3 d          | §4              |
+| 3 | Telemetry / doctor JSON contract | 2 d          | nothing         |
+| 4 | Policy enforcement seam          | 1.5 d        | §2              |
+| 6 | Provenance and version identity  | 2 d          | Phase 1 §2 + §3 |
+|   | **Total for Phase 2**            | ~14 dev-days |                 |
+
+Recommended order: §7 → §5 → §8 → §2 → §1 → §4 → §3 → §6. Final tag: `v1.1.0` (minor - purely additive).
+
+### Exit criteria
+
+When the work in this document has shipped, a third party - with **no** changes to upstream - can:
 
 1. Publish an overlay (scopes + hooks + `overlay.yaml`) that the core loads, verifies via pre-overlay hook, and enforces via policy hook.
 2. Consume `install.json` + `nx doctor --json` + `metadata.yaml` with published JSON schemas and stable field semantics.
