@@ -1,9 +1,12 @@
 adsi
 airgap
+anson
 argstr
 autoexec
 azcopy
 azurecli
+backpressure
+bassim
 behaviour
 blocklists
 bootcamp
@@ -31,6 +34,7 @@ distrobox
 distros
 eacces
 egsave
+eledath
 elif
 elop
 elopment
@@ -55,6 +59,7 @@ intune
 isatty
 jamf
 kandji
+koalaman
 kubecolor
 kubectx
 kubelogin
