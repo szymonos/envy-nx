@@ -40,7 +40,7 @@ upgrade: ## Upgrade prek and hooks versions
 	uv sync --all-extras --upgrade --compile-bytecode
 	uv run prek autoupdate
 
-.PHONY: test test-unit test-nix
+.PHONY: test test-unit test-nix test-upgrade-walk
 test: test-unit test-nix ## Run all tests (unit + Docker smoke)
 
 test-unit: ## Run bats + Pester unit tests in parallel (fast, no Docker)
@@ -66,6 +66,26 @@ test-nix: ## Run Docker smoke test for nix path
 		&& printf "\n\033[32;1m>> Nix test PASSED\033[0m\n\n" \
 		&& docker rmi lss-test-nix >/dev/null 2>&1; \
 		$(CLEANUP_ROOT_CERT)
+
+test-upgrade-walk: ## Cross-version upgrade walk in Docker (slow, ~20+ min). WALK_FLOOR / WALK_VERSIONS / TARGET_REF env vars supported.
+	@printf "\n\033[95;1m== Cross-version upgrade walk (Docker) ==\033[0m\n\n"
+	@$(ENSURE_ROOT_CERT) && \
+		docker build --platform=linux/amd64 \
+			-f .assets/docker/Dockerfile.upgrade-walk \
+			-t lss-upgrade-walk .assets/certs/ \
+		&& docker run --rm --platform=linux/amd64 \
+			-v "$$(pwd):/src:ro" \
+			-v "$$(pwd)/.github/scripts/upgrade_walk.sh:/walk.sh:ro" \
+			-e SRC_REPO=/src \
+			-e WORK_REPO=/home/ubuntu/work \
+			-e TARGET_REF="$${TARGET_REF:-$$(git rev-parse HEAD)}" \
+			-e WALK_VERSIONS="$$WALK_VERSIONS" \
+			-e WALK_FLOOR="$${WALK_FLOOR:-v1.5.0}" \
+			-e TARGET_SCOPES="$${TARGET_SCOPES:---shell --unattended}" \
+			lss-upgrade-walk /walk.sh; \
+		rc=$$?; \
+		$(CLEANUP_ROOT_CERT); \
+		exit $$rc
 
 .PHONY: mkdocs-serve
 mkdocs-serve: ## Serve mkdocs documentation with live reload

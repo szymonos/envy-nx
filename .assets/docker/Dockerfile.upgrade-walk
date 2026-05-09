@@ -1,0 +1,37 @@
+FROM ubuntu:24.04
+
+# Minimal base for the cross-version upgrade walk: ubuntu + git + nix.
+# The walk script itself is bind-mounted at runtime (see `make test-upgrade-walk`)
+# so iterating on the script does not invalidate this image.
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# install intercepted MITM root cert if present (mirrors Dockerfile.test-nix)
+COPY ca-cert-root.crt /usr/local/share/ca-certificates/ca-cert-root.crt
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        bash ca-certificates curl sudo xz-utils git jq \
+    && update-ca-certificates \
+    && chown -R ubuntu:ubuntu /home/ubuntu \
+    # prepare /nix for single-user install
+    && mkdir -p /nix \
+    && chown ubuntu:ubuntu /nix \
+    # enable flakes and disable sandbox
+    && mkdir -p /home/ubuntu/.config/nix \
+    && printf 'experimental-features = nix-command flakes\nsandbox = false\n' \
+        > /home/ubuntu/.config/nix/nix.conf \
+    && chown -R ubuntu:ubuntu /home/ubuntu/.config \
+    #
+    # clean up
+    && apt-get autoremove -y \
+    && apt-get clean -y \
+    && rm -rf /var/lib/apt/lists/*
+
+USER ubuntu
+WORKDIR /home/ubuntu
+SHELL ["/bin/bash", "-c"]
+
+RUN curl -sL https://nixos.org/nix/install | sh -s -- --no-daemon
+
+ENTRYPOINT ["/bin/bash"]
