@@ -258,20 +258,29 @@ Describe 'Invoke-WslBaseSetup' {
         $rec.error | Should -Be 'SSL certificate verification failed'
     }
 
-    It 'calls Set-WslConf only when wsl_boot is false' {
-        $check = New-CheckDistroHashtable -Flags @{ wsl_boot = $false }
-        $rec = New-DistroRecord
-        Invoke-WslBaseSetup `
-            -Distro 'Ubuntu' `
-            -Check $check `
-            -FixNetwork $true `
-            -AddCertificate $true `
-            -DistroRecord $rec
-        Should -Invoke -CommandName 'Set-WslConf' -ModuleName 'utils-setup' -Times 1
+    It 'always calls Set-WslConf so existing wsl.conf picks up the runtime-dir prefix' {
+        # Both wsl_boot states should call Set-WslConf -- the gate was dropped
+        # because we want existing distros to get the new boot.command on the
+        # next setup run, not just fresh installs.
+        foreach ($wslBoot in @($true, $false)) {
+            $check = New-CheckDistroHashtable -Flags @{ wsl_boot = $wslBoot }
+            $rec = New-DistroRecord
+            Invoke-WslBaseSetup `
+                -Distro 'Ubuntu' `
+                -Check $check `
+                -FixNetwork $true `
+                -AddCertificate $true `
+                -DistroRecord $rec
+        }
+        Should -Invoke -CommandName 'Set-WslConf' -ModuleName 'utils-setup' -Times 2
     }
 
-    It 'skips Set-WslConf when wsl_boot is true' {
-        $check = New-CheckDistroHashtable -Flags @{ wsl_boot = $true }
+    It 'composes boot.command with user-runtime-dir@<def_uid>.service start' {
+        $script:capturedConf = $null
+        Mock -CommandName 'Set-WslConf' -ModuleName 'utils-setup' -MockWith {
+            $script:capturedConf = $ConfDict
+        }
+        $check = New-CheckDistroHashtable -Uid 1000 -Flags @{ def_uid = 1000 }
         $rec = New-DistroRecord
         Invoke-WslBaseSetup `
             -Distro 'Ubuntu' `
@@ -279,7 +288,12 @@ Describe 'Invoke-WslBaseSetup' {
             -FixNetwork $true `
             -AddCertificate $true `
             -DistroRecord $rec
-        Should -Invoke -CommandName 'Set-WslConf' -ModuleName 'utils-setup' -Times 0
+
+        $script:capturedConf | Should -Not -BeNullOrEmpty
+        $cmd = $script:capturedConf.boot.command
+        $cmd | Should -Match 'systemctl start user-runtime-dir@1000\.service'
+        $cmd | Should -Match 'command -v systemctl'
+        $cmd | Should -Match 'autoexec\.sh'
     }
 }
 

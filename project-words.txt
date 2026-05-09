@@ -64,6 +64,7 @@ kyverno
 lastexitcode
 libicu
 lockfiles
+logind
 makefiles
 mapfile
 mgmt
@@ -74,6 +75,7 @@ mkdocs
 mktemp
 modularizes
 mtimes
+multishells
 namerefs
 narhash
 nixos
@@ -82,6 +84,7 @@ nmap
 nodeenv
 nomatch
 noout
+oneshot
 otbs
 pacman
 pasteable

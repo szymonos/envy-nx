@@ -108,7 +108,19 @@ function _nx_render_nix_block() {
 
   if [ -x "$HOME/.nix-profile/bin/fnm" ]; then
     printf '\n# :fnm\n'
-    printf '[ -x "$HOME/.nix-profile/bin/fnm" ] && eval "$(fnm env --use-on-cd --shell %s)"\n' "$shell"
+    # fnm computes its multishell symlink dir as $XDG_RUNTIME_DIR/fnm_multishells
+    # and doesn't create the parent. Rootless containers (Coder, etc.) export
+    # XDG_RUNTIME_DIR=/run/user/$UID but lack systemd-logind to materialize it,
+    # so fnm fails on every shell start with "Can't create the symlink for
+    # multishells". Self-heal: redirect to a writable /tmp fallback when the
+    # configured dir is missing.
+    printf 'if [ -x "$HOME/.nix-profile/bin/fnm" ]; then\n'
+    printf '  if [ -n "${XDG_RUNTIME_DIR:-}" ] && [ ! -d "$XDG_RUNTIME_DIR" ]; then\n'
+    printf '    export XDG_RUNTIME_DIR="/tmp/runtime-$(id -u)"\n'
+    printf '    mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR" 2>/dev/null\n'
+    printf '  fi\n'
+    printf '  eval "$(fnm env --use-on-cd --shell %s)"\n' "$shell"
+    printf 'fi\n'
   fi
 
   if [ -x "$HOME/.nix-profile/bin/uv" ]; then
