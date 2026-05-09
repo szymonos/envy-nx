@@ -66,6 +66,8 @@ libicu
 lockfiles
 logind
 makefiles
+mandoc
+manpath
 mapfile
 mgmt
 microsoftonline
@@ -130,5 +132,6 @@ vdisk
 venv
 versinfo
 virtualenv
+whatis
 winget
 worktree
