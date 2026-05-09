@@ -84,19 +84,19 @@ resolve_scope_deps() {
 }
 
 # -- Sort scopes by install order --------------------------------------------
-# Populates `sorted_scopes` array from `_scope_set`.
+# Populates `_scope_sorted` array from `_scope_set`.
 sort_scopes() {
-  sorted_scopes=()
+  _scope_sorted=()
   local ordered=" "
   for sc in "${INSTALL_ORDER[@]}"; do
     if scope_has "$sc"; then
-      sorted_scopes+=("$sc")
+      _scope_sorted+=("$sc")
       ordered+="$sc "
     fi
   done
   # append overlay/local scopes not in INSTALL_ORDER
   for sc in $_scope_set; do
-    [[ " $ordered " == *" $sc "* ]] || sorted_scopes+=("$sc")
+    [[ " $ordered " == *" $sc "* ]] || _scope_sorted+=("$sc")
   done
 }
 

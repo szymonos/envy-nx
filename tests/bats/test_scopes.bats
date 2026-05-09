@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # Unit tests for .assets/lib/scopes.sh (bash 3.2 compatible helpers)
-# shellcheck disable=SC2034,SC2154  # variables like omp_theme, sorted_scopes used by sourced lib
+# shellcheck disable=SC2034,SC2154  # variables like omp_theme, _scope_sorted used by sourced lib
 bats_require_minimum_version 1.5.0
 
 setup() {
@@ -155,27 +155,27 @@ setup() {
   scope_add "python"
   scope_add "docker"
   sort_scopes
-  [[ "${sorted_scopes[*]}" == "docker python shell rice" ]]
+  [[ "${_scope_sorted[*]}" == "docker python shell rice" ]]
 }
 
 @test "sort_scopes with empty set gives empty array" {
   sort_scopes
-  [[ ${#sorted_scopes[@]} -eq 0 ]]
+  [[ ${#_scope_sorted[@]} -eq 0 ]]
 }
 
 @test "sort_scopes omits scopes not in set" {
   scope_add "python"
   sort_scopes
-  [[ "${sorted_scopes[*]}" == "python" ]]
+  [[ "${_scope_sorted[*]}" == "python" ]]
 }
 
 @test "sort_scopes preserves overlay scopes not in INSTALL_ORDER" {
   scope_add "shell"
   scope_add "local_mytools"
   sort_scopes
-  [[ "${sorted_scopes[*]}" == *"shell"* ]]
-  [[ "${sorted_scopes[*]}" == *"local_mytools"* ]]
-  [[ "${sorted_scopes[0]}" == "shell" ]]
+  [[ "${_scope_sorted[*]}" == *"shell"* ]]
+  [[ "${_scope_sorted[*]}" == *"local_mytools"* ]]
+  [[ "${_scope_sorted[0]}" == "shell" ]]
 }
 
 @test "sort_scopes preserves multiple overlay scopes" {
@@ -183,10 +183,10 @@ setup() {
   scope_add "local_dev"
   scope_add "local_ops"
   sort_scopes
-  [[ ${#sorted_scopes[@]} -eq 3 ]]
-  [[ "${sorted_scopes[0]}" == "python" ]]
-  [[ "${sorted_scopes[*]}" == *"local_dev"* ]]
-  [[ "${sorted_scopes[*]}" == *"local_ops"* ]]
+  [[ ${#_scope_sorted[@]} -eq 3 ]]
+  [[ "${_scope_sorted[0]}" == "python" ]]
+  [[ "${_scope_sorted[*]}" == *"local_dev"* ]]
+  [[ "${_scope_sorted[*]}" == *"local_ops"* ]]
 }
 
 # -- hyphen normalization (nix/setup.sh pattern) ------------------------------

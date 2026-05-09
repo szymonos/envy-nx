@@ -1,10 +1,10 @@
 # phase: summary
 # Mode detection and final status output.
 # shellcheck disable=SC2154  # upgrade_packages, remove_scopes, any_scope,
-#   quiet_summary, platform, sorted_scopes - set by bootstrap/platform phases
+#   quiet_summary, platform, _scope_sorted - set by bootstrap/platform phases
 #
 # Reads:  upgrade_packages, remove_scopes, any_scope, quiet_summary,
-#         platform, sorted_scopes
+#         platform, _scope_sorted
 # Writes: _mode
 
 phase_summary_detect_mode() {
@@ -24,9 +24,9 @@ phase_summary_print() {
 
   printf "\n\e[95;1m<< Setup completed successfully >>\e[0m\n"
   if [[ "$_mode" == "remove" ]]; then
-    printf "\e[90mPlatform: %s | Mode: remove | Removed: %s | Scopes: %s\e[0m\n" "$platform" "${remove_scopes[*]}" "${sorted_scopes[*]}"
+    printf "\e[90mPlatform: %s | Mode: remove | Removed: %s | Scopes: %s\e[0m\n" "$platform" "${remove_scopes[*]}" "${_scope_sorted[*]}"
   else
-    printf "\e[90mPlatform: %s | Mode: %s | Scopes: %s\e[0m\n" "$platform" "$_mode" "${sorted_scopes[*]}"
+    printf "\e[90mPlatform: %s | Mode: %s | Scopes: %s\e[0m\n" "$platform" "$_mode" "${_scope_sorted[*]}"
   fi
   local invoking_shell
   invoking_shell="$(ps -o comm= -p "$PPID" 2>/dev/null | sed 's/^-//')" || true

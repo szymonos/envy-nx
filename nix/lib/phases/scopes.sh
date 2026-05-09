@@ -6,7 +6,7 @@
 #
 # Reads:  CONFIG_NIX, any_scope, remove_scopes, omp_theme, starship_theme,
 #         allow_unfree
-# Writes: _scope_set, sorted_scopes, NIX_ENV_SCOPES, allow_unfree,
+# Writes: _scope_set, _scope_sorted, NIX_ENV_SCOPES, allow_unfree,
 #         _ir_phase, _ir_error
 
 phase_scopes_load_existing() {
@@ -103,13 +103,13 @@ phase_scopes_enforce_prompt_exclusivity() {
 phase_scopes_resolve_and_sort() {
   resolve_scope_deps
   sort_scopes
-  NIX_ENV_SCOPES="${sorted_scopes[*]:-}"
+  NIX_ENV_SCOPES="${_scope_sorted[*]:-}"
   export NIX_ENV_SCOPES
 
   printf "\n\e[95;1m>> Dev Environment Setup via Nix (%s)\e[0m" "$platform"
-  # shellcheck disable=SC2154  # sorted_scopes is populated by sort_scopes
-  if ((${#sorted_scopes[@]} > 0)); then
-    printf " : \e[3;90m%s\e[0m" "${sorted_scopes[*]}"
+  # shellcheck disable=SC2154  # _scope_sorted is populated by sort_scopes
+  if ((${#_scope_sorted[@]} > 0)); then
+    printf " : \e[3;90m%s\e[0m" "${_scope_sorted[*]}"
   fi
   printf "\n\n"
 }
@@ -146,7 +146,7 @@ phase_scopes_skip_system_prefer() {
   fi
   if [[ "$changed" == "true" ]]; then
     sort_scopes
-    NIX_ENV_SCOPES="${sorted_scopes[*]:-}"
+    NIX_ENV_SCOPES="${_scope_sorted[*]:-}"
     export NIX_ENV_SCOPES
   fi
 }
@@ -154,7 +154,7 @@ phase_scopes_skip_system_prefer() {
 phase_scopes_write_config() {
   local nix_scopes=""
   local sc
-  for sc in "${sorted_scopes[@]}"; do
+  for sc in "${_scope_sorted[@]}"; do
     nix_scopes+="    \"$sc\""$'\n'
   done
 
@@ -181,9 +181,9 @@ EOF
 
   if [ -f "$CONFIG_NIX" ] && cmp -s "$_tmp" "$CONFIG_NIX"; then
     rm -f "$_tmp"
-    info "config.nix unchanged (${#sorted_scopes[@]} scopes)"
+    info "config.nix unchanged (${#_scope_sorted[@]} scopes)"
     return 0
   fi
   mv -f "$_tmp" "$CONFIG_NIX"
-  info "generated config.nix with ${#sorted_scopes[@]} scopes"
+  info "generated config.nix with ${#_scope_sorted[@]} scopes"
 }

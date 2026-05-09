@@ -1,9 +1,9 @@
 # phase: configure
 # GitHub CLI auth, git config, scope-based post-install configuration.
-# shellcheck disable=SC2154  # CONFIGURE_DIR, sorted_scopes, omp_theme,
+# shellcheck disable=SC2154  # CONFIGURE_DIR, _scope_sorted, omp_theme,
 #   starship_theme - set by bootstrap phase
 #
-# Reads:  CONFIGURE_DIR, sorted_scopes, omp_theme, starship_theme
+# Reads:  CONFIGURE_DIR, _scope_sorted, omp_theme, starship_theme
 # Writes: GITHUB_TOKEN
 
 # gh.sh and git.sh are invoked directly (NOT through _io_run): both emit
@@ -32,7 +32,7 @@ phase_configure_git() {
 phase_configure_per_scope() {
   local sc
   info "running per-scope configuration..."
-  for sc in "${sorted_scopes[@]}"; do
+  for sc in "${_scope_sorted[@]}"; do
     case $sc in
     docker)
       _io_run "$CONFIGURE_DIR/docker.sh" || warn "docker configuration failed"

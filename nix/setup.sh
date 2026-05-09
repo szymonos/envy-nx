@@ -79,7 +79,7 @@ _ir_skip=false
 _ir_error=""
 _mode="unknown"
 platform="unknown"
-sorted_scopes=()
+_scope_sorted=()
 
 _on_exit() {
   local exit_code=$?
@@ -95,7 +95,7 @@ _on_exit() {
       printf "\e[33mCheck %s for details.\e[0m\n\n" "$log_path" >&2
     fi
   fi
-  _IR_SCOPES="${sorted_scopes[*]:-}"
+  _IR_SCOPES="${_scope_sorted[*]:-}"
   _IR_ALLOW_UNFREE="${allow_unfree:-false}"
   _IR_MODE="${_mode:-unknown}"
   _IR_PLATFORM="${platform:-unknown}"
@@ -177,7 +177,7 @@ _ir_phase="post-install"
 _ir_flush "in_progress"
 
 # shellcheck disable=SC2154  # update_modules - set by phase_bootstrap_parse_args
-phase_post_install_common "$update_modules" "${sorted_scopes[@]}"
+phase_post_install_common "$update_modules" "${_scope_sorted[@]}"
 
 _ir_phase="complete"
 _ir_flush "in_progress"
