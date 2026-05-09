@@ -428,11 +428,18 @@ _scope_pkgs() {
   scope_add "shell"
   scope_add "zsh"
   uname() { echo "Linux"; }
+  # phase_scopes_skip_system_prefer's "not installed anywhere" branch checks
+  # both `has_system_cmd zsh` (system pkg manager copy) AND `command -v zsh`
+  # (anything on PATH including /nix). Stub both so the test runs
+  # deterministically on any host - including developer machines with zsh
+  # installed via nix - instead of skipping based on host state.
   has_system_cmd() { return 1; }
-  # ensure zsh is genuinely not on PATH (skip if it is - CI may have it)
-  if command -v zsh &>/dev/null; then
-    skip "zsh is installed on this system"
-  fi
+  command() {
+    if [ "$1" = "-v" ] && [ "$2" = "zsh" ]; then
+      return 1
+    fi
+    builtin command "$@"
+  }
   phase_scopes_skip_system_prefer
   run ! scope_has "zsh"
   scope_has "shell"
