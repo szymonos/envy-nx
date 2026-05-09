@@ -124,12 +124,13 @@ _fp_of() {
   local count
   count=$(grep -c -- '-----BEGIN CERTIFICATE-----' "$bundle")
   [[ "$count" -eq 2 ]]
-  # And cert1 wasn't duplicated.
+  # And cert1 wasn't duplicated. The subject CN appears once per cert in
+  # the `# subject=` header line that openssl prepends to each PEM block;
+  # extra occurrences in the PEM body itself are openssl-version-dependent,
+  # so the strict floor is "at least one" (which proves cert1 is present
+  # and the dedupe path didn't drop it).
   local cn1
   cn1=$(grep -c 'CN=test-cert-1' "$bundle")
-  [[ "$cn1" -eq 2 ]] # one in header comment, one in PEM-decoded payload via openssl... actually subject only in header
-  # Actually the subject only appears in the `# subject=` header line, so 1 occurrence.
-  # The above assertion compensates for the case where openssl includes both; relax to >=1.
   [[ "$cn1" -ge 1 ]]
 }
 
