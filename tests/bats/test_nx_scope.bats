@@ -415,6 +415,36 @@ EOF
   [[ "$output" == *"already installed in scope 'shell'"* ]]
 }
 
+@test "install: does not false-match a pkg whose name is a regex prefix of a scope pkg [F-004]" {
+  # Regression: scope-detection used `grep -m1 "^${p}\t"` which interpolated
+  # the pkg name into a regex. nixpkgs names commonly contain regex
+  # metacharacters (`.`, `+`, `_`) - so `python3` could falsely match
+  # `python311` and the user would be told the (different) pkg they asked
+  # for "is already installed in scope X". Use awk's explicit column-1
+  # equality check instead. Only `python311` is in the scope list here;
+  # `python3` is a different pkg that the user actually wants installed.
+  cat >"$_NX_ENV_DIR/scopes/python.nix" <<'EOF'
+{ pkgs }: with pkgs; [
+  python311
+]
+EOF
+  cat >"$_NX_ENV_DIR/config.nix" <<'EOF'
+{
+  isInit = false;
+  scopes = [
+    "python"
+  ];
+}
+EOF
+  run _nx_pkg_install python3
+  # Must NOT report python3 as already-in-scope (the false-positive case).
+  [[ "$output" != *"already installed in scope"* ]]
+  # python3 should land in the user package list (added cleanly).
+  [[ "$output" == *"added python3"* ]]
+  run grep -q '"python3"' "$_NX_PKG_FILE"
+  [ "$status" -eq 0 ]
+}
+
 @test "install: warns when the package is already in the user list (extra)" {
   cat >"$_NX_ENV_DIR/scopes/base.nix" <<'EOF'
 { pkgs }: with pkgs; [
