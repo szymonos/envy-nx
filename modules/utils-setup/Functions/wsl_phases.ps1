@@ -86,7 +86,7 @@ when the corresponding probe initially failed.
 .PARAMETER Distro
 Name of the WSL distro.
 .PARAMETER Check
-Parsed check_distro.sh result (reads wsl_boot).
+Parsed check_distro.sh result (reads def_uid).
 .PARAMETER FixNetwork
 True if -FixNetwork was passed by the user (or auto-promoted by an earlier
 probe). When false and the DNS probe fails, the function auto-promotes
@@ -164,12 +164,21 @@ function Invoke-WslBaseSetup {
 
     # *boot setup
     Invoke-WslExe --distribution $Distro --user root install -m 0755 .assets/setup/autoexec.sh /etc
-    if (-not $Check.wsl_boot) {
-        $bootConf = [ordered]@{
-            boot = @{ command = '"[ -x /etc/autoexec.sh ] && /etc/autoexec.sh || true"' }
-        }
-        Set-WslConf -Distro $Distro -ConfDict $bootConf | Out-Default
+    # Compose the [boot] command. Prefix with `systemctl start
+    # user-runtime-dir@<def_uid>.service` to materialize /run/user/<def_uid> at
+    # WSL boot. WSL's bash entry doesn't fire pam_systemd, so logind never
+    # spawns the user runtime dir on its own; on Fedora and other distros that
+    # ship pam_systemd only in PAM stacks WSL doesn't traverse, anything that
+    # needs XDG_RUNTIME_DIR (fnm, dbus user-session, ...) breaks on every shell
+    # start. Guarded with `command -v systemctl` so non-systemd boots no-op,
+    # and stderr piped to /dev/null so the line is silent on distros where the
+    # unit isn't applicable. Always re-written so existing wsl.conf gets the
+    # new prefix on the next setup run.
+    $bootCmdValue = "command -v systemctl >/dev/null 2>&1 && systemctl start user-runtime-dir@$($Check.def_uid).service 2>/dev/null; [ -x /etc/autoexec.sh ] && /etc/autoexec.sh || true"
+    $bootConf = [ordered]@{
+        boot = @{ command = "`"$bootCmdValue`"" }
     }
+    Set-WslConf -Distro $Distro -ConfDict $bootConf | Out-Default
 
     return [pscustomobject]@{
         FixNetwork     = $FixNetwork
