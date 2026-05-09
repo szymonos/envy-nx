@@ -5,6 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `helpers.sh` no longer leaks `auth_status`, `gh_user`, `gh_cfg`, and `status_code` into callers' environments [F-001]. Pure additive `local` declarations in `gh_login_user` and `download_file`; no behavior change.
+
 ## [1.7.1] - 2026-05-09
 
 Lands the 16 fix commits from the first end-to-end cycle of the chunked agentic-review framework on the `test-quality` shard. v1.7.0 introduced the framework and reported the cycle's outcome as evidence the workflow held together; this patch ships the actual diffs. Every change is under `tests/` - no production code touched - and every commit references its source finding ID (`F-NNN`) so the audit trail back to `.wolf/reviews/2026-05-09-test-quality.json` stays intact post-merge. The verifier subagent confirmed all 16 as root-cause fixes (zero symptom-only, zero scope-creep, zero regression-risk); local `make lint` + `make test-unit` clean (456 bats + 139 Pester).

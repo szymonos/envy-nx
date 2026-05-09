@@ -78,6 +78,7 @@ download_file() {
   local file_name="$(basename "$uri")"
   local max_retries=8
   local retry_count=0
+  local status_code
 
   while [ $retry_count -le $max_retries ]; do
     # download file
@@ -120,6 +121,7 @@ gh_login_user() {
   local token=""
   local retries=0
   local key=false
+  local auth_status gh_user gh_cfg
   # parse named parameters
   OPTIND=1
   while getopts ":u:k" opt; do
