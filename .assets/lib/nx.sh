@@ -125,6 +125,41 @@ function _nx_all_scope_pkgs() {
   fi
 }
 
+# Filter user-supplied package names by whether they are claimed by a
+# managed scope. Args after $1 are the package names; $1 is the action
+# verb ("install" or "remove") which only changes the wording of the
+# stderr message ("already installed in scope X" vs "managed by scope X").
+#
+# stdout: one un-managed pkg per line (the args that passed the filter).
+# stderr: one warning per scope-managed pkg.
+#
+# Closes FU-001 (the inline-filter test-isolation problem from the
+# 2026-05-09 test-quality cycle): tests can drive this helper directly
+# with a stubbed `_nx_all_scope_pkgs` instead of needing the full verb
+# wrapper. Subsumes F-005's request for an `_nx_lookup_pkg_scope` helper
+# (the lookup is centralized here, single source of truth).
+function _nx_filter_scope_args() {
+  local action="$1"
+  shift
+  local scope_pkgs p in_scope
+  scope_pkgs="$(_nx_all_scope_pkgs)"
+  for p in "$@"; do
+    in_scope="$(printf '%s\n' "$scope_pkgs" | grep -m1 "^${p}	" 2>/dev/null | cut -f2)"
+    if [ -n "$in_scope" ]; then
+      case "$action" in
+      install)
+        printf "\e[33m%s is already installed in scope '%s'\e[0m\n" "$p" "$in_scope" >&2
+        ;;
+      remove)
+        printf "\e[33m%s is managed by scope '%s' - use: nx scope remove %s\e[0m\n" "$p" "$in_scope" "$in_scope" >&2
+        ;;
+      esac
+    else
+      printf '%s\n' "$p"
+    fi
+  done
+}
+
 function _nx_find_lib() {
   local name="$1"
   # NX_LIB_DIR is an explicit override - lets tests and dev iteration

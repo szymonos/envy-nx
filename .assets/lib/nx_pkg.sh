@@ -30,18 +30,20 @@ function _nx_pkg_install() {
     fi
   done
   [ ${#validated[@]} -eq 0 ] && return 1
-  local scope_pkgs current _before
-  scope_pkgs="$(_nx_all_scope_pkgs)"
+  # Filter out scope-managed pkgs; helper emits the "already in scope X"
+  # warnings to stderr. Bash 3.2 macOS lacks mapfile, so accumulate via
+  # a while-read loop.
+  local filtered=() current _before
+  while IFS= read -r p; do
+    [ -n "$p" ] && filtered+=("$p")
+  done < <(_nx_filter_scope_args install "${validated[@]}")
+  [ ${#filtered[@]} -eq 0 ] && return 0
   current="$(_nx_read_pkgs)"
   _before="$(cat "$_NX_PKG_FILE" 2>/dev/null)"
   {
     [ -n "$current" ] && printf '%s\n' "$current"
-    for p in "${validated[@]}"; do
-      local in_scope
-      in_scope="$(printf '%s\n' "$scope_pkgs" | grep -m1 "^${p}	" 2>/dev/null | cut -f2)"
-      if [ -n "$in_scope" ]; then
-        printf "\e[33m%s is already installed in scope '%s'\e[0m\n" "$p" "$in_scope" >&2
-      elif printf '%s\n' "$current" | grep -qx "$p" 2>/dev/null; then
+    for p in "${filtered[@]}"; do
+      if printf '%s\n' "$current" | grep -qx "$p" 2>/dev/null; then
         printf "\e[33m%s is already installed (extra)\e[0m\n" "$p" >&2
       else
         printf '%s\n' "$p"
@@ -57,17 +59,13 @@ function _nx_pkg_remove() {
     echo "Usage: nx remove <pkg> [pkg...]" >&2
     return 1
   }
-  local scope_pkgs filtered_args=() p
-  scope_pkgs="$(_nx_all_scope_pkgs)"
-  for p in "$@"; do
-    local in_scope
-    in_scope="$(printf '%s\n' "$scope_pkgs" | grep -m1 "^${p}	" 2>/dev/null | cut -f2)"
-    if [ -n "$in_scope" ]; then
-      printf "\e[33m%s is managed by scope '%s' - use: nx scope remove %s\e[0m\n" "$p" "$in_scope" "$in_scope" >&2
-    else
-      filtered_args+=("$p")
-    fi
-  done
+  # Filter out scope-managed pkgs; helper emits the "managed by scope X"
+  # warnings to stderr. Bash 3.2 macOS lacks mapfile, so accumulate via
+  # a while-read loop.
+  local filtered_args=() p
+  while IFS= read -r p; do
+    [ -n "$p" ] && filtered_args+=("$p")
+  done < <(_nx_filter_scope_args remove "$@")
   [ ${#filtered_args[@]} -eq 0 ] && return 0
   local current _before
   current="$(_nx_read_pkgs)"
