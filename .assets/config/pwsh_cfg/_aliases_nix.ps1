@@ -271,11 +271,22 @@ function _NxProfileRegenerate {
     # -- nix:fnm - fnm node version manager ---
     # nix installs fnm; fnm owns the runtime. The eval line wires `fnm env` so
     # node/npm land on PATH and per-project `.nvmrc` switching activates on cd.
+    # XDG_RUNTIME_DIR self-heal mirrors the bash/zsh block in nx_profile.sh:
+    # fnm writes its multishell symlink to $XDG_RUNTIME_DIR/fnm_multishells and
+    # crashes if the parent is missing. WSL bash entry skips pam_systemd, and
+    # rootless containers (Coder) lack logind, so /run/user/$UID may not exist.
+    # Native Windows pwsh has $env:XDG_RUNTIME_DIR unset, so the inner block is
+    # skipped and `id -u` (Linux/macOS-only) never runs.
     $nixBinFnm = [IO.Path]::Combine($nixBin, 'fnm')
     if ([IO.File]::Exists($nixBinFnm)) {
         $fnmRegion = [string[]]@(
             '#region nix:fnm'
             'if (Test-Path "$HOME/.nix-profile/bin/fnm" -PathType Leaf) {'
+            '    if ($env:XDG_RUNTIME_DIR -and -not (Test-Path $env:XDG_RUNTIME_DIR -PathType Container)) {'
+            '        $env:XDG_RUNTIME_DIR = "/tmp/runtime-$(id -u)"'
+            '        New-Item -ItemType Directory -Path $env:XDG_RUNTIME_DIR -Force | Out-Null'
+            '        chmod 700 $env:XDG_RUNTIME_DIR 2>$null'
+            '    }'
             '    (& "$HOME/.nix-profile/bin/fnm" env --use-on-cd --shell power-shell) | Out-String | Invoke-Expression'
             '}'
             '#endregion'
