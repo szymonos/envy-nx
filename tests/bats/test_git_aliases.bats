@@ -35,19 +35,21 @@ teardown() {
   [[ "$output" == "main" ]]
 }
 
-@test "git_resolve_branch 'm' resolves to main" {
+@test "git_resolve_branch 'm' resolves to main when only main exists" {
   git -C "$TEST_REPO" branch main 2>/dev/null || true
   cd "$TEST_REPO"
   run git_resolve_branch "m"
   [[ "$output" == "main" ]]
 }
 
-@test "git_resolve_branch 'm' resolves to master" {
-  git -C "$TEST_REPO" branch master 2>/dev/null || true
+@test "git_resolve_branch 'm' resolves to master when only master exists" {
+  # Force a master-only repo: rename whatever the default branch was (main
+  # on modern git, master on older git) to 'master' so the test can assert
+  # on a specific value instead of accepting either default.
+  git -C "$TEST_REPO" branch -M master
   cd "$TEST_REPO"
   run git_resolve_branch "m"
-  # could be main or master depending on default, just check it resolves
-  [[ "$output" == "main" || "$output" == "master" ]]
+  [[ "$output" == "master" ]]
 }
 
 @test "git_resolve_branch 'd' resolves to development branch" {
