@@ -157,8 +157,14 @@ STUB
   mkdir -p "$empty_dir"
   local saved_path="$PATH"
   PATH="$empty_dir"
+  # Clear bash's command hash so a previously-cached `pwsh` (e.g. from the
+  # system-pwsh fallback test that just ran) doesn't make `command -v pwsh`
+  # falsely succeed under the cleared PATH. Same discipline used in
+  # test_install_record.bats around its PATH overrides.
+  hash -r
   run _io_pwsh_nop -c 'test'
   PATH="$saved_path"
+  hash -r
 
   [[ "$status" -ne 0 ]]
   [[ "$output" == *"pwsh not found"* ]]
