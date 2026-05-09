@@ -1,0 +1,64 @@
+name: Cross-version Upgrade Walk
+
+# Walks every released tag from newest to oldest and tests "user installed at vX.Y.Z,
+# repo got pulled to current HEAD, can `nx setup` upgrade them cleanly?"
+#
+# Cheap relative to the matrix integration tests: ONE Nix install per run, package
+# cache warms up across iterations. Only the user-scope state in ~/.config/nix-env/
+# is wiped between iterations (--env-only); /nix/store and the nix-env profile
+# entry persist (those are validated by test_linux.yml's matrix).
+#
+# Walking newest→oldest with fail-fast = the first failure is the upgrade-supported
+# floor. Triggers: manual + weekly cron. Not run per-PR (~30 min wall clock).
+
+on:
+  workflow_dispatch:
+    inputs:
+      from-version:
+        description: "Optional single tag to test (e.g. v1.5.0). Empty = walk all tags >= floor-version."
+        type: string
+        default: ""
+      floor-version:
+        description: "Skip tags older than this. Bump as the user base retires old installs."
+        type: string
+        default: "v1.5.0"
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  walk:
+    name: "upgrade walk (newest → oldest)"
+    runs-on: ubuntu-slim
+    timeout-minutes: 45
+    env:
+      NIX_CONFIG: "access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}"
+      # NB: --quiet-summary is HEAD-only (modular bootstrap.sh). Older tagged
+      # setup.sh scripts reject unknown options, so we keep this minimal.
+      TARGET_SCOPES: "--shell --unattended"
+
+    steps:
+      - name: Checkout (full history + tags)
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Install Nix (Determinate)
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Verify nix is working
+        run: nix --version && nix store info
+
+      - name: Walk versions
+        env:
+          WALK_VERSIONS: ${{ github.event.inputs.from-version }}
+          # Default applies to both manual dispatch (input default) and cron
+          # (where inputs.* are null) - bump as the user base retires old installs.
+          WALK_FLOOR: ${{ github.event.inputs.floor-version || 'v1.5.0' }}
+        run: bash .github/scripts/upgrade_walk.sh
