@@ -1,6 +1,7 @@
 adsi
 anson
 autoexec
+autolinks
 azcli
 azcopy
 azurecli
@@ -11,6 +12,7 @@ blocklists
 bootcamp
 bootstrapper
 btop
+buglog
 cafile
 certifi
 chsh
@@ -130,6 +132,7 @@ storeutl
 subshells
 subverb
 subverbs
+sugiyama
 sysinfo
 szymonos
 tflint
