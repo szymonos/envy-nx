@@ -258,8 +258,10 @@ run_phase1() {
     _rm "$HOME/miniforge3"
   fi
 
-  # 1h. Remove nix profile entry (after all _rm calls - removing the profile
-  #     earlier would break tools resolved through ~/.nix-profile/bin).
+  # 1h. Remove the 'nix-env' entry from the user's nix profile. Runs after
+  #     all _rm calls so prior steps can still resolve tools through
+  #     ~/.nix-profile/bin. The profile itself stays - env-only is meant to
+  #     keep Nix usable; full Nix removal is phase 2's job.
   if command -v nix &>/dev/null; then
     if nix profile list --json 2>/dev/null | grep -q 'nix-env' ||
       nix profile list 2>/dev/null | grep -q 'nix-env'; then
@@ -272,11 +274,7 @@ run_phase1() {
     fi
   fi
 
-  # 1i. Remove nix profile symlink and local state
-  _rm "$HOME/.nix-profile"
-  _rm "$HOME/.local/state/nix"
-
-  # 1j. Clean up nixenv backup files from shell rc files
+  # 1i. Clean up nixenv backup files from shell rc files
   if [[ "$DRY_RUN" != "true" ]]; then
     for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
       for backup in "${rc}.nixenv-backup-"*; do
@@ -285,7 +283,7 @@ run_phase1() {
     done
   fi
 
-  # 1k. Strip trailing blank lines from rc files (bash builtins only -
+  # 1j. Strip trailing blank lines from rc files (bash builtins only -
   # external tools like awk/sed may have been removed with the nix profile).
   if [[ "$DRY_RUN" != "true" ]]; then
     for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do

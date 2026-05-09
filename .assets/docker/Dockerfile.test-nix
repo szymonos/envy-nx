@@ -94,10 +94,14 @@ RUN set -e \
     && echo "--- Checking generic config files preserved ---" \
     && test -f "$HOME/.config/bash/functions.sh" \
     #
-    # nix itself must still be installed (not on PATH after ~/.nix-profile
-    # removal, but the nix store must exist)
-    && echo "--- Checking Nix still installed ---" \
+    # nix itself must still be installed AND usable - env-only is meant to
+    # keep Nix functional. The store, profile symlink, and per-user state
+    # all survive; only the dev-env package is removed from the profile.
+    && echo "--- Checking Nix still installed and usable ---" \
     && test -d /nix/store \
+    && test -L "$HOME/.nix-profile" \
+    && test -d "$HOME/.local/state/nix" \
+    && "$HOME/.nix-profile/bin/nix" --version \
     && echo "=== Uninstall checks passed ==="
 
 ENTRYPOINT [ "/bin/bash" ]
