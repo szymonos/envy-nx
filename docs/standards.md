@@ -9,8 +9,8 @@ This tool provisions developer environments - if it breaks, developers cannot wo
 | Unit test files              | 30 (21 bats + 9 Pester)                                                     |
 | Individual test cases        | 583 (444 bats + 139 Pester)                                                 |
 | Test code                    | 8,300+ lines                                                                |
-| Custom pre-commit hooks      | 11 Python scripts                                                           |
-| Pre-commit checks per commit | 23 hooks                                                                    |
+| Custom pre-commit hooks      | 12 Python scripts                                                           |
+| Pre-commit checks per commit | 24 hooks                                                                    |
 | CI workflows                 | 7 (preflight, CodeQL, Linux, macOS, upgrade walk, release, docs)            |
 | CI matrix axes               | 5 (Linux daemon, Linux rootless, Linux tarball, macOS Sequoia, macOS Tahoe) |
 | Platforms validated per PR   | macOS (bash 3.2 + BSD), Ubuntu (bash 5 + GNU)                               |
@@ -50,20 +50,21 @@ Every commit passes through 23 hooks split across two categories: **custom hooks
 
 ### Custom hooks
 
-11 Python scripts under `tests/hooks/`, wired in as `repo: local` entries:
+12 Python scripts under `tests/hooks/`, wired in as `repo: local` entries:
 
-| Hook                          | Why it exists                                                                                                                                                                                                                       |
-| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `gremlins-check`              | Catches invisible Unicode (zero-width spaces, smart quotes pasted from chat) before it lands in shell scripts where it changes execution semantics.                                                                                 |
-| `validate-docs-words`         | Keeps the cspell custom dictionary tied to actual docs usage -- removes entries no doc still references, so the dictionary doesn't become a graveyard of words from deleted pages.                                                  |
-| `align-tables`                | Auto-aligns markdown table columns so a one-character cell change doesn't produce a multi-hundred-column git diff.                                                                                                                  |
-| `validate-scopes`             | A scope is a four-tuple (JSON definition, Nix package list, dependency rules, binary declarations). Catches partial additions where one of the four is updated but the others aren't.                                               |
-| `check-bash32`                | Blocks bash 4+ syntax in scripts that have to run on macOS's stock bash 3.2. The diagnostic includes the offending line and the recommended portable rewrite, not just "incompatible".                                              |
-| `check-zsh-compat`            | All bash scripts that get sourced into the user's zsh profile must avoid the patterns where bash and zsh disagree (function declarations, glob no-match behavior, completion builtins).                                             |
-| `check-no-tty-read`           | Forbids `read` redirected from `/dev/tty` in setup scripts unless explicitly self-attested. The pattern silently hangs in interactive shells but silently passes in headless CI / agents -- the worst kind of bug to ship.          |
-| `check-changelog`             | Runtime file changes require a CHANGELOG entry under `[Unreleased]`. Can be skipped via a label when the change is genuinely doc-only.                                                                                              |
-| `check-nx-generated`          | The `nx` CLI's bash, zsh, and PowerShell completers are generated from a single JSON surface description. Catches mismatches between the source and the generated artifacts -- usually means somebody hand-edited a generated file. |
-| `bats-tests` / `pester-tests` | Smart test runners that map changed files to the tests that source them -- only re-runs tests the change could affect, not the full suite.                                                                                          |
+| Hook                          | Why it exists                                                                                                                                                                                                                        |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `gremlins-check`              | Catches invisible Unicode (zero-width spaces, smart quotes pasted from chat) before it lands in shell scripts where it changes execution semantics.                                                                                  |
+| `validate-docs-words`         | Keeps the cspell custom dictionary tied to actual docs usage -- removes entries no doc still references, so the dictionary doesn't become a graveyard of words from deleted pages.                                                   |
+| `align-tables`                | Auto-aligns markdown table columns so a one-character cell change doesn't produce a multi-hundred-column git diff.                                                                                                                   |
+| `validate-scopes`             | A scope is a four-tuple (JSON definition, Nix package list, dependency rules, binary declarations). Catches partial additions where one of the four is updated but the others aren't.                                                |
+| `check-bash32`                | Blocks bash 4+ syntax in scripts that have to run on macOS's stock bash 3.2. The diagnostic includes the offending line and the recommended portable rewrite, not just "incompatible".                                               |
+| `check-zsh-compat`            | All bash scripts that get sourced into the user's zsh profile must avoid the patterns where bash and zsh disagree (function declarations, glob no-match behavior, completion builtins).                                              |
+| `check-no-tty-read`           | Forbids `read` redirected from `/dev/tty` in setup scripts unless explicitly self-attested. The pattern silently hangs in interactive shells but silently passes in headless CI / agents -- the worst kind of bug to ship.           |
+| `check-md-html-tags`          | Forbids unbalanced tag-like `<...` substrings in `docs/*.md` -- Python-Markdown's HTML preprocessor consumes them as malformed tag openers (even inside backticks), silently dropping subsequent rendered content. Recurrence guard. |
+| `check-changelog`             | Runtime file changes require a CHANGELOG entry under `[Unreleased]`. Can be skipped via a label when the change is genuinely doc-only.                                                                                               |
+| `check-nx-generated`          | The `nx` CLI's bash, zsh, and PowerShell completers are generated from a single JSON surface description. Catches mismatches between the source and the generated artifacts -- usually means somebody hand-edited a generated file.  |
+| `bats-tests` / `pester-tests` | Smart test runners that map changed files to the tests that source them -- only re-runs tests the change could affect, not the full suite.                                                                                           |
 
 ### Vendored hooks
 

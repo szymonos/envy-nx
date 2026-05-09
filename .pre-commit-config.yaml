@@ -41,6 +41,11 @@ repos:
         entry: python3 -m tests.hooks.check_no_tty_read
         language: system
         files: ^(\.assets/|nix/|wsl/|modules/).*\.(sh|zsh|bash)$
+      - id: check-md-html-tags
+        name: Forbid unbalanced tag-like '<...' in mkdocs-published Markdown
+        entry: python3 -m tests.hooks.check_md_html_tags
+        language: system
+        files: ^docs/.*\.md$
       - id: check-nx-generated
         name: Check nx generated artifacts (completers, help, dispatch, lib-files) match nx_surface.json
         entry: python3 -m tests.hooks.check_nx_completions
@@ -88,6 +93,7 @@ repos:
     rev: v0.22.1
     hooks:
       - id: markdownlint-cli2
+        args: ["--fix"]
         files: \.md$
         exclude: /copilot-instructions\.md
   - repo: https://github.com/streetsidesoftware/cspell-cli
