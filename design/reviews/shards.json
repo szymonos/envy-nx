@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "description": "Manifest of review shards for /review skill. See design/reviews/README.md for context.",
+  "shards": [
+    {
+      "name": "certs",
+      "title": "Certificate / proxy path",
+      "globs": [
+        ".assets/lib/certs.sh",
+        ".assets/fix/fix_*_certs.sh",
+        "nix/lib/phases/nix_profile.sh",
+        "nix/configure/nodejs.sh",
+        ".assets/lib/nx_profile.sh",
+        ".assets/lib/env_block.sh",
+        ".assets/lib/nx_doctor.sh",
+        ".assets/setup/setup_profile_user.ps1",
+        "wsl/wsl_certs_add.ps1"
+      ],
+      "charter": "design/reviews/charters/certs.md",
+      "blast_radius": "high",
+      "notes": "Cross-platform cert handling, MITM detection, multi-tool trust store coordination. Highest blast radius - a regression here breaks every HTTPS-dependent tool on a corporate network."
+    },
+    {
+      "name": "orchestration",
+      "title": "Setup orchestration (nix/setup.sh + phase library)",
+      "globs": [
+        "nix/setup.sh",
+        "nix/lib/phases/*.sh",
+        "nix/lib/io.sh"
+      ],
+      "charter": "design/reviews/charters/orchestration.md",
+      "blast_radius": "high",
+      "notes": "Phase-based orchestrator + side-effect stubs. Touches every install/upgrade run. Idempotency, error propagation, and phase-boundary contracts are load-bearing."
+    },
+    {
+      "name": "nx-cli",
+      "title": "nx CLI surface (sourced into user shells)",
+      "globs": [
+        ".assets/lib/nx_*.sh",
+        ".assets/lib/profile_block.sh",
+        ".assets/lib/scopes.sh",
+        ".assets/lib/helpers.sh"
+      ],
+      "charter": "design/reviews/charters/nx-cli.md",
+      "blast_radius": "high",
+      "notes": "Sourced into every interactive bash/zsh on every login. Bash 3.2 compat, zsh-compat, and shell-state hygiene (no leaked variables, no surprising aliases) are critical."
+    },
+    {
+      "name": "config-templates",
+      "title": "Shell / PowerShell / oh-my-posh config templates",
+      "globs": [
+        ".assets/config/shell_cfg/*",
+        ".assets/config/pwsh_cfg/*",
+        ".assets/config/omp_cfg/*"
+      ],
+      "charter": "design/reviews/charters/config-templates.md",
+      "blast_radius": "medium",
+      "notes": "Templates rendered into user profiles via managed blocks. Cross-shell parity (bash/zsh/pwsh) and idempotent rendering are the main concerns."
+    },
+    {
+      "name": "system-installers",
+      "title": "System-scope installers (root-required)",
+      "globs": [
+        ".assets/provision/install_*.sh",
+        ".assets/scripts/linux_setup.sh"
+      ],
+      "charter": "design/reviews/charters/system-installers.md",
+      "blast_radius": "high",
+      "notes": "Run as root, per-distro arms (alpine/arch/fedora/debian/ubuntu/opensuse). Mistakes here can brick a system or leak privileges."
+    },
+    {
+      "name": "wsl-orchestration",
+      "title": "WSL orchestration (Windows host)",
+      "globs": [
+        "wsl/*.ps1"
+      ],
+      "charter": "design/reviews/charters/wsl-orchestration.md",
+      "blast_radius": "medium",
+      "notes": "Runs on the Windows host before any WSL distro exists. Encoding, path translation, distro lifecycle. No CI coverage - only mocked Pester tests, so review must take the place of integration tests."
+    },
+    {
+      "name": "precommit-hooks",
+      "title": "Pre-commit hook scripts",
+      "globs": [
+        "tests/hooks/*.py"
+      ],
+      "charter": "design/reviews/charters/precommit-hooks.md",
+      "blast_radius": "medium",
+      "notes": "Hooks gate every commit. False positives slow down work; false negatives let regressions through. Detection logic and exit codes need the same scrutiny as production code."
+    },
+    {
+      "name": "test-quality",
+      "title": "Test suites (bats + Pester)",
+      "globs": [
+        "tests/bats/*.bats",
+        "tests/pester/*.Tests.ps1"
+      ],
+      "charter": "design/reviews/charters/test-quality.md",
+      "blast_radius": "low",
+      "notes": "Reviewing the tests themselves: are they testing the right thing, are mocks too lenient, do test names lie about what they assert. Low blast radius (test code), but compounds: a bad test misleads every future reader."
+    },
+    {
+      "name": "enterprise-readiness",
+      "title": "Enterprise readiness posture",
+      "globs": [
+        "docs/enterprise.md",
+        "docs/benefits.md",
+        "docs/customization.md",
+        "docs/proxy.md",
+        "docs/releasing.md",
+        ".assets/lib/install_record.sh",
+        ".assets/lib/nx_doctor.sh",
+        "nix/lib/phases/platform.sh",
+        "nix/uninstall.sh"
+      ],
+      "charter": "design/reviews/charters/enterprise-readiness.md",
+      "blast_radius": "medium",
+      "notes": "Cross-cutting posture lens (not code-correctness). Two binding constraints: (a) standalone integrity must hold, (b) no pollution by unused enterprise scaffolding. Findings have two output paths: code/doc fixes here, OR additions to enterprise.md as integration-side responsibility. The resist-adding-code path is the load-bearing mechanism."
+    }
+  ]
+}
