@@ -253,37 +253,16 @@ Describe 'wsl_setup.ps1 orchestration' {
 
     Context 'DNS failure halts execution' {
         It 'exits with non-zero when DNS check fails' {
-            # run in subprocess since `exit 1` terminates the process
-            $null = pwsh -NoProfile -Command @"
-                `$env:WSL_SETUP_TESTING = '1'
-                `$env:HOMEDRIVE = 'C:'
-                `$env:HOMEPATH = '\Users\testuser'
-                Set-Location '$Script:RepoRoot'
-                Import-Module './modules/do-common' -Force
-                Import-Module './modules/utils-install' -Force
-                Import-Module './modules/utils-setup' -Force
-                function wsl.exe {
-                    `$argStr = `$args -join ' '
-                    if (`$argStr -match 'check_distro\.sh') { return '$(New-CheckDistro)' }
-                    if (`$argStr -match 'check_dns\.sh') { return 'false' }
-                    if (`$argStr -match 'check_ssl\.sh') { return 'true' }
-                    if (`$argStr -match 'hosts\.yml') { return 'github.com' }
-                    return ''
-                }
-                function Get-WslDistro {
-                    [CmdletBinding()]param([switch]`$FromRegistry, [switch]`$Online)
-                    if (`$FromRegistry) {
-                        [PSCustomObject]@{ Name='Ubuntu'; DefaultUid=1000; Version=2; Flags=15; BasePath='C:\fake'; Default=`$true }
-                    } else {
-                        [PSCustomObject]@{ Default=`$true; Name='Ubuntu'; State='Running'; Version=2 }
-                    }
-                }
-                function Set-WslConf {}
-                function Update-GitRepository { return 1 }
-                function Invoke-GhRepoClone { return 2 }
-                function Test-IsAdmin { return `$false }
-                & './wsl/wsl_setup.ps1' -Distro 'Ubuntu' -Scope @('shell') -SkipRepoUpdate *>`$null
-"@
+            # Subprocess required because wsl_setup.ps1's DNS check calls
+            # `exit 1` and would terminate the test runner. Mock setup is
+            # extracted into _helpers/Invoke-WslSetupScenario.ps1 so future
+            # subprocess scenarios can reuse the same harness without
+            # reinventing the heredoc-with-escapes dance. Dot-source via
+            # `-Command` (rather than `-File`) so the script's function
+            # overrides land in the child's global scope and shadow the
+            # imported module functions for wsl_setup.ps1's calls.
+            $helper = Join-Path $Script:RepoRoot 'tests/pester/_helpers/Invoke-WslSetupScenario.ps1'
+            $null = pwsh -NoProfile -Command ". '$helper' -RepoRoot '$($Script:RepoRoot)' -DnsResult 'false'"
             $LASTEXITCODE | Should -Not -Be 0
         }
     }
