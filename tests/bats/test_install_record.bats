@@ -172,19 +172,32 @@ _make_nojq_path() {
     skip "jq not available"
   fi
   unset _IR_INSTALLED_AT
+  # Stub `date` so each invocation increments a counter and returns a
+  # different sentinel. Without sleep we can now both verify the timestamp
+  # stays stable (assert second flush keeps the first stamp) AND that date
+  # was only invoked once (counter == 1 after both flushes).
+  local stamp_counter="$BATS_TEST_TMPDIR/date_calls"
+  printf '0\n' >"$stamp_counter"
+  date() {
+    local n
+    n="$(<"$stamp_counter")"
+    n=$((n + 1))
+    printf '%s\n' "$n" >"$stamp_counter"
+    printf '2026-01-01T00:00:%02dZ' "$n"
+  }
   _ir_phase="bootstrap"
   _ir_flush
   local first
   first="$(jq -r '.installed_at' "$DEV_ENV_DIR/install.json")"
-  # Force enough wall-clock to elapse that a regenerated timestamp would
-  # differ at second resolution. 1.1s is >= the ISO-8601 second tick so
-  # any code path that calls `date` again will produce a new value.
-  sleep 1.1
   _ir_phase="profiles"
   _ir_flush
   local second
   second="$(jq -r '.installed_at' "$DEV_ENV_DIR/install.json")"
   [ "$first" = "$second" ]
+  [ "$first" = "2026-01-01T00:00:01Z" ]
+  # If date were called twice, counter would be 2 - prove production
+  # actually went through the _IR_INSTALLED_AT cache on the second flush.
+  [ "$(<"$stamp_counter")" = "1" ]
 }
 
 @test "_ir_flush followed by write_install_record (final) preserves installed_at" {
@@ -192,15 +205,25 @@ _make_nojq_path() {
     skip "jq not available"
   fi
   unset _IR_INSTALLED_AT
+  local stamp_counter="$BATS_TEST_TMPDIR/date_calls"
+  printf '0\n' >"$stamp_counter"
+  date() {
+    local n
+    n="$(<"$stamp_counter")"
+    n=$((n + 1))
+    printf '%s\n' "$n" >"$stamp_counter"
+    printf '2026-01-01T00:00:%02dZ' "$n"
+  }
   _ir_phase="bootstrap"
   _ir_flush
   local mid
   mid="$(jq -r '.installed_at' "$DEV_ENV_DIR/install.json")"
-  sleep 1.1
   write_install_record "success" "complete"
   local final
   final="$(jq -r '.installed_at' "$DEV_ENV_DIR/install.json")"
   [ "$mid" = "$final" ]
+  [ "$mid" = "2026-01-01T00:00:01Z" ]
+  [ "$(<"$stamp_counter")" = "1" ]
   jq -e '.status == "success"' "$DEV_ENV_DIR/install.json"
   jq -e '.phase == "complete"' "$DEV_ENV_DIR/install.json"
 }
