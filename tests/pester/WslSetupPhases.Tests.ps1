@@ -675,14 +675,15 @@ Describe 'Invoke-WslDistroMigration' {
 
 Describe 'Get-WslInstallVersion' {
     It 'returns a PSCustomObject with Version/SourceRef/Source fields' {
-        # runs against the real repo - asserting shape only, not specific values
+        # runs against the real repo - asserting shape only, not specific
+        # values. (Don't assert Source == 'git' here: tarball / zip checkouts
+        # and worktrees legitimately resolve to other values, so an exact
+        # match would break in environments the function explicitly supports.)
         $version = Get-WslInstallVersion
         $version | Should -BeOfType [pscustomobject]
         $version.PSObject.Properties.Name | Should -Contain 'Version'
         $version.PSObject.Properties.Name | Should -Contain 'SourceRef'
         $version.PSObject.Properties.Name | Should -Contain 'Source'
-        # in a git checkout, Source should be 'git'
-        $version.Source | Should -Be 'git'
     }
 }
 
