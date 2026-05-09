@@ -1,7 +1,7 @@
 # phase: post-install
 # Common post-install setup and nix garbage collection.
 #
-# Reads:  SCRIPT_ROOT, sorted_scopes
+# Reads:  SCRIPT_ROOT, _scope_sorted
 
 phase_post_install_common() {
   local do_update_modules="$1"

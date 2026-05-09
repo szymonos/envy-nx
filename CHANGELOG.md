@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 - `helpers.sh` no longer leaks `auth_status`, `gh_user`, `gh_cfg`, and `status_code` into callers' environments [F-001]. Pure additive `local` declarations in `gh_login_user` and `download_file`; no behavior change.
 - `scopes.sh` no longer leaks loop/intermediate variables into the caller [F-002]. Added `local rules rule trigger a _l` to `resolve_scope_deps`, `local valid s v` to `validate_scopes`, and an `unset _l` after the two file-level read loops at sourcing time.
+- Renamed `sort_scopes`'s output array `sorted_scopes` to `_scope_sorted` for naming-convention consistency with the `_scope_set` input contract [F-003]. Coordinated rename across `.assets/lib/scopes.sh` and the four caller files (`.assets/scripts/linux_setup.sh`, `nix/setup.sh`, `nix/lib/phases/{configure,post_install,scopes,summary}.sh`) plus `tests/bats/test_scopes.bats`. The `_` prefix marks it as reserved by the module so callers don't accidentally shadow it.
 
 ## [1.7.1] - 2026-05-09
 

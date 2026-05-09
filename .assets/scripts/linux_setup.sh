@@ -102,8 +102,8 @@ done <<<"$distro_check"
 # resolve dependencies and sort
 resolve_scope_deps
 sort_scopes
-# shellcheck disable=SC2154  # sorted_scopes is populated by sort_scopes
-scope_arr=("${sorted_scopes[@]}")
+# shellcheck disable=SC2154  # _scope_sorted is populated by sort_scopes
+scope_arr=("${_scope_sorted[@]}")
 
 # get distro name from os-release
 . /etc/os-release
