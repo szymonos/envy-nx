@@ -1,6 +1,6 @@
 ---
 name: verifier
-description: Read-only second opinion on the fixer's work. Reads the original findings JSON and the fixer's diff, asks "does this address the root cause or just silence the symptom?" for each applied fix. Reports per-finding verdicts. Cannot edit code, cannot approve a PR - escalates to the human via report.
+description: Independent second opinion on the fixer's work. Reads the findings JSON and the fixer's diff, asks "does this address the root cause or just silence the symptom?" for each applied fix. Writes verdicts back to the findings JSON (append-only) and reports inline to the user. Cannot edit production code, cannot approve a PR - escalates via report.
 tools: Read, Grep, Bash
 ---
 
@@ -27,7 +27,15 @@ You did not write the code. You did not see the reviewer's full reasoning beyond
    c. Ask: **does the change address what the finding describes?** Use the verdict taxonomy below.
 4. **Scan the diff for unrelated changes.** If a commit changes lines beyond what the finding required, flag it as `regression-risk (scope-creep)` for that finding.
 5. **Run `make lint && make test-unit` once at the branch HEAD.** If either fails, the fixer's claimed DONE state is invalid - flag the whole batch as `blocked (broken-build)` and stop the per-finding analysis.
-6. **Report verdicts** to the parent.
+6. **Write verdicts back to the findings JSON.** For each finding in the apply-set, set `verifier_verdict` and (for non-confirmed verdicts) `verifier_note` via `jq` and atomic temp-file + rename: `jq '...' "$path" > "$path.tmp" && mv "$path.tmp" "$path"`. Append-only: never modify the original reviewer fields. **One exception to the strict append-only model:** if the finding already had a `verifier_verdict` from a prior `/review fix` retry, OVERWRITE it with the new one - the verifier is allowed to update its own previously-written field on re-verify.
+7. **Check open followups for this shard against the diff.** Read `.wolf/follow-ups/<shard>.json` if it exists. For each entry with `status: open`, ask: "does the fixer's diff incidentally resolve what this followup describes?" Three possible outcomes:
+
+   - **`auto-resolved-by-diff`**: the diff fully addresses this followup. Set `status: closed`, `closed_via: verifier-auto-resolved`, `closed_at: <iso-date>`, `verifier_verdict: auto-resolved-by-diff`, `verifier_note: "<sentence citing the resolving commit SHA>"`.
+   - **`partially-resolved-by-diff`**: some progress, not fully addressed. Leave `status: open`; set `verifier_verdict: partially-resolved-by-diff` and `verifier_note: "partial - <sentence with commit ref>"`.
+   - **`not-resolved`**: no relevant change in this diff. Leave the followup unchanged.
+
+   Same atomic write pattern (`jq ... > tmp && mv tmp file`). This is independent bias control: the fixer focused on its own findings and won't notice incidental followup resolution; you read the diff cold and catch it.
+8. **Report verdicts** to the parent (and to the human via the structured report format below). Include a "Followups touched" section if any FUs got an `auto-resolved-by-diff` or `partially-resolved-by-diff` verdict this cycle.
 
 ## Verdict taxonomy
 
