@@ -203,6 +203,10 @@ The Makefile detects custom CA certificates (`~/.config/certs/ca-custom.crt`, wr
 
 Every check above this section fires on a diff: a commit, a PR, a push. That's the right shape for catching the regression you're about to introduce, but it cannot see what's already standing in the codebase - drift, dead code, workarounds whose upstream bug got fixed years ago, cross-shard inconsistencies that each per-PR review correctly let through in isolation. A diff-blind problem needs a diff-blind tool.
 
+![PDCA loops: per-PR daily cycle alongside chunked review periodic cycle](assets/pdca-loops.svg)
+
+Per-PR fires per diff (full PDCA, all four phases). Chunked fires per shard on a manual cadence (Plan / Check / Act only - no Do, since the code already exists). Per-PR catches what's being added; chunked catches what's already there.
+
 The repo runs a periodic chunked agentic-review framework orthogonally to the daily PR cycle. Nine shards by concern (`certs`, `orchestration`, `nx-cli`, `config-templates`, `system-installers`, `wsl-orchestration`, `precommit-hooks`, `test-quality`, `enterprise-readiness`), each with a versioned charter that defines scope, "what good looks like", and what NOT to flag. One shard is reviewed at a time on a manual cadence (`/review <shard>`), rotating through the nine so the whole repo cycles every two months without overloading any single review's context.
 
 Three subagents with deliberately separated roles and restricted tool sets:
