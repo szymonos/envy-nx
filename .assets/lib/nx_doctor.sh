@@ -48,8 +48,22 @@ CHECKS="
 
 # ---- check functions -------------------------------------------------------
 
+# Test seam for `command -v <name> [name...]`. Returns 0 if any of the
+# named binaries resolve via PATH; 1 otherwise. Tests stub this single
+# helper rather than overriding the bash `command` builtin per check.
+# Keeps `nx_doctor.sh` standalone-after-install (no source dependency
+# on nx.sh / helpers.sh) per ARCHITECTURE.md §5. Closes FU-002 from the
+# 2026-05-09 test-quality cycle.
+_nx_has_cmd() {
+  local _name
+  for _name in "$@"; do
+    command -v "$_name" >/dev/null 2>&1 && return 0
+  done
+  return 1
+}
+
 _check_nix_available() {
-  if ! command -v nix >/dev/null 2>&1; then
+  if ! _nx_has_cmd nix; then
     printf 'fail\tnix not found in PATH\tinstall Nix from https://nixos.org/download (or re-clone envy-nx and run .assets/scripts/linux_setup.sh)\n'
     return
   fi
@@ -78,7 +92,7 @@ _check_flake_lock() {
     printf 'fail\t%s/flake.lock not found\tre-run nix/setup.sh to generate ~/.config/nix-env/flake.lock\n' "$ENV_DIR"
     return
   fi
-  if ! command -v jq >/dev/null 2>&1; then
+  if ! _nx_has_cmd jq; then
     printf 'warn\tflake.lock exists but jq not available to validate\tinstall jq, then re-run nx doctor\n'
     return
   fi
@@ -114,7 +128,7 @@ _check_install_record() {
     printf 'warn\t%s/install.json not found\tre-run nix/setup.sh to record install provenance\n' "$DEV_ENV_DIR"
     return
   fi
-  if ! command -v jq >/dev/null 2>&1; then
+  if ! _nx_has_cmd jq; then
     echo "pass"
     return
   fi
@@ -150,7 +164,7 @@ _check_scope_binaries() {
       break
     fi
   done
-  if [ -z "$_scopes_dir" ] || [ ! -f "$DEV_ENV_DIR/install.json" ] || ! command -v jq >/dev/null 2>&1; then
+  if [ -z "$_scopes_dir" ] || [ ! -f "$DEV_ENV_DIR/install.json" ] || ! _nx_has_cmd jq; then
     printf 'warn\tcannot verify (scope files or install.json not found)\tre-run nix/setup.sh to populate scope files and install.json\n'
     return
   fi
@@ -196,7 +210,7 @@ _check_scope_bins_in_profile() {
       break
     fi
   done
-  if [ -z "$_scopes_dir" ] || [ ! -f "$DEV_ENV_DIR/install.json" ] || ! command -v jq >/dev/null 2>&1; then
+  if [ -z "$_scopes_dir" ] || [ ! -f "$DEV_ENV_DIR/install.json" ] || ! _nx_has_cmd jq; then
     return
   fi
   local _scopes _missing="" _scope _entry _bins
@@ -337,7 +351,7 @@ _check_cert_bundle() {
         break
       fi
     done
-    if [ -z "$_mozilla_bundle" ] || ! command -v openssl >/dev/null 2>&1; then
+    if [ -z "$_mozilla_bundle" ] || ! _nx_has_cmd openssl; then
       echo "pass"
       return
     fi
@@ -398,7 +412,7 @@ _check_vscode_server_env() {
 }
 
 _check_nix_profile() {
-  if ! command -v nix >/dev/null 2>&1; then
+  if ! _nx_has_cmd nix; then
     printf 'fail\tnix not available\tinstall Nix from https://nixos.org/download (or re-clone envy-nx and run .assets/scripts/linux_setup.sh)\n'
     return
   fi
