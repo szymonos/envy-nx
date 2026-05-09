@@ -152,3 +152,7 @@ fi
 - Public functions require comment-based help: `.SYNOPSIS`, `.PARAMETER`, `.EXAMPLE`
 - `wsl_setup.ps1` uses `$Script:rel_*` variables to cache release versions across distro loops
 - For conditional/loop statements with multiple conditions, all conditions and the opening `{` must be on the same line
+
+## Cross-shell parity
+
+bash, zsh, and PowerShell are all first-class user shells. When editing shell-init, profile-rendering, or alias files, check both sides - the [`.claude/rules/cross-shell-parity.md`](rules/cross-shell-parity.md) rule activates with the paired-file map and the canonical asymmetry example (the v1.6.3 fnm incident).

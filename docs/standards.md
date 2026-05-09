@@ -1,6 +1,6 @@
 # Quality & Testing
 
-This tool provisions developer environments - if it breaks, developers cannot work. The engineering standards applied to this repository reflect that criticality. This page documents how the codebase enforces its own quality, not as convention, but as automated, CI-validated constraints.
+This tool provisions developer environments - if it breaks, developers cannot work. The engineering standards applied to this repository reflect that criticality. This page documents how the codebase enforces its own quality, primarily through automated, CI-validated constraints, backstopped by a periodic human-triggered review framework for what diff-based gates cannot see.
 
 ## By the numbers
 
@@ -14,6 +14,7 @@ This tool provisions developer environments - if it breaks, developers cannot wo
 | CI workflows                 | 7 (preflight, CodeQL, Linux, macOS, upgrade walk, release, docs)            |
 | CI matrix axes               | 5 (Linux daemon, Linux rootless, Linux tarball, macOS Sequoia, macOS Tahoe) |
 | Platforms validated per PR   | macOS (bash 3.2 + BSD), Ubuntu (bash 5 + GNU)                               |
+| Standing review shards       | 9 charter-driven, manual `/review` trigger                                  |
 
 ## Why these standards exist
 
@@ -59,7 +60,7 @@ Every commit passes through 23 hooks split across two categories: **custom hooks
 | `validate-scopes`             | A scope is a four-tuple (JSON definition, Nix package list, dependency rules, binary declarations). Catches partial additions where one of the four is updated but the others aren't.                                               |
 | `check-bash32`                | Blocks bash 4+ syntax in scripts that have to run on macOS's stock bash 3.2. The diagnostic includes the offending line and the recommended portable rewrite, not just "incompatible".                                              |
 | `check-zsh-compat`            | All bash scripts that get sourced into the user's zsh profile must avoid the patterns where bash and zsh disagree (function declarations, glob no-match behavior, completion builtins).                                             |
-| `check-no-tty-read`           | Forbids `read </dev/tty` in setup scripts unless explicitly self-attested. The pattern silently hangs in interactive shells but silently passes in headless CI / agents -- the worst kind of bug to ship.                           |
+| `check-no-tty-read`           | Forbids `read` redirected from `/dev/tty` in setup scripts unless explicitly self-attested. The pattern silently hangs in interactive shells but silently passes in headless CI / agents -- the worst kind of bug to ship.          |
 | `check-changelog`             | Runtime file changes require a CHANGELOG entry under `[Unreleased]`. Can be skipped via a label when the change is genuinely doc-only.                                                                                              |
 | `check-nx-generated`          | The `nx` CLI's bash, zsh, and PowerShell completers are generated from a single JSON surface description. Catches mismatches between the source and the generated artifacts -- usually means somebody hand-edited a generated file. |
 | `bats-tests` / `pester-tests` | Smart test runners that map changed files to the tests that source them -- only re-runs tests the change could affect, not the full suite.                                                                                          |
@@ -196,3 +197,20 @@ Discoverability without RTFM matters more for agents than humans. A human can be
 ### MITM proxy support, transparent
 
 The Makefile detects custom CA certificates (`~/.config/certs/ca-custom.crt`, written by the cert-overlay machinery during setup) and exports `PREK_NATIVE_TLS=1` for the pre-commit runner plus `NODE_EXTRA_CA_CERTS` for Node-based hooks (markdownlint, cspell). Developers behind corporate proxies don't need to configure anything; agents don't need to know the proxy exists. One more thing the contract handles so the consumer doesn't have to.
+
+## Beyond automated gates: periodic review
+
+Every check above this section fires on a diff: a commit, a PR, a push. That's the right shape for catching the regression you're about to introduce, but it cannot see what's already standing in the codebase - drift, dead code, workarounds whose upstream bug got fixed years ago, cross-shard inconsistencies that each per-PR review correctly let through in isolation. A diff-blind problem needs a diff-blind tool.
+
+The repo runs a periodic chunked agentic-review framework orthogonally to the daily PR cycle. Nine shards by concern (`certs`, `orchestration`, `nx-cli`, `config-templates`, `system-installers`, `wsl-orchestration`, `precommit-hooks`, `test-quality`, `enterprise-readiness`), each with a versioned charter that defines scope, "what good looks like", and what NOT to flag. One shard is reviewed at a time on a manual cadence (`/review <shard>`), rotating through the nine so the whole repo cycles every two months without overloading any single review's context.
+
+Three subagents with deliberately separated roles and restricted tool sets:
+
+- **Reviewer** - `Read, Grep, Glob, Bash` only. Cannot edit code; the tool restriction is the bias-control mechanism (cannot pick easy issues because cannot fix anything). Outputs structured findings JSON.
+- **Triage** - interactive, human in the loop. Each finding gets `apply | defer | dispute`; defers and disputes accumulate in a versioned ledger so the next review skips them.
+- **Fixer** - minimum-scope edits, one commit per finding, gates each commit on `make lint && make test-unit`. Hard DONE marker is machine-verifiable, not LLM judgment.
+- **Verifier** - read-only second opinion on the fixer's diff. Reads cold; asks whether each fix addresses the root cause or just silences the symptom. Escalates via report; cannot edit, cannot approve a PR.
+
+This is **manual machinery, not automated**. There is no cron, no CI gate, no auto-merge. The framework's value is not "more enforcement" - it's a periodic outside view on the standing state, with bias controls baked into the agent definitions rather than left to convention. Findings drive triage; human judgment decides which to fix.
+
+Just landed as v1; charters were seeded from the existing codebase before any actual review run, so expect the first cycle on each shard to surface things the charter didn't anticipate. Design rationale: [Process decisions](decisions.md#process-decisions).
