@@ -61,19 +61,34 @@ EOF
 
 # -- nix_available check ----------------------------------------------------
 
-# Build a fake nix shim that emits a configurable --version string. Returns
-# success for everything else, since downstream checks (nix_profile, etc.)
-# may also call nix and we don't want them to interfere with the assertion.
+# Build a fake nix shim that emits a configurable --version string and
+# explicitly opts in only the nix verbs the downstream doctor checks call
+# (`nix profile list [--json]`). All other invocations fail with exit 1
+# so a future doctor check that starts using a new nix verb surfaces here
+# instead of being silently masked. Same pattern as test_nix_setup.bats:753.
 _mock_nix_with_version() {
   local _ver="$1"
   mkdir -p "$TEST_DIR/bin"
   cat >"$TEST_DIR/bin/nix" <<EOF
 #!/bin/sh
-if [ "\$1" = "--version" ]; then
-  printf 'nix (Nix) %s\n' '$_ver'
-  exit 0
-fi
-exit 0
+case "\$*" in
+  --version)
+    printf 'nix (Nix) %s\n' '$_ver'
+    exit 0
+    ;;
+  'profile list --json')
+    printf '{"elements":{"nix-env":{}}}\n'
+    exit 0
+    ;;
+  'profile list')
+    printf 'nix-env\n'
+    exit 0
+    ;;
+  *)
+    echo "_mock_nix_with_version: unexpected nix invocation: \$*" >&2
+    exit 1
+    ;;
+esac
 EOF
   chmod +x "$TEST_DIR/bin/nix"
 }
