@@ -65,30 +65,39 @@ These are intentional design choices, NOT gaps. Re-flagging produces noise.
 
 ## Categories
 
-| Category             | Use for                                                                                                                                             |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| standalone-integrity | A change or claim that compromises the standalone use case (constraint **a**).                                                                      |
-| pollution            | A feature or scaffolding that costs every user despite only being relevant to enterprise integration (constraint **b**).                            |
-| extension-point      | The contract on an org-facing seam (env var, hook dir, JSON schema, exit code, CLI flag) is missing, weak, undocumented, or changed without notice. |
-| docs-drift           | `enterprise.md` / `benefits.md` / `customization.md` disagree with the codebase or contradict each other.                                           |
-| integration-side     | A real enterprise concern, but the right home is `enterprise.md` documentation, not new code (the resist-adding-code path - see below).             |
+| Category             | Use for                                                                                                                                             | Fix lands in                                 |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| standalone-integrity | A change or claim that compromises the standalone use case (constraint **a**).                                                                      | code                                         |
+| pollution            | A feature or scaffolding that costs every user despite only being relevant to enterprise integration (constraint **b**).                            | code                                         |
+| extension-point      | The contract on an org-facing seam (env var, hook dir, JSON schema, exit code, CLI flag) is missing, weak, undocumented, or changed without notice. | code, often with a `docs/enterprise.md` note |
+| docs-drift           | `enterprise.md` / `benefits.md` / `customization.md` disagree with the codebase or contradict each other.                                           | the affected user doc                        |
+| docs-update          | New content needed in user-facing docs (org-side flow, responsibility, risk). The user doc is missing useful content, not wrong.                    | `docs/enterprise.md` (typically)             |
+| design-backlog       | New upstream extension seam should be planned and eventually implemented later, outside this cycle.                                                 | `design/enterprise_design.md`                |
 
-## Two output paths for findings
+## Three output paths for findings
 
-This shard differs from every other shard in the framework because **a finding can suggest a fix in the codebase OR a fix in `enterprise.md`**. The reviewer must explicitly tag each finding with which path it belongs to via the `category` field:
+This shard differs from every other shard in the framework because **a finding can flow to one of three destinations**: the codebase, the user-facing enterprise doc, or the upstream enterprise design backlog. The reviewer tags each finding with the right destination via the `category` field; the fixer reads the category and routes its edit to the right file.
 
-1. **Code/doc improvement here** - when a real gap can be closed in the standalone solution without violating (a) or (b). Categories `standalone-integrity`, `pollution`, `extension-point`, `docs-drift`. Example: `install.json` field name is unstable across versions → fix is to document the schema in `enterprise.md` AND version it in code.
-2. **Add to `enterprise.md` as integration-side responsibility** - when the finding identifies a real enterprise concern but adding code would violate (b). Category `integration-side`. The finding's `suggestion` field describes what to add to `enterprise.md` (typically under "What needs enterprise investment" or "Risks and mitigations"). Example: `benefits.md` claims "vulnerability response becomes a deploy" → suggestion is to add a paragraph to `enterprise.md` describing the org-side flow (security team bumps the pin, sends one message, fleet patches via `nx setup`; `install.json` provenance answers the "are we done" question).
+1. **Code (and/or correction to existing user docs)** - when a real gap can be closed in the standalone solution without violating (a) or (b), or when an existing claim is wrong. Categories: `standalone-integrity`, `pollution`, `extension-point`, `docs-drift`. Example: `install.json` field name is unstable across versions → document and version the schema in code AND in `docs/enterprise.md`.
 
-This second path is **the load-bearing mechanism that lets this shard work without violating constraint (b)**. The shard's job is sometimes to *resist* adding code by pushing the responsibility to the integration-side documentation. A reviewer that always flags "we need to add X to the codebase" is misunderstanding the constraints.
+2. **Document org-side responsibility in user-facing docs** - when the finding describes how an org should handle something but the responsibility is theirs, not upstream's. Category: `docs-update`. The fix lands in `docs/enterprise.md` (typically "What needs enterprise investment" or "Risks and mitigations"). Example: `benefits.md` claims "vulnerability response becomes a deploy" → describe the org-side flow (security team bumps the pin, sends one message, fleet patches via `nx setup`; `install.json` provenance answers "are we done"). This expands the user-facing assessment without growing upstream code.
 
-When in doubt: ask "does an org without this capability pay any cost?". If yes (any cost on every user), it violates (b) → push to `enterprise.md`. If no (zero cost when unused, like an overlay seam), it can land in code.
+3. **Add to upstream's enterprise design backlog** - when the finding proposes a new extension seam upstream should plan and eventually ship. Category: `design-backlog`. The fix lands in `design/enterprise_design.md` as a new section (or a new task in an existing section), following the doc's existing template (Re-review → Design → Acceptance criteria → Task checklist). Example: "no `nx verify` subcommand to confirm an installed version against an upstream signed release" → add a section proposing the seam with the four-part structure. **The actual implementation of a `design-backlog` finding does NOT happen in this review cycle** - the cycle just records the proposal in the backlog; later PRs pick it up and implement.
+
+Paths 2 and 3 are **the load-bearing mechanism that lets this shard work without violating constraint (b)**. The shard's job is sometimes to *resist* adding code by pushing the responsibility to either user-facing docs or the design backlog. A reviewer that always flags "we need to add X to the codebase right now" is misunderstanding the constraints.
+
+Two routing questions to ask per finding:
+
+- **Path 1 vs paths 2/3** - "does an org without this capability pay any cost?" If yes (any cost on every user), it violates (b) → push to user docs or design backlog. If no (zero cost when unused, like an overlay seam), it can land in code.
+- **Path 2 vs path 3** - "is this org-side responsibility (orgs handle it themselves with existing primitives) or upstream-design (we should ship a new seam)?" The first goes to `docs/enterprise.md`; the second goes to `design/enterprise_design.md`.
 
 ## References
 
-- [`docs/enterprise.md`](../../../docs/enterprise.md) - the assessment this shard keeps honest
+- [`docs/enterprise.md`](../../../docs/enterprise.md) - user-facing maturity assessment this shard keeps honest; `docs-drift` and `docs-update` findings land here
 - [`docs/benefits.md` → "For the organization"](../../../docs/benefits.md) - the vision this shard helps deliver
 - [`docs/customization.md`](../../../docs/customization.md) - the overlay model as the canonical pattern
+- [`design/enterprise_design.md`](../../enterprise_design.md) - upstream design backlog where `design-backlog` findings land; single source of truth for what upstream needs to build for enterprise readiness
+- [`design/enterprise_notes.md`](../../enterprise_notes.md) - reference model for what enterprise forks build downstream (consumed by `enterprise_design.md`)
 - [`docs/decisions.md`](../../../docs/decisions.md) - design rationale, especially "Why three package tiers", "Why unfree packages are opt-in", "Why not checksum-pin"
 - [`docs/standards.md`](../../../docs/standards.md) - the engineering rigor that backs enterprise claims
 - [`design/reviews/accepted.md`](../accepted.md) - defers and disputes for this shard
