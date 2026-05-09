@@ -113,6 +113,7 @@ pyproject
 readarray
 redef
 reexeced
+reimplementations
 rekor
 remediations
 rerunnable
@@ -129,6 +130,7 @@ sonoma
 sourceable
 stdlib
 storeutl
+subshell
 subshells
 subverb
 subverbs
@@ -150,6 +152,7 @@ virtualenv
 whatis
 winget
 worktree
+worktrees
 wslconfig
 wslg
 wslpath
