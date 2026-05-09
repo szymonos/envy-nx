@@ -10,6 +10,7 @@
   gh
   bind          # provides dig, nslookup, host
   less
+  man-db
   openssl
   tree
   unzip
