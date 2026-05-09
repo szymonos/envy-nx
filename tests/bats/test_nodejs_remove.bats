@@ -56,7 +56,7 @@ teardown() {
   run bash "$SCRIPT" </dev/null
   [ "$status" -eq 0 ]
   [ -d "$HOME/.local/share/fnm" ]
-  [[ "$output" == *"Skipped"* ]] || [[ "$output" == *"retained"* ]]
+  [[ "$output" == *"Skipped"* && "$output" == *"retained"* ]]
 }
 
 @test "handles fnm dir without node-versions subdirectory" {

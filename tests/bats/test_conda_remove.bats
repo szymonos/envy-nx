@@ -53,7 +53,7 @@ teardown() {
   run bash "$SCRIPT" </dev/null
   [ "$status" -eq 0 ]
   [ -d "$HOME/miniforge3" ]
-  [[ "$output" == *"Skipped"* ]] || [[ "$output" == *"retained"* ]]
+  [[ "$output" == *"Skipped"* && "$output" == *"retained"* ]]
 }
 
 @test "skips conda init --reverse when conda binary is missing" {

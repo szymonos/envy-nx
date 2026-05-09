@@ -94,7 +94,7 @@ teardown() {
   [ "$status" -eq 0 ]
   [ -d "$HOME/.cache/uv" ]
   [ -d "$HOME/.local/share/uv/tools" ]
-  [[ "$output" == *"Skipped"* ]] || [[ "$output" == *"retained"* ]]
+  [[ "$output" == *"Skipped"* && "$output" == *"retained"* ]]
 }
 
 @test "honors UV_CACHE_DIR override" {
