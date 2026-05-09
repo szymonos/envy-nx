@@ -4,29 +4,28 @@
 bats_require_minimum_version 1.5.0
 
 setup() {
-  _NX_ENV_DIR="$(mktemp -d)"
+  TEST_DIR="$(mktemp -d)"
+  export HOME="$TEST_DIR"
+
+  # Point nx.sh at .assets/lib/ so the family files load and override
+  # _NX_ENV_DIR / _NX_PKG_FILE before sourcing so the constants resolve to
+  # the per-test temp dir (nx.sh sets them once at source time).
+  export NX_LIB_DIR="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)/.assets/lib"
+  _NX_ENV_DIR="$TEST_DIR/nix-env"
   _NX_PKG_FILE="$_NX_ENV_DIR/packages.nix"
+  mkdir -p "$_NX_ENV_DIR"
 
-  # source only the helper functions (stub out nix/curl/jq to avoid side effects)
-  # shellcheck source=../../.assets/config/shell_cfg/aliases_nix.sh
-  _nx_read_pkgs() {
-    [ -f "$_NX_PKG_FILE" ] && sed -n 's/^[[:space:]]*"\([^"]*\)".*/\1/p' "$_NX_PKG_FILE"
-  }
+  # shellcheck source=../../.assets/lib/nx.sh
+  source "$NX_LIB_DIR/nx.sh"
 
-  _nx_write_pkgs() {
-    local tmp
-    tmp="$(mktemp)"
-    printf '[\n' >"$tmp"
-    sort -u | while IFS= read -r name; do
-      [ -n "$name" ] && printf '  "%s"\n' "$name" >>"$tmp"
-    done
-    printf ']\n' >>"$tmp"
-    mv "$tmp" "$_NX_PKG_FILE"
-  }
+  # nx.sh hard-codes the constants from $HOME at source time; reassert the
+  # test overrides so the production functions write to our temp file.
+  _NX_ENV_DIR="$TEST_DIR/nix-env"
+  _NX_PKG_FILE="$_NX_ENV_DIR/packages.nix"
 }
 
 teardown() {
-  rm -rf "$_NX_ENV_DIR"
+  rm -rf "$TEST_DIR"
 }
 
 # -- _nx_read_pkgs ------------------------------------------------------------
