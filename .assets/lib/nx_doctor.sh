@@ -462,6 +462,21 @@ _check_overlay_dir() {
   fi
 }
 
+# Resolve a timeout-prefix command for subprocess calls that could hang on
+# auth prompts, unreachable networks, or runaway loops. Echoes "timeout <secs>"
+# (Linux/WSL coreutils), "gtimeout <secs>" (macOS via brewed coreutils), or
+# nothing. Used unquoted in command position so the empty result yields no
+# extra argv slot. Two callers as of FU-003: _check_version_skew and
+# _check_managed_block_drift.
+_dr_timeout_cmd() {
+  local _secs="${1:-5}"
+  if command -v timeout >/dev/null 2>&1; then
+    printf 'timeout %s' "$_secs"
+  elif command -v gtimeout >/dev/null 2>&1; then
+    printf 'gtimeout %s' "$_secs"
+  fi
+}
+
 _check_version_skew() {
   # Skipped under tests (NX_DOCTOR_SKIP_NETWORK=1) to avoid 100s of parallel
   # `gh api` calls hammering GitHub - rate limits aside, `gh` can hang
@@ -489,20 +504,13 @@ _check_version_skew() {
   fi
   # Production safety: best-effort timeout on the gh call so a hung auth
   # prompt or unreachable network doesn't wedge `nx doctor`. 5s is generous -
-  # normal gh api responses are <500ms. timeout(1) ships with GNU coreutils
-  # (Linux/WSL); macOS userland doesn't have it but brewed coreutils provides
-  # `gtimeout`. When neither is available the gh call runs unbounded - gh's
-  # internal http timeout (~30s) is the worst-case fallback.
-  local _ghcmd
-  if command -v timeout >/dev/null 2>&1; then
-    _ghcmd="timeout 5 gh"
-  elif command -v gtimeout >/dev/null 2>&1; then
-    _ghcmd="gtimeout 5 gh"
-  else
-    _ghcmd="gh"
-  fi
-  # shellcheck disable=SC2086  # intentional split of "timeout 5 gh" into argv
-  _latest_tag="$($_ghcmd api "repos/$_slug/releases/latest" --jq '.tag_name' 2>/dev/null)" || true
+  # normal gh api responses are <500ms. When neither timeout binary is
+  # available the gh call runs unbounded; gh's internal http timeout (~30s)
+  # is the worst-case fallback.
+  local _tcmd
+  _tcmd="$(_dr_timeout_cmd 5)"
+  # shellcheck disable=SC2086  # intentional split of "timeout 5" into argv
+  _latest_tag="$($_tcmd gh api "repos/$_slug/releases/latest" --jq '.tag_name' 2>/dev/null)" || true
   _latest="${_latest_tag#v}"
   [ -n "$_latest" ] || return
   if [ -n "$_installed" ] && [ "$_latest" != "$_installed" ]; then
