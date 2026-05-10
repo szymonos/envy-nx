@@ -45,6 +45,8 @@ function _nx_completions() {
     esac
   elif [ "$COMP_CWORD" -ge 2 ] && [ "${COMP_WORDS[1]}" = "doctor" ]; then
     while IFS= read -r line; do COMPREPLY+=("$line"); done < <(compgen -W "--strict --json" -- "$cur")
+  elif [ "$COMP_CWORD" -ge 3 ] && [ "${COMP_WORDS[1]}" = "profile" ] && [ "${COMP_WORDS[2]}" = "regenerate" ]; then
+    while IFS= read -r line; do COMPREPLY+=("$line"); done < <(compgen -W "--dry-run --shell" -- "$cur")
   elif [ "$COMP_CWORD" -ge 3 ] && [ "${COMP_WORDS[1]}" = "self" ] && [ "${COMP_WORDS[2]}" = "update" ]; then
     while IFS= read -r line; do COMPREPLY+=("$line"); done < <(compgen -W "--force" -- "$cur")
   elif [ "$COMP_CWORD" -ge 3 ] && [ "${COMP_WORDS[1]}" = "scope" ] && { [ "${COMP_WORDS[2]}" = "show" ] || [ "${COMP_WORDS[2]}" = "edit" ] || [ "${COMP_WORDS[2]}" = "remove" ] || [ "${COMP_WORDS[2]}" = "rm" ]; }; then

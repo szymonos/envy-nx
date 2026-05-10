@@ -538,6 +538,59 @@ EOF
   grep -qF '# >>> nix:managed >>>' "$HOME/.bashrc"
 }
 
+@test "profile regenerate --dry-run --shell bash prints both blocks with begin/end tags" {
+  run nx profile regenerate --dry-run --shell bash
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"# >>> env:managed >>>"* ]]
+  [[ "$output" == *"# <<< env:managed <<<"* ]]
+  [[ "$output" == *"# >>> nix:managed >>>"* ]]
+  [[ "$output" == *"# <<< nix:managed <<<"* ]]
+}
+
+@test "profile regenerate --dry-run does not modify any rc file" {
+  printf '# pre-existing bashrc\n' >"$HOME/.bashrc"
+  printf '# pre-existing zshrc\n' >"$HOME/.zshrc"
+  local _bash_before _zsh_before _bash_after _zsh_after
+  _bash_before="$(md5sum "$HOME/.bashrc" | cut -d' ' -f1)"
+  _zsh_before="$(md5sum "$HOME/.zshrc" | cut -d' ' -f1)"
+  run nx profile regenerate --dry-run --shell bash
+  [ "$status" -eq 0 ]
+  run nx profile regenerate --dry-run --shell zsh
+  [ "$status" -eq 0 ]
+  _bash_after="$(md5sum "$HOME/.bashrc" | cut -d' ' -f1)"
+  _zsh_after="$(md5sum "$HOME/.zshrc" | cut -d' ' -f1)"
+  [ "$_bash_before" = "$_bash_after" ]
+  [ "$_zsh_before" = "$_zsh_after" ]
+}
+
+@test "profile regenerate --dry-run --shell zsh emits zsh-only sections" {
+  # Stage a zsh-autosuggestions plugin file so the renderer's zsh-plugin
+  # discovery branch fires and the output is materially different from bash.
+  mkdir -p "$HOME/.zsh/zsh-autosuggestions"
+  touch "$HOME/.zsh/zsh-autosuggestions/zsh-autosuggestions.zsh"
+  run nx profile regenerate --dry-run --shell zsh
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"bindkey '^ ' autosuggest-accept"* ]]
+  [[ "$output" == *"zsh-autosuggestions/zsh-autosuggestions.zsh"* ]]
+  run nx profile regenerate --dry-run --shell bash
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"bindkey '^ ' autosuggest-accept"* ]]
+  [[ "$output" != *"zsh-autosuggestions/zsh-autosuggestions.zsh"* ]]
+}
+
+@test "profile regenerate --dry-run --shell bash succeeds when rc file does not exist" {
+  rm -f "$HOME/.bashrc" "$HOME/.zshrc"
+  run nx profile regenerate --dry-run --shell bash
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"# >>> nix:managed >>>"* ]]
+}
+
+@test "profile regenerate --dry-run without --shell exits non-zero with usage hint" {
+  run nx profile regenerate --dry-run
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"--shell bash|zsh"* ]]
+}
+
 # -- overlay help -------------------------------------------------------------
 
 @test "overlay help shows usage" {

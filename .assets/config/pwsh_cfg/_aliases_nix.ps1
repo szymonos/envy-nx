@@ -473,7 +473,8 @@ Register-ArgumentCompleter -CommandName nx -Native -ScriptBlock {
             }
         }
         default {
-            if ($tokens[1].Value -eq 'self' -and $tokens[2].Value -eq 'update') { '--force' }
+            if ($tokens[1].Value -eq 'profile' -and $tokens[2].Value -eq 'regenerate') { '--dry-run', '--shell' }
+            elseif ($tokens[1].Value -eq 'self' -and $tokens[2].Value -eq 'update') { '--force' }
             elseif ($tokens[1].Value -eq 'setup') {
                 $prev = $tokens[$pos - 1].Value
                 switch ($prev) {

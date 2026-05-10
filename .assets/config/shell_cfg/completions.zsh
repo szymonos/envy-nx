@@ -115,6 +115,15 @@ function _nx() {
         'help:show profile help'
       )
       _describe 'profile command' profile_cmds
+    elif (( CURRENT >= 4 )); then
+      if [[ "${words[3]}" == "regenerate" ]]; then
+        local -a regenerate_flags
+        regenerate_flags=(
+          '--dry-run:render blocks to stdout without modifying rc files'
+          '--shell:target shell for --dry-run (bash|zsh)'
+        )
+        _describe 'flag' regenerate_flags
+      fi
     fi
     ;;
   setup)
