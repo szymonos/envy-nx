@@ -513,6 +513,122 @@ EOF
   [[ "$output" == *"PASS  shell_profile"* ]]
 }
 
+# -- managed_block_drift check ---------------------------------------------
+
+# Stage a fake $ENV_DIR/nx.sh that the check prefers via its post-install
+# layout probe. The shim accepts `profile regenerate --dry-run --shell <name>`
+# and emits canned block output read from $TEST_DIR/dryrun-<shell>.txt so each
+# test can control whether the rendered output matches the staged rc file.
+_mock_nx_dry_run() {
+  cat >"$ENV_DIR/nx.sh" <<EOF
+#!/bin/sh
+case "\$*" in
+  'profile regenerate --dry-run --shell bash') cat "$TEST_DIR/dryrun-bash.txt" ;;
+  'profile regenerate --dry-run --shell zsh')  cat "$TEST_DIR/dryrun-zsh.txt"  ;;
+  *) echo "_mock_nx_dry_run: unexpected: \$*" >&2; exit 1 ;;
+esac
+EOF
+  chmod +x "$ENV_DIR/nx.sh"
+}
+
+# Render a paired (rc-file, dry-run-output) pair where both contain the same
+# env:managed and nix:managed blocks. The doctor check should PASS on this.
+_write_synced_rc() {
+  local _shell="$1"
+  local _rc="$HOME/.${_shell}rc"
+  local _dryrun="$TEST_DIR/dryrun-${_shell}.txt"
+  local _blocks
+  _blocks="$(
+    printf '# >>> env:managed >>>\n'
+    printf 'export FOO=bar\n'
+    printf '# <<< env:managed <<<\n'
+    printf '\n'
+    printf '# >>> nix:managed >>>\n'
+    printf 'export PATH="%s/.nix-profile/bin:$PATH"\n' "$HOME"
+    printf '# <<< nix:managed <<<\n'
+  )"
+  printf '# pre-existing line\n%s\n' "$_blocks" >"$_rc"
+  printf '%s\n' "$_blocks" >"$_dryrun"
+}
+
+@test "managed_block_drift passes when rc blocks match dry-run output" {
+  _write_synced_rc bash
+  _mock_nx_dry_run
+  run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"PASS  managed_block_drift"* ]]
+}
+
+@test "managed_block_drift fails when env:managed body drifts" {
+  _write_synced_rc bash
+  _mock_nx_dry_run
+  # Mutate the env block in the rc to introduce drift; dry-run output unchanged.
+  sed -i 's|export FOO=bar|export FOO=baz|' "$HOME/.bashrc"
+  run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"FAIL  managed_block_drift"* ]]
+  [[ "$output" == *"differ from regenerated content"* ]]
+  [[ "$output" == *"Fix:"* ]]
+  [[ "$output" == *"nx profile regenerate"* ]]
+}
+
+@test "managed_block_drift fails when nix:managed body drifts" {
+  _write_synced_rc bash
+  _mock_nx_dry_run
+  sed -i 's|/.nix-profile/bin|/.nix-profile/sbin|' "$HOME/.bashrc"
+  run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"FAIL  managed_block_drift"* ]]
+}
+
+@test "managed_block_drift skips silently when ~/.bashrc is absent" {
+  rm -f "$HOME/.bashrc" "$HOME/.zshrc"
+  _mock_nx_dry_run
+  run bash "$DOCTOR_SCRIPT"
+  [[ "$output" != *"managed_block_drift"* ]]
+}
+
+@test "managed_block_drift skips silently when env:managed marker missing" {
+  # Rc has only the nix:managed block (env:managed absent). shell_profile
+  # already owns the missing-marker signal; the drift check must not
+  # double-report.
+  cat >"$HOME/.bashrc" <<EOF
+# >>> nix:managed >>>
+export PATH="$HOME/.nix-profile/bin:\$PATH"
+# <<< nix:managed <<<
+EOF
+  _mock_nx_dry_run
+  run bash "$DOCTOR_SCRIPT"
+  [[ "$output" != *"managed_block_drift"* ]]
+}
+
+@test "managed_block_drift warns when nx is not callable" {
+  _write_synced_rc bash
+  # No $ENV_DIR/nx.sh installed and no nx on PATH. Use /usr/bin:/bin so bash
+  # itself stays findable while excluding any user-installed nx wrapper.
+  rm -f "$ENV_DIR/nx.sh"
+  PATH="/usr/bin:/bin" run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"WARN  managed_block_drift"* ]]
+  [[ "$output" == *"nx self sync"* ]]
+}
+
+@test "managed_block_drift warns when dry-run subprocess fails" {
+  _write_synced_rc bash
+  # Fake nx.sh that exits 1 unconditionally - simulates a broken render.
+  cat >"$ENV_DIR/nx.sh" <<'EOF'
+#!/bin/sh
+exit 1
+EOF
+  chmod +x "$ENV_DIR/nx.sh"
+  run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"WARN  managed_block_drift"* ]]
+  [[ "$output" == *"dry-run regenerate failed"* ]]
+}
+
+@test "managed_block_drift respects NX_INVOKING_SHELL=zsh" {
+  _write_synced_rc zsh
+  _mock_nx_dry_run
+  NX_INVOKING_SHELL=zsh run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"PASS  managed_block_drift"* ]]
+}
+
 # -- env_dir_files check ----------------------------------------------------
 
 _write_env_dir_files() {

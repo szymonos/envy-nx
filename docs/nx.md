@@ -216,6 +216,7 @@ Read-only health checks that don't touch state. Failing or warning checks print 
 | `scope_binaries`        | Every binary declared by a scope's `# bins:` is found anywhere on `$PATH`                                                            |
 | `scope_bins_in_profile` | Tighter: each `# bins:` binary must live under `~/.nix-profile/bin/` (proves nix provided it, not a system shadow)                   |
 | `shell_profile`         | Exactly one managed block in the **invoking shell's** rc (bash → `.bashrc`, zsh → `.zshrc`)                                          |
+| `managed_block_drift`   | Both managed blocks (`env:managed`, `nix:managed`) in the invoking shell's rc match what `nx profile regenerate` would write today   |
 | `shell_config_files`    | Every `~/.config/shell/<file>` referenced by the rc resolves on disk                                                                 |
 | `cert_bundle`           | Custom CA bundle present and VS Code env wired up                                                                                    |
 | `vscode_server_env`     | `~/.vscode-server/server-env-setup` includes nix PATH                                                                                |

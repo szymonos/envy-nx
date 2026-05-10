@@ -37,6 +37,7 @@ CHECKS="
   scope_binaries
   scope_bins_in_profile
   shell_profile
+  managed_block_drift
   shell_config_files
   cert_bundle
   vscode_server_env
@@ -299,6 +300,58 @@ _check_shell_profile() {
     printf 'fail\t%d duplicate blocks in %s\trun nx profile regenerate (it deduplicates the block)\n' "$_count" "$_name"
   else
     echo "pass"
+  fi
+}
+
+_check_managed_block_drift() {
+  # Render-vs-on-disk drift detector for both managed blocks (env:managed,
+  # nix:managed) in the invoking shell's rc file. Shells out to
+  # `nx profile regenerate --dry-run` to keep nx_doctor.sh standalone-after-
+  # install (no source dependency on nx_profile.sh; ARCHITECTURE.md §5).
+  # Closes FU-003.
+  local _rc _shell _nx_path _tcmd _rendered
+  local _rc_env _rc_nix _exp_env _exp_nix
+  _rc="$(_invoking_rc)"
+  [ -f "$_rc" ] || return # silent skip; shell_profile owns the missing-rc case
+  case "$_rc" in
+  *.zshrc) _shell="zsh" ;;
+  *) _shell="bash" ;;
+  esac
+
+  # Extract on-disk blocks. Empty extraction => silent skip (shell_profile
+  # already owns the missing-marker / duplicated-marker signals; don't
+  # double-report).
+  _rc_env="$(awk '/^# >>> env:managed >>>$/,/^# <<< env:managed <<<$/' "$_rc")" || true
+  _rc_nix="$(awk '/^# >>> nix:managed >>>$/,/^# <<< nix:managed <<<$/' "$_rc")" || true
+  [ -n "$_rc_env" ] || return
+  [ -n "$_rc_nix" ] || return
+
+  # Locate nx. Prefer the post-install copy at $ENV_DIR/nx.sh; fall back
+  # to PATH. (env_dir_files owns the "missing files" failure path.)
+  if [ -f "$ENV_DIR/nx.sh" ]; then
+    _nx_path="$ENV_DIR/nx.sh"
+  elif _nx_has_cmd nx; then
+    _nx_path="$(command -v nx)"
+  else
+    printf 'warn\tnx not callable to compute drift\trun nx self sync to populate $ENV_DIR/nx.sh\n'
+    return
+  fi
+
+  _tcmd="$(_dr_timeout_cmd 10)"
+  # shellcheck disable=SC2086  # intentional split of "timeout 10" into argv
+  _rendered="$($_tcmd bash "$_nx_path" profile regenerate --dry-run --shell "$_shell" 2>/dev/null)" || {
+    printf 'warn\tdry-run regenerate failed (exit %s)\trun bash %s profile regenerate --dry-run --shell %s manually for details\n' \
+      "$?" "$_nx_path" "$_shell"
+    return
+  }
+  _exp_env="$(printf '%s' "$_rendered" | awk '/^# >>> env:managed >>>$/,/^# <<< env:managed <<<$/')"
+  _exp_nix="$(printf '%s' "$_rendered" | awk '/^# >>> nix:managed >>>$/,/^# <<< nix:managed <<<$/')"
+
+  if [ "$_rc_env" = "$_exp_env" ] && [ "$_rc_nix" = "$_exp_nix" ]; then
+    echo "pass"
+  else
+    printf 'fail\tmanaged blocks in %s differ from regenerated content\trun nx profile regenerate to update\n' \
+      "$(basename "$_rc")"
   fi
 }
 
