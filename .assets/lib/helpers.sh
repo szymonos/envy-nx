@@ -264,6 +264,18 @@ _io_step() {
 #
 # Usage: _io_pwsh_nop script.ps1 [-Param ...]
 #        _io_pwsh_nop -c '<inline command>'
+#
+# Caller contract (the helper does NOT escape its arguments):
+#   - The script-form args ($1 = path, $@ = -Param value ...) are interpolated
+#     verbatim into a pwsh `& "<path>" <args>` command line. Any `"` in the
+#     path produces a quoting break; arguments containing spaces are split by
+#     pwsh into separate tokens. Pass repo-controlled, shell-safe strings
+#     only - if you need user-supplied or dynamic values, pre-escape them
+#     using pwsh's backtick rules (`" -> `\` `" `") and route through the
+#     `-c` form below.
+#   - The `-c` form passes its single argument straight through to `pwsh -c`,
+#     so it is the right path for inline commands or any payload that has
+#     already had its quoting handled by the caller.
 _io_pwsh_nop() {
   local _pwsh _prefix=""
   if [[ -x "$HOME/.nix-profile/bin/pwsh" ]]; then
