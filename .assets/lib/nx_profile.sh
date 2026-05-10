@@ -200,7 +200,6 @@ function _nx_profile_regenerate() {
     *.bashrc) _shell="bash" ;;
     *.zshrc) _shell="zsh" ;;
     esac
-    command -v "$_shell" &>/dev/null || continue
     [ -f "$_rc" ] || continue
 
     # MIGRATION: silently strip legacy-named blocks if present. manage_block
@@ -287,9 +286,7 @@ function _nx_profile_dispatch() {
   # removes both. Safe to delete after the next major release.
   local _pb_legacy_marker="nix-env managed"
   local _pb_legacy_env_marker="managed env"
-  local _pb_rc_files=()
-  command -v bash &>/dev/null && _pb_rc_files+=("$HOME/.bashrc")
-  command -v zsh &>/dev/null && _pb_rc_files+=("$HOME/.zshrc")
+  local _pb_rc_files=("$HOME/.bashrc" "$HOME/.zshrc")
 
   local _pb_lib_path
   _pb_lib_path="$(_nx_find_lib profile_block.sh)" && source "$_pb_lib_path"
