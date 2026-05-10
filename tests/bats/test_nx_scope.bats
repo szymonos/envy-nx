@@ -636,3 +636,21 @@ EOF
   [ "$status" -eq 1 ]
   [[ "$output" == *"not found"* ]]
 }
+
+@test "scope remove: warns when target is a base-managed scope [F-008]" {
+  cat >"$_NX_ENV_DIR/scopes/python.nix" <<'EOF'
+{ pkgs }: with pkgs; [ python311 ]
+EOF
+  cat >"$_NX_ENV_DIR/config.nix" <<'EOF'
+{
+  isInit = false;
+  scopes = [
+    "python"
+  ];
+}
+EOF
+  run _nx_scope_dispatch remove python
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"base-managed scope"* ]]
+  [[ "$output" == *"setup.sh --remove"* ]]
+}
