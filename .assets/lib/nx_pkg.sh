@@ -1,3 +1,11 @@
+: '
+# Sourced by nx.sh, not run directly. After `source .assets/lib/nx.sh`:
+nx_main install ripgrep fd
+nx_main remove ripgrep
+nx_main upgrade
+nx_main list
+'
+
 # nx package-management verbs (search/install/remove/upgrade/list/prune/gc/rollback).
 #
 # Sourced by nx.sh; expects shared helpers (_nx_read_pkgs, _nx_write_pkgs,

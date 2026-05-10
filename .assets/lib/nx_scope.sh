@@ -1,3 +1,11 @@
+: '
+# Sourced by nx.sh, not run directly. After `source .assets/lib/nx.sh`:
+nx_main scope list
+nx_main scope add python
+nx_main scope remove local_extras
+nx_main pin add fzf
+'
+
 # nx scope/overlay/pin verbs - the "config-shape" surface.
 #
 # Sourced by nx.sh; expects shared helpers (_nx_apply, _nx_validate_pkg,

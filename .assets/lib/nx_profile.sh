@@ -1,3 +1,10 @@
+: '
+# Sourced by nx.sh, not run directly. After `source .assets/lib/nx.sh`:
+nx_main profile regenerate
+nx_main profile doctor
+nx_main profile uninstall
+'
+
 # nx profile verb + the managed-block rendering it depends on.
 #
 # Sourced by nx.sh; expects shared helper (_nx_find_lib) to already be defined.
