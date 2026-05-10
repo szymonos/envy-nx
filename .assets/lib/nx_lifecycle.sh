@@ -1,3 +1,11 @@
+: '
+# Sourced by nx.sh, not run directly. After `source .assets/lib/nx.sh`:
+nx_main version
+nx_main doctor
+nx_main self update
+nx_main setup --upgrade
+'
+
 # nx tool-itself verbs (setup, self, doctor, version, help).
 #
 # Sourced by nx.sh; expects shared helpers (_nx_find_lib,
