@@ -280,6 +280,14 @@ _check_shell_profile() {
   # that's a valid transitional state, not a failure. Migration happens
   # silently on the next regenerate call. After the legacy migration
   # window closes, drop the _legacy_count line.
+  #
+  # Semantics of the count check below: legacy block alone OR new block
+  # alone -> PASS (transitional or post-migration). Both present, or any
+  # block kind appearing >1 times, -> FAIL because every present block
+  # would execute on every shell start - that's genuine duplication that
+  # `nx profile regenerate` would deduplicate. Don't simplify the
+  # `_new_count + _legacy_count` sum into a single grep without preserving
+  # this XOR-vs-AND distinction.
   local _new_count _legacy_count
   _new_count="$(grep -cF '# >>> nix:managed >>>' "$_rc" 2>/dev/null || true)"
   _legacy_count="$(grep -cF '# >>> nix-env managed >>>' "$_rc" 2>/dev/null || true)"
