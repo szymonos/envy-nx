@@ -234,6 +234,44 @@ function _nx_profile_regenerate() {
   done
 }
 
+# Hoisted helpers for _nx_profile_dispatch. Defining functions inside the
+# dispatcher would re-declare them on every `nx profile <verb>` call (bash
+# function scope is global regardless of where `function ... { ... }` lexically
+# appears). Keep them at module scope so they are defined exactly once at
+# source time.
+
+function _pb_short() { printf '%s' "${1/#$HOME/\~}"; }
+
+# _pb_count_either <rc> <new_marker> <legacy_marker>
+# Combined count: legacy markers count toward the new-marker total so a
+# user who upgraded but hasn't run regenerate yet doesn't see false
+# positives. After regenerate, only the new-marker count is non-zero.
+function _pb_count_either() {
+  local _rc="$1" _new="$2" _legacy="$3" _n _l
+  _n="$(grep -cF "# >>> $_new >>>" "$_rc" 2>/dev/null || true)"
+  _l="$(grep -cF "# >>> $_legacy >>>" "$_rc" 2>/dev/null || true)"
+  echo "$((_n + _l))"
+}
+
+# _pb_doctor_one <rc> <new_marker> <legacy_marker>
+# Reports a single block's health (warn/fail) and updates _pb_ok in the
+# caller's scope (set by _nx_profile_dispatch's `doctor` arm via bash
+# dynamic scoping). Inlined call (rather than a for-loop over pairs)
+# because legacy marker names contain a space and would mis-split under
+# unquoted IFS expansion.
+function _pb_doctor_one() {
+  local _rc="$1" _new="$2" _legacy="$3" _count
+  _count="$(_pb_count_either "$_rc" "$_new" "$_legacy")"
+  if [ "$_count" -eq 0 ] 2>/dev/null; then
+    printf "\e[33m  [warn] no '%s' block - run: nx profile regenerate\e[0m\n" "$_new" >&2
+    _pb_ok=false
+  elif [ "$_count" -gt 1 ] 2>/dev/null; then
+    printf "\e[31m  [fail] %s duplicate '%s' blocks - run: nx profile regenerate\e[0m\n" \
+      "$_count" "$_new" >&2
+    _pb_ok=false
+  fi
+}
+
 function _nx_profile_dispatch() {
   local _pb_marker="nix:managed"
   local _pb_env_marker="env:managed"
@@ -248,36 +286,6 @@ function _nx_profile_dispatch() {
 
   local _pb_lib_path
   _pb_lib_path="$(_nx_find_lib profile_block.sh)" && source "$_pb_lib_path"
-
-  function _pb_short() { printf '%s' "${1/#$HOME/\~}"; }
-
-  # _pb_count_either <rc> <new_marker> <legacy_marker>
-  # Combined count: legacy markers count toward the new-marker total so a
-  # user who upgraded but hasn't run regenerate yet doesn't see false
-  # positives. After regenerate, only the new-marker count is non-zero.
-  function _pb_count_either() {
-    local _rc="$1" _new="$2" _legacy="$3" _n _l
-    _n="$(grep -cF "# >>> $_new >>>" "$_rc" 2>/dev/null || true)"
-    _l="$(grep -cF "# >>> $_legacy >>>" "$_rc" 2>/dev/null || true)"
-    echo "$((_n + _l))"
-  }
-
-  # _pb_doctor_one <rc> <new_marker> <legacy_marker>
-  # Reports a single block's health (warn/fail) and updates _pb_ok globally.
-  # Inlined call (rather than a for-loop over pairs) because legacy marker
-  # names contain a space and would mis-split under unquoted IFS expansion.
-  function _pb_doctor_one() {
-    local _rc="$1" _new="$2" _legacy="$3" _count
-    _count="$(_pb_count_either "$_rc" "$_new" "$_legacy")"
-    if [ "$_count" -eq 0 ] 2>/dev/null; then
-      printf "\e[33m  [warn] no '%s' block - run: nx profile regenerate\e[0m\n" "$_new" >&2
-      _pb_ok=false
-    elif [ "$_count" -gt 1 ] 2>/dev/null; then
-      printf "\e[31m  [fail] %s duplicate '%s' blocks - run: nx profile regenerate\e[0m\n" \
-        "$_count" "$_new" >&2
-      _pb_ok=false
-    fi
-  }
 
   case "${1:-help}" in
   doctor)
