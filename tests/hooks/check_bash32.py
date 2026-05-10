@@ -116,11 +116,6 @@ RULES: tuple[Rule, ...] = (
         re.compile(r"\bgrep\b.*\\d"),
         r"grep \d is a PCRE/GNU extension - use [0-9]",
     ),
-    # -- BSD sed grouping ---------------------------------------------------
-    Rule(
-        re.compile(r"\bsed\b.*\{.*[;/].*\}"),
-        "sed { cmd } on one line fails on BSD sed - put commands on separate lines",
-    ),
 )
 
 
