@@ -184,7 +184,8 @@ function _nx_self_dispatch() {
         return 1
       }
       printf "\e[32mCloned to %s\e[0m\n" "$_self_new"
-      printf "Run \e[1mnx setup\e[0m from the new clone to update install record.\n"
+      printf "\e[33m[warn] the upgrade is NOT complete until you run: cd %s && nx setup\e[0m\n" "$_self_new" >&2
+      printf "\e[33m       The install record still points at the old tarball path; the new clone is not yet wired up.\e[0m\n" >&2
       return 0
     fi
 
