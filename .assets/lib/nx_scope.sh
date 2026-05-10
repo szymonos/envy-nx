@@ -172,7 +172,7 @@ function _nx_scope_dispatch() {
     for r in "$@"; do
       rm -f "$ov_dir/scopes/$r.nix" "$scopes_dir/local_$r.nix"
       if [ -f "$scopes_dir/$r.nix" ] && [[ "$r" != local_* ]]; then
-        :
+        printf "\e[33mNote: '%s' is a base-managed scope - it will be removed from config.nix and re-added on next nix/setup.sh run unless you also pass it to setup.sh --remove\e[0m\n" "$r" >&2
       fi
     done
     for r in "$@"; do
