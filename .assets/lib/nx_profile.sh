@@ -177,6 +177,40 @@ fi)'
   fi
 }
 
+# Render both managed blocks (env:managed, nix:managed) for the given shell to
+# stdout, each fully wrapped with the begin/end tags `manage_block upsert` would
+# write. Used by `nx profile regenerate --dry-run` and the
+# managed_block_drift doctor check; output is byte-identical to what an upsert
+# would land in the rc file, so a `diff` against the rc-extracted block is
+# structural rather than stylistic.
+function _nx_profile_render_blocks() {
+  local _shell="${1:-bash}"
+  local _pb_lib_path
+  _pb_lib_path="$(_nx_find_lib profile_block.sh)" || {
+    printf "\e[31mprofile_block.sh not found\e[0m\n" >&2
+    return 1
+  }
+  source "$_pb_lib_path"
+
+  # Default to false when the rc is absent - the rendered block then includes
+  # the standard .local/bin PATH handling, which is what a fresh install ships.
+  local _rc="$HOME/.${_shell}rc"
+  local _has_local_bin=false
+  if [ -f "$_rc" ] && awk '
+    /^# >>> .* >>>$/{skip=1;next} skip&&/^# <<< .* <<<$/{skip=0;next} !skip{print}
+  ' "$_rc" | grep -qF '.local/bin'; then
+    _has_local_bin=true
+  fi
+
+  printf '%s\n' "$(_pb_begin_tag env:managed)"
+  _nx_render_env_block "$_has_local_bin"
+  printf '%s\n' "$(_pb_end_tag env:managed)"
+  printf '\n'
+  printf '%s\n' "$(_pb_begin_tag nix:managed)"
+  _nx_render_nix_block "$_shell"
+  printf '%s\n' "$(_pb_end_tag nix:managed)"
+}
+
 function _nx_profile_regenerate() {
   local _pb_lib_path
   _pb_lib_path="$(_nx_find_lib profile_block.sh)" || {
