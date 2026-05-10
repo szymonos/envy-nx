@@ -86,8 +86,15 @@ RULES: tuple[Rule, ...] = (
         r"sed \s is a GNU extension - use [[:space:]]",
     ),
     Rule(
-        re.compile(r"\bsed\s+(-[^E ]*\s+)?-i\s+''"),
-        "sed -i '' is not portable - write to temp file + mv",
+        # Catch any -i form: `sed -i`, `sed -i ''`, `sed -i.bak`, `sed -E -i`,
+        # etc. The previous, narrower rule only caught `sed -i ''` (BSD-only)
+        # and let `sed -i 's/.../.../'` (GNU-only, breaks on macOS) through -
+        # the latter is exactly the gap that broke macOS CI on PR #25 with
+        # the new managed_block_drift bats tests. Project contract: in
+        # nix-path code use `sed ... > tmp && mv tmp file` regardless of
+        # whether `-i.bak` happens to be portable today.
+        re.compile(r"\bsed\b\s+(?:[^|>;&\n]*\s)?-i(?:\s|\.|$)"),
+        "sed -i (any form) is not cross-portable - use sed ... > tmp && mv tmp file",
     ),
     Rule(
         re.compile(r"\bsed\s+.*-r\b"),
