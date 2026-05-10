@@ -83,7 +83,14 @@
       "summary": "manage shell profile blocks",
       "subverbs": [
         { "name": "doctor", "summary": "check profile block health" },
-        { "name": "regenerate", "summary": "regenerate profile blocks" },
+        {
+          "name": "regenerate",
+          "summary": "regenerate profile blocks",
+          "flags": [
+            { "long": "--dry-run", "summary": "render blocks to stdout without modifying rc files" },
+            { "long": "--shell", "summary": "target shell for --dry-run (bash|zsh)", "takes_value": true }
+          ]
+        },
         { "name": "uninstall", "summary": "remove profile blocks" },
         { "name": "help", "summary": "show profile help" }
       ]

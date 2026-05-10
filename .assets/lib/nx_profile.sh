@@ -357,17 +357,48 @@ function _nx_profile_dispatch() {
     printf "\e[96mProfile blocks removed. Sourced files in ~/.config/shell/ are untouched.\e[0m\n"
     ;;
   regenerate)
-    _nx_profile_regenerate
+    shift
+    local _dry_run=false _shell=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+      --dry-run) _dry_run=true ;;
+      --shell)
+        _shell="${2:-}"
+        shift
+        ;;
+      *)
+        printf "\e[31munknown flag: %s\e[0m\n" "$1" >&2
+        return 2
+        ;;
+      esac
+      shift
+    done
+    if [ "$_dry_run" = true ]; then
+      case "$_shell" in
+      bash | zsh) _nx_profile_render_blocks "$_shell" ;;
+      *)
+        printf "\e[31m--dry-run requires --shell bash|zsh\e[0m\n" >&2
+        return 2
+        ;;
+      esac
+    else
+      _nx_profile_regenerate
+    fi
     ;;
   help | *)
     cat <<'PROFILE_HELP'
-Usage: nx profile <command>
+Usage: nx profile <command> [flags]
 
 Commands:
-  doctor          Check managed block health in shell profiles
-  regenerate      Regenerate managed blocks in shell profiles
-  uninstall       Remove managed blocks from shell profiles
-  help            Show this help
+  doctor                       Check managed block health in shell profiles
+  regenerate [flags]           Regenerate managed blocks in shell profiles
+  uninstall                    Remove managed blocks from shell profiles
+  help                         Show this help
+
+Flags (regenerate):
+  --dry-run --shell <bash|zsh> Print rendered blocks (env:managed, nix:managed)
+                               to stdout without modifying any rc file. Used by
+                               nx doctor's managed_block_drift check.
 PROFILE_HELP
     ;;
   esac
