@@ -562,7 +562,10 @@ _write_synced_rc() {
   _write_synced_rc bash
   _mock_nx_dry_run
   # Mutate the env block in the rc to introduce drift; dry-run output unchanged.
-  sed -i 's|export FOO=bar|export FOO=baz|' "$HOME/.bashrc"
+  # Use a tmp-file rewrite rather than sed -i to stay portable across GNU and
+  # BSD sed (macOS BSD sed requires a mandatory extension arg).
+  sed 's|export FOO=bar|export FOO=baz|' "$HOME/.bashrc" >"$HOME/.bashrc.new"
+  mv "$HOME/.bashrc.new" "$HOME/.bashrc"
   run bash "$DOCTOR_SCRIPT"
   [[ "$output" == *"FAIL  managed_block_drift"* ]]
   [[ "$output" == *"differ from regenerated content"* ]]
@@ -573,7 +576,8 @@ _write_synced_rc() {
 @test "managed_block_drift fails when nix:managed body drifts" {
   _write_synced_rc bash
   _mock_nx_dry_run
-  sed -i 's|/.nix-profile/bin|/.nix-profile/sbin|' "$HOME/.bashrc"
+  sed 's|/.nix-profile/bin|/.nix-profile/sbin|' "$HOME/.bashrc" >"$HOME/.bashrc.new"
+  mv "$HOME/.bashrc.new" "$HOME/.bashrc"
   run bash "$DOCTOR_SCRIPT"
   [[ "$output" == *"FAIL  managed_block_drift"* ]]
 }
