@@ -61,10 +61,10 @@ function manage_block() {
   remove)
     local count
     count="$(_pb_count_occurrences "$rc" "$marker")"
-    if [ "$count" -eq 0 ] 2>/dev/null; then
+    if [ "$count" -eq 0 ]; then
       return 0
     fi
-    if [ "$count" -gt 1 ] 2>/dev/null; then
+    if [ "$count" -gt 1 ]; then
       printf '\e[33mwarning: found %s occurrences of managed block "%s" in %s; removing all\e[0m\n' \
         "$count" "$marker" "$rc" >&2
     fi
@@ -91,7 +91,7 @@ function manage_block() {
 
     local count
     count="$(_pb_count_occurrences "$rc" "$marker")"
-    if [ "$count" -gt 1 ] 2>/dev/null; then
+    if [ "$count" -gt 1 ]; then
       printf '\e[33mwarning: found %s occurrences of managed block "%s" in %s; replacing all with one\e[0m\n' \
         "$count" "$marker" "$rc" >&2
     fi
@@ -106,7 +106,7 @@ function manage_block() {
       printf '%s\n' "$end_tag"
     )"
 
-    if [ "$count" -eq 0 ] 2>/dev/null; then
+    if [ "$count" -eq 0 ]; then
       # First insertion - backup before modifying
       cp -p "$rc" "${rc}.nixenv-backup-$(date +%Y%m%d%H%M%S)" 2>/dev/null || true
       # Append: ensure blank line separator before the block
