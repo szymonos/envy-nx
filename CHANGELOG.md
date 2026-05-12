@@ -5,6 +5,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-05-12
+
+Three contributor-facing skills join the agent toolkit: `grill-with-docs` for design grilling, `slide-deck-builder` for reveal.js technical decks, and `prepare-release` for end-to-end release prep with interactive semver verification. Plus a `make slides-update-check` helper for tracking vendored reveal.js drift.
+
+### Added
+
+- `grill-with-docs` skill - interview-style design grilling that updates `CONTEXT.md` and ADRs inline. Slash command `/grill-with-docs`; auto-invocation disabled.
+- `slide-deck-builder` skill - reveal.js single-file deck builder with a dark-theme + semantic-accent design system. Operates on `docs/slides/index.html`; companion references for components and maintenance loaded on demand.
+- `prepare-release` skill - 5-phase end-to-end release prep with interactive semver verification: composes CHANGELOG, consolidates the branch by Conventional Commits prefix via soft-reset, pushes, creates or updates the PR. Bundled `extract.py` keeps the agent out of the 100+ KB CHANGELOG.
+- `make slides-update-check` Makefile target - compares the pinned `reveal.js` version in `docs/slides/index.html` against the latest GitHub release; uses `gh auth token` when available.
+
+### Changed
+
+- `.claude/skills/` excluded from markdownlint (via `.markdownlintignore` + `.pre-commit-config.yaml`) and cspell (via `.cspell.json`) so future skill imports drop in verbatim.
+- `tests/hooks/check_changelog.py` `SECTION_ORDER` extended to cover `Removed`, `Security`, and `Deprecated` (previously only enforced order for `Added`/`Changed`/`Fixed`).
+
+### Fixed
+
+- `tests/hooks/validate_docs_words.py` now correctly skips dotfile/dotdir paths from `.cspell.json` `ignorePaths` - `lstrip("./")` was mangling `.claude/...` patterns; replaced with `removeprefix("./")`.
+
 ## [1.7.2] - 2026-05-10
 
 Lands the 14 nx-cli review-cycle fixes from the second chunked-review cycle (`.wolf/reviews/2026-05-09-nx-cli.json`) plus the FU-003 implementation that closes a long-deferred architecture-review item: a new `nx profile regenerate --dry-run --shell <bash|zsh>` flag powering a `managed_block_drift` doctor check that catches manual edits and version skew in the `nix:managed` / `env:managed` rc blocks (something `shell_profile`, which only audits markers, cannot see). FU-003 was also the architectural unblocker for accepted.md A-001 (F-014) - the "single-use, don't abstract" defer rationale evaporated the moment the new drift check became a second caller of the timeout-resolution helper, so `_dr_timeout_cmd` extraction now ships in this same release. Plus two test-quality hook updates surfaced by the macOS leg of CI on PR #25: `check_bash32`'s `sed -i` rule was broadened to also catch the GNU-only form (`sed -i 'pattern'` with no extension argument) that slipped through the previous BSD-only check and broke macOS CI, and the overstrict `sed { cmd; cmd; }` BSD-grouping rule was dropped after macOS-15 CI proved modern BSD sed (Sonoma+, FreeBSD 12+) handles it correctly. Local `make lint` + `make test-unit` clean.

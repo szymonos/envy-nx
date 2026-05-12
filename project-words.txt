@@ -31,6 +31,7 @@ diffable
 diskpart
 distrobox
 distros
+dotdir
 eacces
 egsave
 eledath
@@ -46,7 +47,6 @@ fixcertpy
 fnm
 fontawesome
 footgun
-frontmatter
 gbda
 gheof
 gtimeout
@@ -73,6 +73,7 @@ lastexitcode
 libicu
 lockfiles
 logind
+lstrip
 makefiles
 mandoc
 manpath
@@ -84,7 +85,6 @@ minisign
 mkdocs
 mktemp
 modularizes
-mortems
 mtimes
 multishells
 namerefs
@@ -116,6 +116,7 @@ reexeced
 reimplementations
 rekor
 remediations
+removeprefix
 rerunnable
 rollouts
 runspace
