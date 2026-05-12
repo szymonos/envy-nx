@@ -2,7 +2,7 @@
 name = "envy-nx"
 version = "1.0.0"
 requires-python = "~=3.14.0"
-dependencies = ["prek"]
+dependencies = ["prek", "ruff"]
 
 [project.optional-dependencies]
 docs = [
