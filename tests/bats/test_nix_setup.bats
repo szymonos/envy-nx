@@ -293,7 +293,10 @@ _scope_pkgs() {
 
 @test "scope files: every valid scope has a corresponding .nix file" {
   # some scopes are config-only (no nix packages) - they trigger configure scripts
-  local config_only_scopes=" conda docker distrobox "
+  # gcloud is installed via the official tarball (see nix/configure/gcloud.sh),
+  # so the scope file is intentionally empty (carries the
+  # `# bins: (external-installer)` sentinel only).
+  local config_only_scopes=" conda docker distrobox gcloud "
   for sc in "${VALID_SCOPES[@]}"; do
     local nix_file="$TEST_ENV_DIR/scopes/${sc}.nix"
     # some scopes have no .nix file (handled by builtins.pathExists in flake)
