@@ -1,6 +1,6 @@
 ---
 name: prepare-release
-description: Cut a release end-to-end - commit uncommitted work, consolidate the branch's commits by Conventional Commits prefix via soft-reset, write the CHANGELOG entry, push the branch, then create or update the release PR. Bundled extract.py reads only the CHANGELOG sections needed (avoids the 100+ KB file). Use when the user types `/prepare-release <X.Y.Z>`, asks to cut a release, prepare release notes, ship X.Y.Z, or wrap a branch up. Disabled for auto-invocation.
+description: Cut a release end-to-end - commit uncommitted work, consolidate the branch's commits by Conventional Commits prefix via soft-reset, write the CHANGELOG entry, push the branch, then create or update the release PR. Bundled extract.py reads only the CHANGELOG sections needed (avoids the 100+ KB file); cspell_words.py reconciles new vocabulary with project-words.txt before committing. Use when the user types `/prepare-release <X.Y.Z>`, asks to cut a release, prepare release notes, ship X.Y.Z, or wrap a branch up. Disabled for auto-invocation.
 disable-model-invocation: true
 ---
 
@@ -16,7 +16,7 @@ End-to-end release prep for a feature branch. Optimized for the WIP workflow whe
 
 ## Workflow
 
-Five phases. Stop and surface the error if any phase fails - don't paper over.
+Five phases (Phase 1.5 is a small interstitial cspell sweep). Stop and surface the error if any phase fails - don't paper over.
 
 ### Phase 1: Compose CHANGELOG entry
 
@@ -39,6 +39,33 @@ Five phases. Stop and surface the error if any phase fails - don't paper over.
 
    - **New version** anchor: `## [Unreleased]\n\n<UNRELEASED-content-from-extract>\n\n## [<last-tag>]`
    - **Merge** case: two `Edit`s - one to replace the existing `## [<X.Y.Z>] - <date>` block with merged content, one to clear `[Unreleased]`.
+
+### Phase 1.5: Cspell sweep
+
+Reconcile new vocabulary in the release docs with `project-words.txt` *before* committing - otherwise `make lint-diff` in Phase 4 fails on `Unknown word (...)` and you pay an amend cycle. Adding to the dictionary intentionally needs human-or-agent judgment (a typo and a new library name look identical to cspell), so it's a skill helper rather than a pre-commit hook.
+
+1. Scan changed `*.md` since `<last-tag>` (plus uncommitted/staged):
+
+   ```bash
+   .claude/skills/prepare-release/scripts/cspell_words.py scan
+   ```
+
+   Returns JSON: `[{"word", "file", "line", "context"}, ...]`. Empty list → skip the rest of this phase.
+
+2. **Classify each finding by surrounding context** (the `context` field in the JSON):
+   - In backticks, adjacent to a code identifier, an obvious proper-noun (`prek`, `idna`, `setup-uv`) → **name** to add.
+   - Embedded in plain prose with no code markers, looks like a misspelling of a real word (`recieve`, `deendency`) → **typo**. Fix the source file via `Edit`; do **not** add to the dictionary.
+   - Genuinely ambiguous → **unsure** bucket.
+
+3. **Resolve the unsure bucket in one round-trip.** Single `AskUserQuestion` with one yes/no per ambiguous word ("Add to dictionary? `<word>` (in `<file>`: ...<context>...)"), batched. The user's answers split it into add-vs-fix.
+
+4. Add all approved words in one call:
+
+   ```bash
+   .claude/skills/prepare-release/scripts/cspell_words.py add <word1> <word2> ...
+   ```
+
+   Idempotent: dedupes against existing entries, sorts, writes back. The updated `project-words.txt` rides along with the CHANGELOG in Phase 4's `docs(changelog)` commit (content-coupling).
 
 ### Phase 2: Categorize the diff
 
@@ -148,7 +175,8 @@ git commit --no-verify -m "docs(changelog): cut <X.Y.Z> release notes"
 **End of Phase 4: run `make lint-diff` once.** Hooks were skipped per-commit via `--no-verify`; this validates the full sequence at once. (`make lint` won't work here - post-commit there are no uncommitted changes for it to operate on; `make lint-diff` runs hooks against `main..HEAD` which is what we actually want to validate.)
 
 - Passes + working tree clean → done, proceed to Phase 5.
-- Passes + files modified by auto-fix hooks → `git commit --amend --no-verify --no-edit -a` to fold formatting fixes into the last commit. Acceptable noise (lint modifications are uniform: whitespace, EOF, dictionary pruning).
+- Passes + files modified by auto-fix hooks → `git commit --amend --no-verify --no-edit -a` to fold formatting fixes into the last commit. Acceptable noise (lint modifications are uniform: whitespace, EOF, dictionary pruning by `validate_docs_words`).
+- Fails on `cspell` `Unknown word (...)` → Phase 1.5 was skipped or missed entries. Re-run `cspell_words.py scan`/`add`, then `git commit --amend --no-verify --no-edit -a`.
 - Fails non-recoverably → **stop**. Surface the error. Don't push. User fixes manually, then re-runs Phase 5.
 
 ### Phase 5: Push and PR
@@ -223,6 +251,8 @@ For the CHANGELOG entry composed in Phase 1.
 - **Splitting `project-words.txt`** from its content-source commit. Conceptual coupling - the word exists *because* of the bullet - keeps the commit history honest.
 - **Skipping `make lint-diff` after Phase 4.** Per-commit hooks were bypassed via `--no-verify`; `make lint-diff` is the validation gate. Skipping it means pushing unvalidated state.
 - **Skipping Phase 3 (release verification).** A patch release that's actually feature-shaped is the most common quiet bug - verify before destroying history, when fixing is one Edit.
+- **Skipping Phase 1.5 (cspell sweep).** Forces an amend cycle in Phase 4 when `lint-diff` flags `Unknown word (...)`. Run `cspell_words.py scan` once before committing - it's cheap and saves a reset.
+- **Auto-adding everything cspell flags without classification.** A typo silently becomes a "valid" word and persists in the dictionary forever. Phase 1.5's classification step is the safeguard.
 - **Reading the full CHANGELOG.** Run `extract.py` first; agent context is what we're trying to save.
 - **Multi-paragraph bullets, SHAs / finding IDs / PR numbers in the body.** Searchable elsewhere; clutters the changelog.
 - **Tagging the release here** - real tags trigger release workflows; `make release` handles tagging post-merge.
