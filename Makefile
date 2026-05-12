@@ -87,9 +87,24 @@ test-upgrade-walk: ## Cross-version upgrade walk in Docker (slow, ~20+ min). WAL
 		$(CLEANUP_ROOT_CERT); \
 		exit $$rc
 
-.PHONY: mkdocs-serve
+.PHONY: mkdocs-serve slides-update-check
 mkdocs-serve: ## Serve mkdocs documentation with live reload
 	uv run --extra docs mkdocs serve --livereload
+slides-update-check:  ## Compare pinned reveal.js version against the latest upstream release
+	@local_pin=$$(grep -oE 'reveal\.js@[^/"]+' docs/slides/index.html 2>/dev/null \
+		| head -1 | sed 's/^reveal\.js@//' || echo unknown); \
+	set --; \
+	if command -v gh >/dev/null 2>&1 && token=$$(gh auth token 2>/dev/null) && [ -n "$$token" ]; then \
+		set -- -H "Authorization: Bearer $$token"; \
+	fi; \
+	upstream_ver=$$(curl -sS "$$@" https://api.github.com/repos/hakimel/reveal.js/releases/latest \
+		| grep -oE '"tag_name"[[:space:]]*:[[:space:]]*"[^"]+"' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'); \
+	printf '  pinned:   @%s\n  upstream: %s\n' "$$local_pin" "$$upstream_ver"; \
+	if [ "$$local_pin" = "$$upstream_ver" ]; then \
+		echo '  status:   pinned to latest exact version'; \
+	else \
+		echo "  release:  https://github.com/hakimel/reveal.js/releases/tag/$$upstream_ver"; \
+	fi
 
 .PHONY: hooks hooks-install hooks-remove
 hooks: ## List available pre-commit hook IDs
