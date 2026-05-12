@@ -52,7 +52,9 @@ def main() -> None:
     files = [
         f
         for f in files
-        if not any(str(f.relative_to(root)).startswith(e.lstrip("./")) for e in exclude)
+        if not any(
+            str(f.relative_to(root)).startswith(e.removeprefix("./")) for e in exclude
+        )
     ]
     print(f"Gathering files... ({len(files)} files)")
 
