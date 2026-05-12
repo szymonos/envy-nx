@@ -11,6 +11,7 @@
     }
   ],
   "ignorePaths": [
+    ".claude/skills/",
     "docs/assets",
     "docs/legacy/images",
     "project-words.txt",

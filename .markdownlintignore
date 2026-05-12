@@ -1,0 +1,3 @@
+# Skills are agent-facing instructions, often imported verbatim from upstream
+# (see .claude/skills/grill-with-docs/). Lint rules don't apply.
+.claude/skills/

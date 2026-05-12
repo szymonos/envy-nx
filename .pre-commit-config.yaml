@@ -76,6 +76,7 @@ repos:
       - id: check-executables-have-shebangs
       - id: check-shebang-scripts-are-executable
       - id: end-of-file-fixer
+        exclude: \.(css|js)$
       - id: mixed-line-ending
       - id: trailing-whitespace
         exclude: \.md$
@@ -95,7 +96,7 @@ repos:
       - id: markdownlint-cli2
         args: ["--fix"]
         files: \.md$
-        exclude: /copilot-instructions\.md
+        exclude: /copilot-instructions\.md|^\.claude/skills/
   - repo: https://github.com/streetsidesoftware/cspell-cli
     rev: v10.0.0
     hooks:
