@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run python3
 """
 Detect cspell-unknown words in release docs and add approved ones to project-words.txt.
 
