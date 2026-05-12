@@ -6,6 +6,7 @@ azcli
 azcopy
 azurecli
 backpressure
+backrefs
 bassim
 behaviour
 blocklists
@@ -57,6 +58,7 @@ hashtables
 hkcu
 httpx
 hyperv
+idna
 incompat
 intune
 isatty
@@ -100,6 +102,7 @@ oneshot
 otbs
 pacman
 pasteable
+pathspec
 pcre
 pdca
 pipefail
