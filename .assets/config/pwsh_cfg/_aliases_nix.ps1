@@ -296,6 +296,27 @@ function _NxProfileRegenerate {
         }
     }
 
+    # -- nix:gcloud - Google Cloud CLI (tarball install at $HOME/google-cloud-sdk) ---
+    # Mirrors the bash/zsh :gcloud env-block section. gcloud is installed via
+    # the official tarball (not Nix) so `gcloud components install` works
+    # natively. On Windows-native pwsh the predicate is false (envy-nx
+    # provisions inside WSL, not on the host) - guard naturally degrades.
+    # gcloud ships no first-class pwsh completer; PATH-prepend only.
+    $gcloudBin = [IO.Path]::Combine([Environment]::GetFolderPath('UserProfile'), 'google-cloud-sdk/bin/gcloud')
+    if ([IO.File]::Exists($gcloudBin)) {
+        $gcloudRegion = [string[]]@(
+            '#region nix:gcloud'
+            '$gcloudBin = [IO.Path]::Combine([Environment]::GetFolderPath(''UserProfile''), ''google-cloud-sdk/bin'')'
+            'if ([IO.Directory]::Exists($gcloudBin) -and $gcloudBin -notin $env:PATH.Split([IO.Path]::PathSeparator)) {'
+            '    [Environment]::SetEnvironmentVariable(''PATH'', [string]::Join([IO.Path]::PathSeparator, $gcloudBin, $env:PATH))'
+            '}'
+            '#endregion'
+        )
+        if (_NxUpdateProfileRegion -Lines $profileContent -RegionName 'nix:gcloud' -Content $gcloudRegion) {
+            Write-Host "`e[32m  updated nix:gcloud`e[0m"
+        }
+    }
+
     # Save CurrentUserAllHosts profile
     [IO.File]::WriteAllText(
         $profilePath,
@@ -390,7 +411,7 @@ function _NxProfileUninstall {
             [IO.File]::ReadAllLines($profilePath)
         )
         foreach ($region in @('nix:base', 'nix:path', 'nix:certs', 'nix:starship',
-                'nix:oh-my-posh', 'nix:uv', 'nix:fnm', 'local-path')) {
+                'nix:oh-my-posh', 'nix:uv', 'nix:fnm', 'nix:gcloud', 'local-path')) {
             _NxRemoveProfileRegion -Lines $content -RegionName $region | Out-Null
         }
         [IO.File]::WriteAllText($profilePath, "$(($content -join "`n").Trim())`n")

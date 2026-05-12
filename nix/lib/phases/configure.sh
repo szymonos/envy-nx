@@ -48,6 +48,17 @@ phase_configure_per_scope() {
     az)
       _io_run "$CONFIGURE_DIR/az.sh" || warn "az configuration failed"
       ;;
+    gcloud)
+      # Auto-install gke-gcloud-auth-plugin when k8s_base co-exists in scopes.
+      # Decided at configure time (build-time-ish) since gcloud is sorted
+      # after k8s_base in scopes.json install_order, so _scope_sorted is
+      # populated correctly by the time this case fires.
+      local _with_gke="false" _s
+      for _s in "${_scope_sorted[@]}"; do
+        [ "$_s" = "k8s_base" ] && _with_gke="true" && break
+      done
+      _io_run "$CONFIGURE_DIR/gcloud.sh" "$_with_gke" || warn "gcloud configuration failed"
+      ;;
     oh_my_posh)
       _io_run "$CONFIGURE_DIR/omp.sh" "$omp_theme" || warn "oh-my-posh configuration failed"
       ;;
