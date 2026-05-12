@@ -44,7 +44,15 @@ def _parse_date(date_str: str) -> date | None:
 def _validate_section_order(
     lines: list[str], h2_headings: list[tuple[int, str]]
 ) -> list[str]:
-    """Check that ### sections within each release follow the required order."""
+    """
+    Check ### section order and detect duplicate sections within each release.
+
+    The duplicate check exists because an Edit that drops a `## [version]`
+    header silently merges two release sections, producing two `### Added`
+    (etc.) under the surviving release. The order-only check would surface
+    that as a confusing "Added must come before Changed" message; reporting
+    the duplicate directly points at the actual root cause.
+    """
     errors: list[str] = []
     order_index = {name: i for i, name in enumerate(SECTION_ORDER)}
 
@@ -52,6 +60,7 @@ def _validate_section_order(
         end = h2_headings[idx + 1][0] if idx + 1 < len(h2_headings) else len(lines) + 1
         release = re.sub(r"^## \[(.+?)\].*", r"\1", h2_line)
         last_order = -1
+        seen: dict[str, int] = {}
         for lineno in range(h2_lineno + 1, end):
             if lineno - 1 >= len(lines):
                 break
@@ -62,6 +71,15 @@ def _validate_section_order(
             section = m.group(1)
             if section not in order_index:
                 continue
+            if section in seen:
+                errors.append(
+                    f"  line {lineno}: [{release}] duplicate '### {section}' "
+                    f"(first at line {seen[section]}); a `## [version]` header "
+                    f"may have been deleted between them"
+                )
+                # don't also flag the order violation that the duplicate causes
+                continue
+            seen[section] = lineno
             cur = order_index[section]
             if cur < last_order:
                 prev_name = SECTION_ORDER[last_order]
