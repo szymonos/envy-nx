@@ -31,7 +31,7 @@ RUNTIME_PATTERNS = (
 
 SEMVER_HEADING = re.compile(r"^## \[(\d+\.\d+\.\d+)\] - (\d{4}-\d{2}-\d{2})\s*$")
 
-SECTION_ORDER = ("Added", "Changed", "Fixed")
+SECTION_ORDER = ("Added", "Changed", "Fixed", "Removed", "Security", "Deprecated")
 
 
 def _parse_date(date_str: str) -> date | None:
