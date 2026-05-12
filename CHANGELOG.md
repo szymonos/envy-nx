@@ -5,6 +5,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.8.1] - 2026-05-12
+
+### Added
+
+- `ruff` as a dev dependency for Python linting and formatting (config under `[tool.ruff]` in `pyproject.toml`).
+- `prepare-release` skill: Phase 1.5 cspell sweep with bundled `cspell_words.py` helper (`scan` emits JSON of unknown words for agent classification; `add` writes approved words sorted into `project-words.txt`). Removes the post-Phase-4 amend cycle when new vocabulary lands in release docs.
+
+### Changed
+
+- Bumped dev dependencies (`prek`, `requests`, `urllib3`, `idna`, `pathspec`, `backrefs`)
+- Pinned `astral-sh/setup-uv` to 0.11.11 in CI workflows.
+
 ## [1.8.0] - 2026-05-12
 
 Three contributor-facing skills join the agent toolkit: `grill-with-docs` for design grilling, `slide-deck-builder` for reveal.js technical decks, and `prepare-release` for end-to-end release prep with interactive semver verification. Plus a `make slides-update-check` helper for tracking vendored reveal.js drift.
