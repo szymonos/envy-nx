@@ -5,6 +5,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-05-12
+
+Drops the `gcloud` scope from Nix and reinstates it via the official tarball into `$HOME/google-cloud-sdk`, restoring native `gcloud components install` (Nix's "managed by external package manager" marker had blocked it). `gke-gcloud-auth-plugin` is auto-coupled when `k8s_base` is in scope.
+
+### Added
+
+- `gke-gcloud-auth-plugin` is now auto-installed when both the `gcloud` and `k8s_base` scopes are active (the plugin is the standard kubectl auth path for GKE clusters). Installation happens via `gcloud components install` against the new tarball install (see `Changed` below); no auto-coupling for any other component.
+- `nix/configure/gcloud_remove.sh` cleanup hook: prompts to remove `$HOME/google-cloud-sdk` when the `gcloud` scope is dropped via `nix/setup.sh --remove gcloud`. Mirrors the conda/nodejs/python remove hooks (interactive prompt, `--unattended` skip, non-tty short-circuit). User config under `~/.config/gcloud/` is preserved.
+
+### Changed
+
+- **`gcloud` scope is now installed via the official Google Cloud CLI tarball into `$HOME/google-cloud-sdk` instead of via Nix.** Nix's `google-cloud-sdk` writes a "managed by external package manager" marker that makes `gcloud components install` refuse, blocking `gke-gcloud-auth-plugin` (needed for GKE kubectl auth). The tarball install behaves like a plain user-space tool: `gcloud components install` works natively, `gcloud components update` self-updates the SDK, and the bundled Python (CLI 422+) removes any system-Python dependency. The scope name is unchanged; `nix/scopes/gcloud.nix` now carries the `# bins: (external-installer)` sentinel (mirroring `conda.nix`). Re-runs of `nix/setup.sh` are a skip-if-installed no-op - users refresh explicitly via `gcloud components update` (a future `nx upgrade --all` flag is tracked in `design/followups.md`). A pre-existing system gcloud (e.g., `apt install google-cloud-cli`) is silently shadowed by the tarball install via PATH precedence; no migration is performed for users on the old nix-managed gcloud.
+- The `:gcloud` env-block section now adds `$HOME/google-cloud-sdk/bin` to PATH and sources the bundled `completion.bash.inc` / `completion.zsh.inc` for the matching shell. Mirrored to PowerShell as a new `nix:gcloud` profile region (PATH-prepend only; gcloud ships no first-class pwsh completer).
+
+### Fixed
+
+- `tests/hooks/check_changelog.py` `_validate_section_order` now flags duplicate `### <Section>` headings within a release (in addition to the existing ordering check) and points at the likely cause - a deleted `## [version]` header above. Replaces the confusing "Added must come before Changed" symptom that fires when an Edit silently merges two release sections.
+- `prepare-release` skill scripts (`extract.py`, `cspell_words.py`) now self-route through `uv run` via `#!/usr/bin/env -S uv run python3` shebangs, picking up the project's Python 3.14 instead of failing on a system `python3` older than 3.14 (the scripts use PEP 758 multi-exception syntax).
+
 ## [1.8.1] - 2026-05-12
 
 ### Added
