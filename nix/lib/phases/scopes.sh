@@ -69,6 +69,11 @@ phase_scopes_apply_removes() {
           _io_run "$SCRIPT_ROOT/nix/configure/conda_remove.sh" "${unattended:-false}" ||
             warn "conda removal cleanup failed"
           ;;
+        gcloud)
+          # shellcheck disable=SC2154  # unattended set by phase_bootstrap_parse_args
+          _io_run "$SCRIPT_ROOT/nix/configure/gcloud_remove.sh" "${unattended:-false}" ||
+            warn "gcloud removal cleanup failed"
+          ;;
         nodejs)
           # shellcheck disable=SC2154  # unattended set by phase_bootstrap_parse_args
           _io_run "$SCRIPT_ROOT/nix/configure/nodejs_remove.sh" "${unattended:-false}" ||

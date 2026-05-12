@@ -10,8 +10,11 @@ SCRIPT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 . "$SCRIPT_ROOT/.assets/config/shell_cfg/functions.sh"
 
 # *discover gcloud certifi cacert.pem
+# User-scope tarball install ($HOME/google-cloud-sdk) is checked first; the
+# legacy system paths are kept for installs predating the tarball move.
 GCLOUD_CERTIFI=""
 for loc in \
+  "$HOME/google-cloud-sdk/lib/third_party/certifi/cacert.pem" \
   "/usr/local/google-cloud-sdk/lib/third_party/certifi/cacert.pem" \
   "/usr/lib/google-cloud-sdk/lib/third_party/certifi/cacert.pem" \
   "/usr/lib64/google-cloud-sdk/lib/third_party/certifi/cacert.pem"; do

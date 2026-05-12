@@ -240,7 +240,7 @@ if (Test-Path $certBundle -PathType Leaf) {
         $isProfileModified = $true
     }
     if (-not ($profileContent | Select-String 'CLOUDSDK_CORE_CUSTOM_CA_CERTS_FILE' -SimpleMatch -Quiet)) {
-        if ((Test-Path /usr/bin/gcloud -PathType Leaf) -or (Test-Path "$HOME/.nix-profile/bin/gcloud" -PathType Leaf)) {
+        if ((Test-Path /usr/bin/gcloud -PathType Leaf) -or (Test-Path "$HOME/.nix-profile/bin/gcloud" -PathType Leaf) -or (Test-Path "$HOME/google-cloud-sdk/bin/gcloud" -PathType Leaf)) {
             Write-Verbose 'adding CLOUDSDK_CORE_CUSTOM_CA_CERTS_FILE env var...'
             $profileContent.AddRange([string[]]@(
                     "`n#region gcloud-certs"

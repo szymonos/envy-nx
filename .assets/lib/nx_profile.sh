@@ -45,11 +45,33 @@ function _nx_render_env_block() {
     printf '  export REQUESTS_CA_BUNDLE="$HOME/.config/certs/ca-bundle.crt"\n'
     printf '  export SSL_CERT_FILE="$HOME/.config/certs/ca-bundle.crt"\n'
     printf 'fi\n'
-    if command -v gcloud &>/dev/null; then
+    # Predicate accepts both the nix-profile gcloud (legacy path) and the
+    # tarball install at $HOME/google-cloud-sdk. The latter is on PATH only
+    # after the :gcloud block below runs in a new shell - the bare directory
+    # check is the right render-time signal during a fresh setup pass.
+    if [ -d "$HOME/google-cloud-sdk/bin" ] || command -v gcloud &>/dev/null; then
       printf 'if [ -f "$HOME/.config/certs/ca-bundle.crt" ]; then\n'
       printf '  export CLOUDSDK_CORE_CUSTOM_CA_CERTS_FILE="$HOME/.config/certs/ca-bundle.crt"\n'
       printf 'fi\n'
     fi
+  fi
+
+  # :gcloud - tarball install at $HOME/google-cloud-sdk (see
+  # nix/configure/gcloud.sh). Adds bin/ to PATH and sources the bundled
+  # completion script. Both bash and zsh source this same env block, so
+  # completion sourcing branches at runtime on $BASH_VERSION / $ZSH_VERSION.
+  if [ -d "$HOME/google-cloud-sdk/bin" ]; then
+    printf '\n# :gcloud\n'
+    printf 'if [ -d "$HOME/google-cloud-sdk/bin" ]; then\n'
+    printf '  case ":$PATH:" in *":$HOME/google-cloud-sdk/bin:"*) ;; *)\n'
+    printf '    export PATH="$HOME/google-cloud-sdk/bin:$PATH"\n'
+    printf '  esac\n'
+    printf '  if [ -n "${BASH_VERSION:-}" ] && [ -f "$HOME/google-cloud-sdk/completion.bash.inc" ]; then\n'
+    printf '    . "$HOME/google-cloud-sdk/completion.bash.inc"\n'
+    printf '  elif [ -n "${ZSH_VERSION:-}" ] && [ -f "$HOME/google-cloud-sdk/completion.zsh.inc" ]; then\n'
+    printf '    . "$HOME/google-cloud-sdk/completion.zsh.inc"\n'
+    printf '  fi\n'
+    printf 'fi\n'
   fi
 }
 
