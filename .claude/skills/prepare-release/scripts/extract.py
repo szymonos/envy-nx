@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Extract CHANGELOG sections + git context for the /changelog-update skill.
+"""
+Extract CHANGELOG sections + git context for the /changelog-update skill.
 
 Avoids the agent having to Read the full CHANGELOG.md (often 100+ KB). Emits
 only the sections needed to compose a new release: the [Unreleased] body, the
@@ -23,7 +24,11 @@ SECTION_HEADER_RE = re.compile(r"^## \[([^\]]+)\](?:\s*-\s*(\S+))?\s*$")
 
 
 def parse_sections(text: str) -> dict[str, str]:
-    """Map ``## [<id>]`` section ids to their body (lines between this header and the next)."""
+    """
+    Map ``## [<id>]`` section ids to their body.
+
+    Body is the lines between this header and the next ``##`` header.
+    """
     sections: dict[str, list[str]] = {}
     current_id: str | None = None
     for line in text.splitlines():
@@ -37,17 +42,22 @@ def parse_sections(text: str) -> dict[str, str]:
 
 
 def run_git(args: list[str]) -> str:
-    """Run a git command from the current directory; return stdout (stripped) or empty on failure."""
+    """
+    Run a git command from the current directory.
+
+    Returns stdout (stripped) or empty string on failure.
+    """
     try:
         result = subprocess.run(
             ["git", *args], capture_output=True, text=True, check=True
         )
         return result.stdout.strip()
-    except (subprocess.CalledProcessError, FileNotFoundError):
+    except subprocess.CalledProcessError, FileNotFoundError:
         return ""
 
 
 def main() -> int:
+    """Parse args, read the CHANGELOG, emit chunks for /prepare-release."""
     parser = argparse.ArgumentParser(
         description="Extract CHANGELOG sections + git context for /changelog-update"
     )
@@ -71,12 +81,8 @@ def main() -> int:
     existing = sections.get(args.version, "")
 
     last_tag = run_git(["describe", "--tags", "--abbrev=0"])
-    commits = (
-        run_git(["log", "--oneline", f"{last_tag}..HEAD"]) if last_tag else ""
-    )
-    diff_stat = (
-        run_git(["diff", "--stat", f"{last_tag}..HEAD"]) if last_tag else ""
-    )
+    commits = run_git(["log", "--oneline", f"{last_tag}..HEAD"]) if last_tag else ""
+    diff_stat = run_git(["diff", "--stat", f"{last_tag}..HEAD"]) if last_tag else ""
 
     chunks = [
         ("LAST_TAG", last_tag or "[none]"),
