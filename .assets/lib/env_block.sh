@@ -21,6 +21,15 @@ ENV_BLOCK_LEGACY_MARKER="managed env"
 # Prints the managed env block content to stdout.
 # Two sections: local path and cert env vars.
 # Caller writes output to a temp file and passes to manage_block.
+#
+# NOTE: this function is ~95% byte-identical to `_nx_render_env_block` in
+# .assets/lib/nx_profile.sh (only structural difference: the skip_local_bin
+# parameter and the `function ` keyword). The nix-managed path uses that
+# copy; this one is consumed by the legacy zsh setup path. Any change to
+# the rendered :certs / :gcloud / :aliases sections here MUST be mirrored
+# to nx_profile.sh byte-for-byte, or zsh-only installs drift from bash-
+# managed installs. Consolidation is tracked in design/follow-ups
+# (cycle 2026-05-13).
 render_env_block() {
   # :local path
   printf '# :local path\n'
@@ -42,6 +51,10 @@ render_env_block() {
 
   # :certs
   local cert_dir="$HOME/.config/certs"
+  # `-f` for ca-custom.crt (always a regular file written by cert_intercept /
+  # merge_local_certs); `-e` for ca-bundle.crt (a symlink to the system store
+  # on Linux, a regular file on macOS - `-f` would skip valid symlinks).
+  # The asymmetry is intentional; do not "normalize" it.
   if [ -f "$cert_dir/ca-custom.crt" ] || [ -e "$cert_dir/ca-bundle.crt" ]; then
     printf '\n# :certs\n'
   fi
@@ -54,6 +67,13 @@ render_env_block() {
     printf 'if [ -f "$HOME/.config/certs/ca-bundle.crt" ]; then\n'
     printf '  export REQUESTS_CA_BUNDLE="$HOME/.config/certs/ca-bundle.crt"\n'
     printf '  export SSL_CERT_FILE="$HOME/.config/certs/ca-bundle.crt"\n'
+    # CURL_CA_BUNDLE / PIP_CERT / AWS_CA_BUNDLE complement REQUESTS_CA_BUNDLE
+    # for tools that read their own env var (curl, pip, AWS SDKs/CLI). All
+    # point at the full ca-bundle.crt so corp-network users invoking those
+    # CLIs directly outside an env-aware tool wrapper get cert verification.
+    printf '  export CURL_CA_BUNDLE="$HOME/.config/certs/ca-bundle.crt"\n'
+    printf '  export PIP_CERT="$HOME/.config/certs/ca-bundle.crt"\n'
+    printf '  export AWS_CA_BUNDLE="$HOME/.config/certs/ca-bundle.crt"\n'
     printf 'fi\n'
     # Predicate accepts both nix-profile gcloud and the tarball install at
     # $HOME/google-cloud-sdk; the latter is on PATH only after the :gcloud
