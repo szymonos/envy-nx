@@ -31,6 +31,13 @@ teardown_file() {
 
 setup() {
   command -v openssl &>/dev/null || skip "openssl not available"
+  # cert_intercept moved from functions.sh to .assets/lib/certs.sh (F-017);
+  # functions.sh sources certs.sh from $HOME/.config/shell/certs.sh at
+  # runtime. In tests, source certs.sh directly so cert_intercept is in
+  # scope without needing the deploy step. fixcertpy still lives in
+  # functions.sh (sourced for the same reason).
+  # shellcheck source=../../.assets/lib/certs.sh
+  source "$BATS_TEST_DIRNAME/../../.assets/lib/certs.sh"
   # shellcheck source=../../.assets/config/shell_cfg/functions.sh
   source "$BATS_TEST_DIRNAME/../../.assets/config/shell_cfg/functions.sh"
   # override HOME so cert functions use our test directory
@@ -225,6 +232,9 @@ teardown() {
   # we can assert the function's exit code under `set -e`.
   bash -c '
     set -eo pipefail
+    # cert_intercept lives in certs.sh now (F-017 move); source both so the
+    # subshell mirrors what a setup-phase or user-shell invocation provides.
+    source "'"$BATS_TEST_DIRNAME"'/../../.assets/lib/certs.sh"
     source "'"$BATS_TEST_DIRNAME"'/../../.assets/config/shell_cfg/functions.sh"
     openssl() {
       case "$1" in
