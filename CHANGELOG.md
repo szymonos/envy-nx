@@ -5,6 +5,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-05-13
+
+First chunked-review cycle of the certs shard. Adds `CURL_CA_BUNDLE` / `PIP_CERT` / `AWS_CA_BUNDLE` to the managed env blocks across bash, zsh, and PowerShell so corp-network users get cert verification automatically in tools that do not read the existing exports. Refactors consolidate duplicated probe and header-rendering logic; fixes restore long-broken npm cafile pinning on Debian/Ubuntu/fedora/opensuse.
+
+### Added
+
+- `CURL_CA_BUNDLE`, `PIP_CERT`, and `AWS_CA_BUNDLE` are now exported alongside `REQUESTS_CA_BUNDLE` / `SSL_CERT_FILE` in the bash, zsh, and PowerShell managed env blocks (gated on `~/.config/certs/ca-bundle.crt`). Corp-network users invoking `curl`, `pip`, or `aws` directly outside an env-aware tool wrapper now get cert verification automatically. The pwsh `nix:certs` region is also extended with `NODE_EXTRA_CA_CERTS`, `REQUESTS_CA_BUNDLE`, `SSL_CERT_FILE`, and (when gcloud is on PATH) `CLOUDSDK_CORE_CUSTOM_CA_CERTS_FILE`, mirroring the bash/zsh side that previously only landed via the static `setup_profile_user.ps1` blocks.
+
+### Changed
+
+- `_cert_probe_pinned` extracted into a new `.assets/lib/cert_probe.sh` (no other dependencies). Both `_check_cert_bundle` (in `nx_doctor.sh`) and `_io_curl_probe_pinned` (in `nix/lib/io.sh`) now source it - previously the `openssl s_client -CAfile` invocation was duplicated with subtly different stdin handling. cert_probe.sh joins the synced lib-files set so it is available in `~/.config/nix-env/`.
+- `_emit_cert_header` extracted as a single source of truth for the `# Issuer:`/`# Subject:`/`# Serial:`/`# Fingerprint:` header block written into `~/.config/certs/ca-custom.crt` and certifi bundles. Lives in `.assets/lib/certs.sh`; called from `merge_local_certs`, `cert_intercept`, and `fixcertpy` (the latter via `functions.sh`'s certs.sh source). Previously inlined byte-for-byte at all three sites with regression risk.
+- `cert_intercept` moved from `.assets/config/shell_cfg/functions.sh` to `.assets/lib/certs.sh` (its natural home, alongside `build_ca_bundle` and `merge_local_certs`). `nix/lib/phases/nix_profile.sh` no longer sources `functions.sh` wholesale during the MITM probe path, eliminating a setup-environment leak (`sysinfo()` globals + interactive aliases). `functions.sh` re-sources `certs.sh` from the deployed `~/.config/shell/certs.sh` so the user-shell `cert_intercept` alias still works; `nix/configure/profiles.{sh,zsh}` and the legacy `setup_profile_user.zsh` deploy `certs.sh` alongside `functions.sh`.
+- `merge_local_certs` (in `.assets/lib/certs.sh`) now emits a loud red message when openssl is unavailable, including the count of `.crt` files that were skipped under `<src_dir>`. Previously a single yellow line could scroll past during a multi-minute setup, leaving the user with a partial bundle and no signal that their local certs were ignored.
+- `build_ca_bundle` on macOS now captures stderr from the `security find-certificate` Keychain queries and surfaces a loud red message when the rebuild yields an empty bundle but the security command emitted errors (locked / corrupt / sandbox-restricted Keychain). Previously the `[ -s ]` guard kept the prior bundle in place silently with no signal that the rebuild failed.
+
+### Fixed
+
+- `nix/configure/nodejs.sh` now wraps `npm config set cafile` with `_io_run`, so a real failure (read-only `~/.npmrc`, npm crash) is captured in setup.log and surfaced via `warn` rather than silently ignored. The system-wide-shell complement to `NODE_EXTRA_CA_CERTS` is now visibly broken when it breaks.
+- `.assets/fix/fix_nodejs_certs.sh` now correctly detects whether `npm config get cafile` is unset by reading the value directly rather than substring-matching the full `npm config get` listing (the listing always contains the literal `cafile=null` even when unset, so the previous guard was always true and the body never ran). The root-scope branch also now ships explicit cafile paths for fedora (`/etc/pki/tls/certs/ca-bundle.crt`) and opensuse (`/etc/ssl/ca-bundle.pem`) that previously fell into the silent-skip catch-all. This has been a no-op since the fork (April 2026) on Debian/Ubuntu and a silent skip on fedora/opensuse since introduction.
+- `nx doctor`'s `cert_bundle` check now flags a missing `~/.config/certs/ca-bundle.crt` whenever the cert dir exists, regardless of the MITM probe path (previously the check returned `pass` when `ca-custom.crt` was absent under `NX_DOCTOR_SKIP_NETWORK=1` or when the Mozilla bundle / openssl was unavailable, hiding the broken state where shell `:certs` exports silently no-op).
+- `wsl/wsl_certs_add.ps1` now merges intercepted certs into the in-distro `~/.config/certs/ca-custom.crt` via `merge_local_certs` (serial-aware, idempotent) instead of overwriting the file. A previous in-distro `cert_intercept` run that captured certs unreachable from the Windows host (e.g. internal endpoints) is no longer silently lost when the host-side script re-runs.
+
 ## [1.9.0] - 2026-05-12
 
 Drops the `gcloud` scope from Nix and reinstates it via the official tarball into `$HOME/google-cloud-sdk`, restoring native `gcloud components install` (Nix's "managed by external package manager" marker had blocked it). `gke-gcloud-auth-plugin` is auto-coupled when `k8s_base` is in scope.
