@@ -1,8 +1,12 @@
 : '
-# Sourced by nx.sh, not run directly. After `source .assets/lib/nx.sh`:
-nx_main profile regenerate
-nx_main profile doctor
-nx_main profile uninstall
+# This file defines _nx_profile_dispatch and _nx_render_*; it is sourced
+# transitively via nx.sh and never executed directly. After sourcing nx.sh,
+# the public surface is reachable via the `nx` dispatcher (defined in nx.sh):
+source .assets/lib/nx.sh
+nx profile regenerate
+nx profile doctor
+nx profile uninstall
+nx profile regenerate --dry-run --shell bash   # rendered blocks to stdout
 '
 
 # nx profile verb + the managed-block rendering it depends on.
@@ -11,6 +15,13 @@ nx_main profile uninstall
 # `_nx_profile_regenerate` is also called directly from nix/configure/profiles.sh
 # (sourcing nx.sh transitively brings this file in).
 
+# NOTE: this function is ~95% byte-identical to `render_env_block` in
+# .assets/lib/env_block.sh (only structural difference: the skip_local_bin
+# parameter and the `function ` keyword). The legacy zsh setup path uses the
+# env_block.sh copy. Any change to the rendered :certs / :gcloud / :aliases
+# sections here MUST be mirrored to env_block.sh byte-for-byte, or zsh-only
+# installs (legacy path) drift from bash-managed installs (nix path).
+# Consolidation is tracked in design/follow-ups (cycle 2026-05-13).
 function _nx_render_env_block() {
   local skip_local_bin="${1:-false}"
   if [ "$skip_local_bin" != "true" ]; then
@@ -32,6 +43,10 @@ function _nx_render_env_block() {
   fi
 
   local cert_dir="$HOME/.config/certs"
+  # `-f` for ca-custom.crt (always a regular file written by cert_intercept /
+  # merge_local_certs); `-e` for ca-bundle.crt (a symlink to the system store
+  # on Linux, a regular file on macOS - `-f` would skip valid symlinks).
+  # The asymmetry is intentional; do not "normalize" it.
   if [ -f "$cert_dir/ca-custom.crt" ] || [ -e "$cert_dir/ca-bundle.crt" ]; then
     printf '\n# :certs\n'
   fi
@@ -44,6 +59,13 @@ function _nx_render_env_block() {
     printf 'if [ -f "$HOME/.config/certs/ca-bundle.crt" ]; then\n'
     printf '  export REQUESTS_CA_BUNDLE="$HOME/.config/certs/ca-bundle.crt"\n'
     printf '  export SSL_CERT_FILE="$HOME/.config/certs/ca-bundle.crt"\n'
+    # CURL_CA_BUNDLE / PIP_CERT / AWS_CA_BUNDLE complement REQUESTS_CA_BUNDLE
+    # for tools that read their own env var (curl, pip, AWS SDKs/CLI). All
+    # point at the full ca-bundle.crt so corp-network users invoking those
+    # CLIs directly outside an env-aware tool wrapper get cert verification.
+    printf '  export CURL_CA_BUNDLE="$HOME/.config/certs/ca-bundle.crt"\n'
+    printf '  export PIP_CERT="$HOME/.config/certs/ca-bundle.crt"\n'
+    printf '  export AWS_CA_BUNDLE="$HOME/.config/certs/ca-bundle.crt"\n'
     printf 'fi\n'
     # Predicate accepts both the nix-profile gcloud (legacy path) and the
     # tarball install at $HOME/google-cloud-sdk. The latter is on PATH only

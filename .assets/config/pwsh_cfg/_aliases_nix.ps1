@@ -207,13 +207,36 @@ function _NxProfileRegenerate {
         Write-Host "`e[32m  updated nix:path`e[0m"
     }
 
-    # -- nix:certs - override NIX_SSL_CERT_FILE with merged CA bundle ---
+    # -- nix:certs - cert env vars for nix tools and corp-network HTTPS ---
+    # Mirrors the bash/zsh `# :certs` block in _nx_render_env_block (cross-shell
+    # parity rule). Bash side gates on ca-bundle.crt for the bundle vars and on
+    # ca-custom.crt for NODE_EXTRA_CA_CERTS; pwsh evaluates Test-Path at
+    # profile-load time so the same gates apply per-shell-start.
     $caBundlePath = [IO.Path]::Combine([Environment]::GetFolderPath('UserProfile'), '.config/certs/ca-bundle.crt')
-    if ([IO.File]::Exists($caBundlePath)) {
+    $caCustomPath = [IO.Path]::Combine([Environment]::GetFolderPath('UserProfile'), '.config/certs/ca-custom.crt')
+    if ([IO.File]::Exists($caBundlePath) -or [IO.File]::Exists($caCustomPath)) {
         $certsRegion = [string[]]@(
             '#region nix:certs'
             '$caBundlePath = [IO.Path]::Combine([Environment]::GetFolderPath(''UserProfile''), ''.config/certs/ca-bundle.crt'')'
-            'if ([IO.File]::Exists($caBundlePath)) { $env:NIX_SSL_CERT_FILE = $caBundlePath }'
+            '$caCustomPath = [IO.Path]::Combine([Environment]::GetFolderPath(''UserProfile''), ''.config/certs/ca-custom.crt'')'
+            'if ([IO.File]::Exists($caCustomPath)) {'
+            '    $env:NODE_EXTRA_CA_CERTS = $caCustomPath'
+            '}'
+            'if ([IO.File]::Exists($caBundlePath)) {'
+            '    $env:NIX_SSL_CERT_FILE = $caBundlePath'
+            '    $env:REQUESTS_CA_BUNDLE = $caBundlePath'
+            '    $env:SSL_CERT_FILE = $caBundlePath'
+            '    # CURL_CA_BUNDLE / PIP_CERT / AWS_CA_BUNDLE complement REQUESTS_CA_BUNDLE'
+            '    # for tools that read their own env var (curl, pip, AWS SDKs/CLI).'
+            '    $env:CURL_CA_BUNDLE = $caBundlePath'
+            '    $env:PIP_CERT = $caBundlePath'
+            '    $env:AWS_CA_BUNDLE = $caBundlePath'
+            '    # gcloud predicate accepts the tarball install at $HOME/google-cloud-sdk'
+            '    # or any nix-profile / system gcloud on PATH.'
+            '    if ((Test-Path "$HOME/google-cloud-sdk/bin/gcloud" -PathType Leaf) -or (Get-Command gcloud -ErrorAction SilentlyContinue)) {'
+            '        $env:CLOUDSDK_CORE_CUSTOM_CA_CERTS_FILE = $caBundlePath'
+            '    }'
+            '}'
             '#endregion'
         )
         if (_NxUpdateProfileRegion -Lines $profileContent -RegionName 'nix:certs' -Content $certsRegion) {
