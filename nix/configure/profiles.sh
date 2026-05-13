@@ -45,6 +45,10 @@ _install_cfg_file "$SHELL_CFG/aliases_git.sh" "$HOME/.config/shell/aliases_git.s
 _install_cfg_file "$SHELL_CFG/aliases_kubectl.sh" "$HOME/.config/shell/aliases_kubectl.sh"
 _install_cfg_file "$SHELL_CFG/functions.sh" "$HOME/.config/shell/functions.sh"
 _install_cfg_file "$SHELL_CFG/completions.bash" "$HOME/.config/shell/completions.bash"
+# certs.sh defines cert_intercept (re-exported by functions.sh for the
+# user-shell alias). Lives in .assets/lib/ as the canonical home but is
+# deployed alongside functions.sh so the user shell can source it.
+_install_cfg_file "$LIB/certs.sh" "$HOME/.config/shell/certs.sh"
 
 # ---------------------------------------------------------------------------
 # Copy overlay shell config files (if overlay directory is active)
