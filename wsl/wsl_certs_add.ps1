@@ -157,15 +157,24 @@ process {
     $cmnd = "mkdir -p $($crt.path) && install -m 0644 $($tmpFolder.Name)/*.crt $($crt.path) && $($crt.cmnd)"
     wsl -d $Distro -u root --exec bash -c $cmnd
 
-    # write ca-custom.crt with MITM proxy certificates only
-    $bundleBuilder = [System.Text.StringBuilder]::new()
-    foreach ($cert in $certSet) {
-        $bundleBuilder.Append(($cert | ConvertTo-PEM -AddHeader)) | Out-Null
-    }
-    $bundlePath = [IO.Path]::Combine($tmpFolder, 'ca-custom.crt')
-    [IO.File]::WriteAllText($bundlePath, $bundleBuilder.ToString().Replace("`r`n", "`n"))
+    # Merge intercepted certs into the in-distro ~/.config/certs/ca-custom.crt
+    # instead of overwriting it: a previous `cert_intercept` run inside the
+    # distro may have captured certs unreachable from the Windows host (e.g.
+    # internal endpoints), and an overwrite would silently drop them.
+    # `merge_local_certs` (in .assets/lib/certs.sh) walks <src_dir>/*.crt with
+    # serial-based dedup and is idempotent. The per-thumbprint .crt files in
+    # $tmpFolder (written above on line 153) are the natural input.
     $userCertDir = '~/.config/certs'
-    $cmndCustom = "mkdir -p $userCertDir && install -m 0644 $($tmpFolder.Name)/ca-custom.crt $userCertDir/"
+    $cmndCustom = [string]::Join(' && ',
+        "mkdir -p $userCertDir",
+        # certs.sh lives at .assets/lib/certs.sh; the WSL CWD inherits from the
+        # script's CWD (Push-Location to repo root on line 48).
+        '. .assets/lib/certs.sh',
+        # `ok` is referenced by certs.sh but normally provided by io.sh -
+        # supply a minimal shim so the merge function runs standalone.
+        'type ok >/dev/null 2>&1 || ok() { printf "\033[32m%s\033[0m\n" "$*"; }',
+        "merge_local_certs $($tmpFolder.Name)"
+    )
     wsl -d $Distro --exec bash -c $cmndCustom
 
     # create ca-bundle.crt - symlink to system CA bundle (which already includes custom certs)
