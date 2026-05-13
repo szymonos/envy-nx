@@ -809,10 +809,11 @@ def _lib_files_list(manifest):
     # Every verb in the manifest now declares its `family` (enforced by
     # _verb_handler). Family files = nx_<family>.sh for each unique family.
     # nx.sh is the dispatcher entry; nx_doctor.sh and profile_block.sh are
-    # not verb families but are required runtime libs.
+    # not verb families but are required runtime libs. cert_probe.sh is the
+    # shared Mozilla-pinned probe for nx_doctor.sh's _check_cert_bundle.
     families = sorted({v["family"] for v in manifest["verbs"] if v.get("family")})
     files = ["nx.sh"] + [f"nx_{f}.sh" for f in families]
-    files += ["nx_doctor.sh", "profile_block.sh"]
+    files += ["nx_doctor.sh", "profile_block.sh", "cert_probe.sh"]
     # de-dupe while preserving order
     seen, out = set(), []
     for f in files:

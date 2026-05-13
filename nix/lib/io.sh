@@ -43,27 +43,28 @@ _io_curl_probe() { curl -sS "$1" >/dev/null 2>&1; }
 # don't pollute ca-custom.crt with unrelated bytes).
 _io_curl_probe_insecure() { curl -ksS "$1" >/dev/null 2>&1; }
 # Pinned variant: probes TLS using `openssl s_client -CAfile <bundle>` so the
-# only trust source is the explicit Mozilla bundle. Was previously curl
-# --cacert, but two non-portable behaviors made that unreliable:
-#   1. macOS: system curl uses Apple's Secure Transport TLS backend, which
-#      silently ignores --cacert and always consults the Keychain. The probe
-#      always trusted the admin-installed MITM cert and skipped cert_intercept.
-#   2. Debian: curl/OpenSSL is ADDITIVE with --cacert and SSL_CERT_FILE/
-#      NIX_SSL_CERT_FILE - both files load into the trust store, so the
-#      inherited env vars (set by the managed env block, pointing at a
-#      system-store-symlinked bundle that already trusts MITM) silently
-#      re-added the proxy cert and defeated the probe.
-# `openssl s_client -CAfile` is the same code path on every platform: it
-# uses ONLY the file specified and ignores SSL_CERT_FILE / SSL_CERT_DIR.
-# openssl is already a hard dependency - it's in base.nix and used by
-# cert_intercept itself. $1 = url, $2 = Mozilla bundle path
+# only trust source is the explicit Mozilla bundle. The implementation lives
+# in .assets/lib/cert_probe.sh (single source of truth - also called by
+# _check_cert_bundle in nx_doctor.sh). $1 = url, $2 = Mozilla bundle path
 # (e.g. ~/.nix-profile/etc/ssl/certs/ca-bundle.crt).
+#
+# cert_probe.sh is sourced lazily on first call rather than at file top so
+# io.sh stays self-contained for tests that just need the structured-log
+# helpers (info / ok / warn / err) without dragging in cert_probe.sh.
 _io_curl_probe_pinned() {
-  local _host="${1#https://}"
-  _host="${_host#http://}"
-  _host="${_host%%/*}"
-  echo | openssl s_client -CAfile "$2" -connect "${_host}:443" \
-    -servername "$_host" -verify_return_error </dev/null >/dev/null 2>&1
+  if ! type _cert_probe_pinned >/dev/null 2>&1; then
+    # SCRIPT_ROOT is set by nix/setup.sh; in tests, BASH_SOURCE-relative
+    # path covers the case where io.sh is sourced directly.
+    local _cp_path
+    if [ -n "${SCRIPT_ROOT:-}" ] && [ -f "$SCRIPT_ROOT/.assets/lib/cert_probe.sh" ]; then
+      _cp_path="$SCRIPT_ROOT/.assets/lib/cert_probe.sh"
+    else
+      _cp_path="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.assets/lib" 2>/dev/null && pwd)/cert_probe.sh"
+    fi
+    # shellcheck source=../../.assets/lib/cert_probe.sh
+    [ -f "$_cp_path" ] && . "$_cp_path"
+  fi
+  _cert_probe_pinned "$1" "$2"
 }
 
 # _io_pwsh_nop lives in .assets/lib/helpers.sh -- shared with setup_common.sh,

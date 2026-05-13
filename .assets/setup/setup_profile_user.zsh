@@ -34,10 +34,17 @@ if ! grep -q '^bindkey .* autosuggest-accept' "$HOME/.zshrc"; then
   echo "bindkey '^ ' autosuggest-accept" >>"$HOME/.zshrc"
 fi
 
-# -- deploy functions.sh to user-scope if system-wide not available ----------
+# -- deploy functions.sh + certs.sh to user-scope if system-wide not available
+# certs.sh ships cert_intercept; functions.sh sources it back so the alias
+# works after a user-shell start (mirrors the nix path's deploy in
+# nix/configure/profiles.{sh,zsh}).
 if [[ ! -f "$PROFILE_PATH/functions.sh" ]] && [[ -f .assets/config/shell_cfg/functions.sh ]]; then
   mkdir -p "$HOME/.config/shell"
   install -m 0644 .assets/config/shell_cfg/functions.sh "$HOME/.config/shell/"
+fi
+if [[ -f .assets/lib/certs.sh ]]; then
+  mkdir -p "$HOME/.config/shell"
+  install -m 0644 .assets/lib/certs.sh "$HOME/.config/shell/"
 fi
 
 # -- custom functions --------------------------------------------------------

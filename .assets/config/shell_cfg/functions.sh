@@ -168,8 +168,11 @@ function fixcertpy() {
       [ -n "$serial" ] || continue
       if ! grep -qw "$serial" "$certifi"; then
         echo " - $(openssl x509 -noout -subject -nameopt RFC2253 <<<"$pem" | sed 's/\\//g')" >&2
+        # _emit_cert_header is provided by certs.sh, sourced at the top of
+        # this file via $HOME/.config/shell/certs.sh. Single source of truth
+        # for the # Issuer:/# Subject:/... bundle marker format - see F-015.
         CERT="
-$(openssl x509 -noout -issuer -subject -serial -fingerprint -nameopt RFC2253 <<<"$pem" | sed 's/\\//g' | xargs -I {} echo "# {}")
+$(_emit_cert_header <<<"$pem")
 $(openssl x509 -outform PEM <<<"$pem")"
         if [ -w "$certifi" ]; then
           echo "$CERT" >>"$certifi"
@@ -194,115 +197,15 @@ $(openssl x509 -outform PEM <<<"$pem")"
 # alias for backward compatibility
 alias fxcertpy='fixcertpy'
 
-# *Function for intercepting MITM proxy certificates from TLS chain and saving to user cert bundle
-function cert_intercept() {
-  # check if openssl is available
-  if ! type openssl &>/dev/null; then
-    printf '\e[31mopenssl is required but not installed.\e[0m\n' >&2
-    return 1
-  fi
-
-  local _default_host="${NIX_ENV_TLS_PROBE_URL:-https://www.google.com}"
-  _default_host="${_default_host#https://}"
-  _default_host="${_default_host#http://}"
-  local uris=("${@:-$_default_host}")
-  local cert_bundle="$HOME/.config/certs/ca-custom.crt"
-  local cert_count=0
-  local skip_count=0
-
-  # ensure cert directory exists
-  mkdir -p "$HOME/.config/certs"
-
-  # PEM-walk (not `openssl storeutl -text`): storeutl emits
-  # `<decimal> (0x<lowercase-hex>)`, which can't substring-match the
-  # uppercase-hex format `openssl x509 -serial` produces (used for new
-  # candidates below + by the WSL fork's ConvertTo-PEM headers). Walking
-  # PEM blocks keeps the format normalized end-to-end.
-  local _existing_serials=" "
-  if [ -f "$cert_bundle" ]; then
-    local current_pem=""
-    while IFS= read -r line; do
-      if [[ "$line" == "-----BEGIN CERTIFICATE-----" ]]; then
-        current_pem="$line"
-      elif [[ "$line" == "-----END CERTIFICATE-----" ]]; then
-        current_pem+=$'\n'"$line"
-        local ser
-        ser=$(openssl x509 -noout -serial <<<"$current_pem" 2>/dev/null | cut -d= -f2)
-        [ -n "$ser" ] && _existing_serials+="$ser "
-        current_pem=""
-      elif [[ -n "$current_pem" ]]; then
-        current_pem+=$'\n'"$line"
-      fi
-    done <"$cert_bundle"
-  fi
-
-  for uri in "${uris[@]}"; do
-    printf '\e[36mintercepting certificates from %s...\e[0m\n' "$uri" >&2
-
-    # get full TLS chain
-    local chain_pem
-    chain_pem=$(openssl s_client -showcerts -connect "${uri}:443" </dev/null 2>/dev/null) || {
-      printf '\e[33mfailed to connect to %s\e[0m\n' "$uri" >&2
-      continue
-    }
-
-    # parse individual PEM blocks from chain, skip the first (leaf) cert
-    local pem_blocks=()
-    local current_pem=""
-    local cert_index=0
-    while IFS= read -r line; do
-      if [[ "$line" == "-----BEGIN CERTIFICATE-----" ]]; then
-        current_pem="$line"
-      elif [[ "$line" == "-----END CERTIFICATE-----" ]]; then
-        current_pem+=$'\n'"$line"
-        cert_index=$((cert_index + 1))
-        # skip the first cert (leaf/server cert)
-        if [ $cert_index -gt 1 ]; then
-          pem_blocks+=("$current_pem")
-        fi
-        current_pem=""
-      elif [[ -n "$current_pem" ]]; then
-        current_pem+=$'\n'"$line"
-      fi
-    done <<<"$chain_pem"
-
-    # process each intermediate/root cert
-    for pem in "${pem_blocks[@]}"; do
-      local serial
-      serial=$(openssl x509 -noout -serial -nameopt RFC2253 <<<"$pem" 2>/dev/null | cut -d= -f2)
-      [ -n "$serial" ] || continue
-
-      # check for duplicate
-      if [[ " $_existing_serials " == *" $serial "* ]]; then
-        skip_count=$((skip_count + 1))
-        continue
-      fi
-
-      # format cert with header comments and append to bundle
-      local header
-      header=$(openssl x509 -noout -issuer -subject -serial -fingerprint -nameopt RFC2253 <<<"$pem" 2>/dev/null | sed 's/\\//g' | xargs -I {} echo "# {}")
-      local cert_pem
-      cert_pem=$(openssl x509 -outform PEM <<<"$pem" 2>/dev/null)
-
-      printf '%s\n%s\n' "$header" "$cert_pem" >>"$cert_bundle"
-      _existing_serials+="$serial "
-      cert_count=$((cert_count + 1))
-      printf ' \e[32m+ %s\e[0m\n' "$(openssl x509 -noout -subject -nameopt RFC2253 <<<"$pem" 2>/dev/null | sed 's/\\//g')" >&2
-    done
-  done
-
-  # print summary
-  if [ $cert_count -gt 0 ]; then
-    printf '\e[34madded %d certificate(s) to %s\e[0m\n' "$cert_count" "${cert_bundle/$HOME/\~}" >&2
-  else
-    printf '\e[34mno new certificates to add\e[0m\n' >&2
-  fi
-  # `cmd && action` pattern leaves the test's exit code as the function's
-  # return value when action is skipped. Caller `phase_nix_profile_mitm_probe`
-  # runs under `set -e` in nix/setup.sh, so a `[ 0 -gt 0 ]` here would kill
-  # the script right after a successful intercept. Use `if/fi` to keep the
-  # function exit code at 0.
-  if [ $skip_count -gt 0 ]; then
-    printf '\e[90m(%d already existing, skipped)\e[0m\n' "$skip_count" >&2
-  fi
-}
+# cert_intercept used to live here. Moved to .assets/lib/certs.sh - search
+# `cert_intercept()` in that file. Source the deployed copy at the durable
+# shell-config location so the user-shell alias still works after a fresh
+# shell start. nix/configure/profiles.sh installs certs.sh alongside
+# functions.sh, and that step runs before the user re-sources their rc file.
+# Silent skip when missing - a user whose certs.sh deploy didn't run gets
+# "command not found: cert_intercept" at invocation time (with a clear
+# remediation: re-run nix/setup.sh).
+if [ -f "$HOME/.config/shell/certs.sh" ]; then
+  # shellcheck source=../../lib/certs.sh
+  . "$HOME/.config/shell/certs.sh"
+fi

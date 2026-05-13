@@ -34,7 +34,7 @@ envy-nx/
 │   ├── config/
 │   │   ├── shell_cfg/        Sourced into bash/zsh interactive shells
 │   │   │   ├── aliases_*.sh  nix/git/kubectl aliases
-│   │   │   ├── functions.sh  cert_intercept, fixcertpy, ...
+│   │   │   ├── functions.sh  fixcertpy, sysinfo (sources certs.sh for cert_intercept)
 │   │   │   └── completions.{bash,zsh}    GENERATED from nx_surface.json
 │   │   ├── pwsh_cfg/         PowerShell profile + nx wrapper (proxies to bash;
 │   │   │                     handles `nx profile *` natively)
@@ -844,7 +844,7 @@ This project follows [Keep a Changelog](https://keepachangelog.com) format and [
 | `.assets/lib/nx_lifecycle.sh`                                                                | nx verbs: setup/self/doctor/version/help                                                                    |
 | `.assets/lib/nx_doctor.sh`                                                                   | Health-check registry (`nx doctor`)                                                                         |
 | `.assets/config/shell_cfg/aliases_{nix,git,kubectl}.sh`                                      | Shell aliases (sourced into managed blocks)                                                                 |
-| `.assets/config/shell_cfg/functions.sh`                                                      | Shared shell functions (cert_intercept, fixcertpy)                                                          |
+| `.assets/config/shell_cfg/functions.sh`                                                      | Shared shell functions (fixcertpy, sysinfo); sources certs.sh for cert_intercept                            |
 | `.assets/config/shell_cfg/completions.{bash,zsh}`                                            | Tab completions for nx (**generated** from `nx_surface.json`)                                               |
 | `.assets/setup/setup_common.sh`                                                              | Post-install setup (called via `nix/setup.sh`)                                                              |
 | `.assets/setup/setup_profile_user.ps1`                                                       | PowerShell user profile (certs, local-path, etc.)                                                           |
@@ -977,10 +977,10 @@ Extension convention: `.sh` (shared), `.bash` (bash-only), `.zsh` (zsh-only).
 
 ### 13.7. Certificates (`~/.config/certs/`)
 
-| Runtime file    | Created by                      | Purpose                          |
-| --------------- | ------------------------------- | -------------------------------- |
-| `ca-custom.crt` | `cert_intercept` (functions.sh) | Intercepted proxy certs only     |
-| `ca-bundle.crt` | `build_ca_bundle` (certs.sh)    | Full CA bundle (system + custom) |
+| Runtime file    | Created by                   | Purpose                          |
+| --------------- | ---------------------------- | -------------------------------- |
+| `ca-custom.crt` | `cert_intercept` (certs.sh)  | Intercepted proxy certs only     |
+| `ca-bundle.crt` | `build_ca_bundle` (certs.sh) | Full CA bundle (system + custom) |
 
 ### 13.8. Environment variables exported by setup
 
