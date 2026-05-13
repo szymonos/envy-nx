@@ -25,7 +25,9 @@ if [ -z "$AZCLI_CERTIFI" ]; then
   AZ_VENV="$HOME/.azure/.venv/bin/activate"
   if [ -f "$AZ_VENV" ]; then
     source "$AZ_VENV" 2>/dev/null || true
-    location=$(pip show certifi 2>/dev/null | grep -oP '^Location: \K.+') || true
+    # POSIX sed (matches the pattern used in functions.sh:127); avoids the
+    # GNU PCRE `-P` flag which is missing on busybox grep (Alpine).
+    location=$(pip show certifi 2>/dev/null | sed -n 's/^Location: //p') || true
     if [ -n "$location" ]; then
       AZCLI_CERTIFI="${location}/certifi/cacert.pem"
     fi
