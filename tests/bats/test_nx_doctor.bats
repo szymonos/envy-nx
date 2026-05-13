@@ -644,6 +644,7 @@ _write_env_dir_files() {
   : >"$ENV_DIR/nx_lifecycle.sh"
   : >"$ENV_DIR/nx_doctor.sh"
   : >"$ENV_DIR/profile_block.sh"
+  : >"$ENV_DIR/cert_probe.sh"
   : >"$ENV_DIR/config.nix"
 }
 
@@ -775,6 +776,22 @@ EOF
   [[ "$output" == *"NODE_EXTRA_CA_CERTS not in server-env-setup"* ]]
   [[ "$output" == *"build_ca_bundle"* ]]
   [[ "$output" == *"re-run nix/setup.sh"* ]]
+}
+
+@test "cert_bundle fails when cert dir exists but ca-bundle.crt is missing (no ca-custom.crt)" {
+  # Regression for the silent-pass-with-missing-bundle case: a user who
+  # deletes ~/.config/certs/ca-bundle.crt manually (or whose build_ca_bundle
+  # was interrupted before symlink creation) used to see a green doctor
+  # report under NX_DOCTOR_SKIP_NETWORK=1, even though the shell managed-
+  # block guards on file existence and silently skipped the :certs exports.
+  _write_flake_lock
+  _write_install_json
+  mkdir -p "$HOME/.config/certs"
+  # No ca-custom.crt, no ca-bundle.crt - the dir's existence alone signals
+  # that setup has touched cert state, so the missing bundle is a real gap.
+  run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"FAIL  cert_bundle"* ]]
+  [[ "$output" == *"ca-bundle.crt missing"* ]]
 }
 
 # -- JSON output -------------------------------------------------------------

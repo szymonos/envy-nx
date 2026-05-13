@@ -844,14 +844,14 @@ _scope_pkgs() {
   _io_run() { :; }
   mkdir -p "$TEST_HOME/.config/certs"
 
-  # Create a fake SCRIPT_ROOT with stub scripts so phase_nix_profile_mitm_probe
-  # sources our stubs instead of real cert_intercept/build_ca_bundle.
+  # Create a fake SCRIPT_ROOT with a stub certs.sh that defines BOTH
+  # build_ca_bundle AND cert_intercept (the latter was moved from
+  # functions.sh to certs.sh; phase_nix_profile_mitm_probe no longer
+  # sources functions.sh wholesale).
   local fake_root="$BATS_TEST_TMPDIR/fake_root"
-  mkdir -p "$fake_root/.assets/lib" "$fake_root/.assets/config/shell_cfg"
+  mkdir -p "$fake_root/.assets/lib"
   cat >"$fake_root/.assets/lib/certs.sh" <<'STUB'
 build_ca_bundle() { touch "$HOME/.config/certs/ca-bundle.crt"; }
-STUB
-  cat >"$fake_root/.assets/config/shell_cfg/functions.sh" <<'STUB'
 cert_intercept() { touch "$HOME/.config/certs/cert_intercept_called"; }
 STUB
   SCRIPT_ROOT="$fake_root"
@@ -871,9 +871,11 @@ STUB
   mkdir -p "$TEST_HOME/.config/certs"
 
   local fake_root="$BATS_TEST_TMPDIR/fake_root_netfail"
-  mkdir -p "$fake_root/.assets/lib" "$fake_root/.assets/config/shell_cfg"
-  echo 'build_ca_bundle() { touch "$HOME/.config/certs/ca-bundle.crt"; }' >"$fake_root/.assets/lib/certs.sh"
-  echo 'cert_intercept() { touch "$HOME/.config/certs/cert_intercept_called"; }' >"$fake_root/.assets/config/shell_cfg/functions.sh"
+  mkdir -p "$fake_root/.assets/lib"
+  cat >"$fake_root/.assets/lib/certs.sh" <<'STUB'
+build_ca_bundle() { touch "$HOME/.config/certs/ca-bundle.crt"; }
+cert_intercept() { touch "$HOME/.config/certs/cert_intercept_called"; }
+STUB
   SCRIPT_ROOT="$fake_root"
 
   run phase_nix_profile_mitm_probe
@@ -899,9 +901,11 @@ STUB
 
   # Use fake SCRIPT_ROOT - cert_intercept should NOT be called
   local fake_root="$BATS_TEST_TMPDIR/fake_root2"
-  mkdir -p "$fake_root/.assets/lib" "$fake_root/.assets/config/shell_cfg"
-  echo 'build_ca_bundle() { touch "$HOME/.config/certs/ca-bundle.crt"; }' >"$fake_root/.assets/lib/certs.sh"
-  echo 'cert_intercept() { touch "$HOME/cert_intercept_called"; }' >"$fake_root/.assets/config/shell_cfg/functions.sh"
+  mkdir -p "$fake_root/.assets/lib"
+  cat >"$fake_root/.assets/lib/certs.sh" <<'STUB'
+build_ca_bundle() { touch "$HOME/.config/certs/ca-bundle.crt"; }
+cert_intercept() { touch "$HOME/cert_intercept_called"; }
+STUB
   SCRIPT_ROOT="$fake_root"
 
   # probe should be skipped (ca-custom.crt exists), so curl stub should not matter
@@ -928,8 +932,9 @@ STUB
   # Stub build_ca_bundle to count invocations - it must run twice (once
   # before the probe, once after cert_intercept produces ca-custom.crt) so
   # the macOS Keychain dump gets the freshly intercepted certs appended.
+  # cert_intercept lives in certs.sh now (post-F-017 move from functions.sh).
   local fake_root="$BATS_TEST_TMPDIR/fake_root_rebuild"
-  mkdir -p "$fake_root/.assets/lib" "$fake_root/.assets/config/shell_cfg"
+  mkdir -p "$fake_root/.assets/lib"
   cat >"$fake_root/.assets/lib/certs.sh" <<'STUB'
 build_ca_bundle() {
   local _counter="$HOME/.config/certs/build_count"
@@ -940,8 +945,6 @@ build_ca_bundle() {
   fi
   touch "$HOME/.config/certs/ca-bundle.crt"
 }
-STUB
-  cat >"$fake_root/.assets/config/shell_cfg/functions.sh" <<'STUB'
 cert_intercept() { touch "$HOME/.config/certs/ca-custom.crt"; }
 STUB
   SCRIPT_ROOT="$fake_root"
