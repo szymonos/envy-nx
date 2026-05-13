@@ -107,7 +107,13 @@ if command -v npm >/dev/null 2>&1; then
     _existing_cafile="$(npm config get cafile 2>/dev/null || echo null)"
     if [ "$_existing_cafile" = "null" ] || [ -z "$_existing_cafile" ]; then
       _io_step "pinning npm cafile to $_ca_bundle"
-      npm config set cafile "$_ca_bundle"
+      # Wrap with _io_run so a real failure (read-only ~/.npmrc, npm crash,
+      # etc.) is captured in setup.log and surfaced to the user. Same pattern
+      # as nix/lib/phases/nix_profile.sh:75. The `|| warn` keeps the script
+      # going on a non-fatal failure - npm cafile is the belt-and-suspenders
+      # complement to NODE_EXTRA_CA_CERTS, not a hard blocker for nodejs.
+      _io_run npm config set cafile "$_ca_bundle" ||
+        warn "npm cafile pin failed - corp HTTPS may break in non-env-aware shells"
     fi
   fi
 fi

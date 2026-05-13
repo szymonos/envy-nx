@@ -113,7 +113,7 @@ _check_env_dir_files() {
   # in opaque ways.
   local _missing="" _f
   # >>> nx-libs generated >>> (regenerate: python3 -m tests.hooks.gen_nx_completions)
-  for _f in flake.nix nx.sh nx_lifecycle.sh nx_pkg.sh nx_profile.sh nx_scope.sh nx_doctor.sh profile_block.sh config.nix; do
+  for _f in flake.nix nx.sh nx_lifecycle.sh nx_pkg.sh nx_profile.sh nx_scope.sh nx_doctor.sh profile_block.sh cert_probe.sh config.nix; do
     # <<< nx-libs generated <<<
     [ -f "$ENV_DIR/$_f" ] || _missing="${_missing:+$_missing, }$_f"
   done
@@ -381,7 +381,7 @@ _check_shell_config_files() {
 }
 
 _check_cert_bundle() {
-  # Two failure modes:
+  # Three failure modes:
   #   (a) ca-custom.crt exists but ca-bundle.crt or VS Code server-env are
   #       out of sync - normal post-MITM-detection consistency check.
   #   (b) ca-custom.crt is missing AND a fresh nix-curl probe shows MITM
@@ -391,8 +391,23 @@ _check_cert_bundle() {
   #       proxy cert into ca-custom.crt. Result: NODE_EXTRA_CA_CERTS in
   #       Makefile/profile is silently unset and Node hooks fail with
   #       SELF_SIGNED_CERT_IN_CHAIN.
+  #   (c) ~/.config/certs/ exists (so setup has touched cert state at some
+  #       point) but ca-bundle.crt is missing - typically the user wiped
+  #       the dir manually or build_ca_bundle was interrupted. The shell
+  #       managed-block guards on file existence and silently skips the
+  #       :certs exports, so the user gets opaque cert errors with a
+  #       previously-green doctor report.
   local _dir="$HOME/.config/certs" _detail="" _fix=""
   if [ ! -f "$_dir/ca-custom.crt" ]; then
+    # (c): catch missing ca-bundle.crt regardless of MITM probe state when the
+    # cert dir already exists. A totally fresh system without ~/.config/certs/
+    # is a normal pre-install state, not a broken one - skip and let the MITM
+    # probe path below decide. When the dir exists but the bundle does not,
+    # the user's profile :certs exports silently don't fire; surface that.
+    if [ -d "$_dir" ] && [ ! -e "$_dir/ca-bundle.crt" ]; then
+      printf 'fail\tca-bundle.crt missing\tre-run nix/setup.sh (or source .assets/lib/certs.sh && build_ca_bundle) to rebuild ~/.config/certs/ca-bundle.crt\n'
+      return
+    fi
     # Skip the (b) probe under tests (NX_DOCTOR_SKIP_NETWORK=1) and when
     # the nix Mozilla bundle is unavailable. We need an explicit Mozilla-only
     # bundle to override system trust (Linux /etc/ssl/certs already imports
@@ -417,20 +432,31 @@ _check_cert_bundle() {
       return
     fi
     local _probe_url="${NIX_ENV_TLS_PROBE_URL:-https://www.google.com}"
-    local _host="${_probe_url#https://}"
-    _host="${_host#http://}"
-    _host="${_host%%/*}"
-    # `openssl s_client -CAfile` is the portable Mozilla-pinned probe -
-    # works on Linux, macOS, and WSL because openssl always uses ONLY the
-    # specified file (ignores SSL_CERT_FILE / SSL_CERT_DIR). curl --cacert
-    # was previously tried but is silently ignored by macOS system curl
-    # (Secure Transport backend) and additive-with-SSL_CERT_FILE on
-    # Debian. See _io_curl_probe_pinned in nix/lib/io.sh.
-    # `</dev/null` (not `echo |`) feeds empty stdin - the previous `echo |` AND
-    # `</dev/null` was redundant (the redirect overrides the pipe) and produced
-    # a "write error: Broken pipe" line in CI logs from the orphan echo.
-    if openssl s_client -CAfile "$_mozilla_bundle" -connect "${_host}:443" \
-      -servername "$_host" -verify_return_error </dev/null >/dev/null 2>&1; then
+    # _cert_probe_pinned defined in .assets/lib/cert_probe.sh - shared with
+    # _io_curl_probe_pinned in nix/lib/io.sh. Source here (not at file
+    # top-level) so the standalone-after-install constraint stays met for
+    # every other check function: nx_doctor.sh has no source dependency on
+    # helpers.sh / io.sh, and cert_probe.sh has no deps of its own.
+    local _cp_path="$(dirname "${BASH_SOURCE[0]}")/cert_probe.sh"
+    if [ -f "$_cp_path" ]; then
+      # shellcheck source=cert_probe.sh
+      . "$_cp_path"
+    fi
+    # When cert_probe.sh is missing (corrupt install, partial sync), fall
+    # back to inline probe rather than misreporting MITM - the inline body
+    # is byte-identical to _cert_probe_pinned and has been the long-standing
+    # behavior, so degradation is silent and correct.
+    local _probe_ok=false
+    if type _cert_probe_pinned >/dev/null 2>&1; then
+      _cert_probe_pinned "$_probe_url" "$_mozilla_bundle" && _probe_ok=true
+    else
+      local _host="${_probe_url#https://}"
+      _host="${_host#http://}"
+      _host="${_host%%/*}"
+      openssl s_client -CAfile "$_mozilla_bundle" -connect "${_host}:443" \
+        -servername "$_host" -verify_return_error </dev/null >/dev/null 2>&1 && _probe_ok=true
+    fi
+    if [ "$_probe_ok" = "true" ]; then
       # Mozilla-pinned probe succeeded - no MITM, ca-custom.crt correctly absent.
       echo "pass"
       return
