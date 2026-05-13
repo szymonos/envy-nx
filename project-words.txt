@@ -116,6 +116,7 @@ pyproject
 readarray
 redef
 reexeced
+regenerable
 reimplementations
 rekor
 remediations
