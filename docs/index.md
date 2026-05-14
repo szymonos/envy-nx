@@ -104,7 +104,7 @@ See [Customization](customization.md) for the full guide.
 
 | Metric                  | Value                                                                       |
 | ----------------------- | --------------------------------------------------------------------------- |
-| Unit tests              | Bats (bash) and Pester (PowerShell) suites across 26 test files             |
+| Unit tests              | Bats (bash) and Pester (PowerShell) suites across 32 test files             |
 | Custom pre-commit hooks | 12 (bash 3.2 enforcer, scope validator, manifest-drift defenders, and more) |
 | CI matrix               | Ubuntu (daemon, rootless, tarball), macOS (Sequoia default, Tahoe opt-in)   |
 | Idempotency             | Verified on every PR - second run produces identical results                |
@@ -149,7 +149,7 @@ See [Architecture](architecture.md) for phase details, package composition, and 
 
 !!! warning "Limitations"
 
-    - **WSL not e2e-tested in CI.** WSL orchestration is covered by 66 mocked Pester tests, but no CI job boots a real WSL2 guest. Real `wsl.exe` behavior (encoding, path translation, distro lifecycle) is validated manually.
+    - **WSL not e2e-tested in CI.** WSL orchestration is covered by 61 mocked Pester tests, but no CI job boots a real WSL2 guest. Real `wsl.exe` behavior (encoding, path translation, distro lifecycle) is validated manually.
     - **Single-maintainer project.** Bus factor is mitigated by comprehensive tests, CI gates, and documentation - but there is no team behind this.
     - **No fleet telemetry consumer.** `install.json` and `nx doctor --json` produce data; collecting and visualizing it is a downstream concern.
     - **No MDM packaging.** `--unattended` mode works, but no Jamf/Intune wrapper scripts are included.

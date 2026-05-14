@@ -282,7 +282,7 @@ Cross-platform parity is structural, not aspirational. The same `scopes.json` de
 
 ## Testability by design
 
-Bash is not commonly thought of as a test-friendly language. This codebase has 460+ test cases across 26 test files because the architecture deliberately enables it.
+Bash is not commonly thought of as a test-friendly language. This codebase has 600+ test cases across 32 test files because the architecture deliberately enables it.
 
 The key choice: **every side effect is called through a thin wrapper**. Phase functions never call `nix`, `curl`, or external scripts directly - they call `_io_nix`, `_io_curl_probe`, or `_io_run`.
 

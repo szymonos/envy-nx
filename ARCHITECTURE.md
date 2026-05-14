@@ -428,7 +428,7 @@ The probe is gated on `ca-custom.crt` existence (the cause), not `ca-bundle.crt`
 
 **Failure semantics.** Phase functions `throw` on unrecoverable errors; the orchestrator catches and translates to `exit 1` (with a `Show-LogContext "<phase> failed: <message>"` log line so failures aren't silent). The "WSL service install completed - restart required" path uses a custom `ErrorRecord` with `FullyQualifiedErrorId = 'WslRestartRequired'`; the orchestrator matches on FQErrorId and exits 0 (avoids brittle `Exception.Message` literal matching).
 
-**Test coverage.** `tests/pester/WslSetup.Tests.ps1` (9 integration tests) exercises the orchestrator end-to-end with `wsl.exe` Mocked at both script scope and inside the `utils-setup` module scope. `tests/pester/WslSetupPhases.Tests.ps1` (49 unit tests) covers 14 of the 16 extracted functions directly (`Install-WslService` is exercised indirectly through `Install-WslDistroIfMissing`'s failure path; `Get-WslMigrationChoice` wraps `$Host.UI.PromptForChoice` and is interactive-only).
+**Test coverage.** `tests/pester/WslSetup.Tests.ps1` (9 integration tests) exercises the orchestrator end-to-end with `wsl.exe` Mocked at both script scope and inside the `utils-setup` module scope. `tests/pester/WslSetupPhases.Tests.ps1` (52 unit tests) covers 14 of the 16 extracted functions directly (`Install-WslService` is exercised indirectly through `Install-WslDistroIfMissing`'s failure path; `Get-WslMigrationChoice` wraps `$Host.UI.PromptForChoice` and is interactive-only).
 
 **WSL CI gap.** GitHub-hosted Windows runners only support WSL1 (no nested virtualization), which lacks systemd and behaves differently from production WSL2. End-to-end testing is intentionally omitted - the orchestration logic is validated by the Pester tests above, and the design tracking the modularization is `design/wsl_setup_modularization.md`.
 
@@ -729,7 +729,7 @@ The `_io_*` convention: phases call `_io_nix`, `_io_nix_eval`, `_io_curl_probe`,
 WSL coverage is split across two complementary suites:
 
 - **`WslSetup.Tests.ps1`** - 9 integration tests exercising `wsl/wsl_setup.ps1` end-to-end with `wsl.exe` Mocked at both script scope (orchestrator-direct calls) and inside the `utils-setup` module scope (calls made from extracted phase functions). Asserts the orchestration sequence (which scripts get called in which order with which args).
-- **`WslSetupPhases.Tests.ps1`** - 49 unit tests covering the 16 phase functions extracted into `modules/utils-setup/Functions/wsl_*.ps1` (see §3h). Tests use `Mock -ModuleName 'utils-setup'` to intercept inside the module surface; off-Windows `Invoke-WslExe` falls back to the PS call operator (gated on `$IsWindows`) so Mocks fire on Linux/macOS runners.
+- **`WslSetupPhases.Tests.ps1`** - 52 unit tests covering the 16 phase functions extracted into `modules/utils-setup/Functions/wsl_*.ps1` (see §3h). Tests use `Mock -ModuleName 'utils-setup'` to intercept inside the module surface; off-Windows `Invoke-WslExe` falls back to the PS call operator (gated on `$IsWindows`) so Mocks fire on Linux/macOS runners.
 
 Direct invocation:
 
@@ -743,7 +743,7 @@ Invoke-Pester -Configuration @pesterCfg
 
 ### 9.3. Runtime zsh smoke (`tests/bats/test_nx_zsh.bats`)
 
-12 tests verify `nx.sh` and family files actually source and dispatch correctly under zsh (catches issues `check-zsh-compat` cannot - e.g. the 1.3.1 glob-nomatch trip). Skipped when zsh is not installed. Test setup copies lib files into `$ENV_DIR` because `_nx_find_lib`'s zsh fallback looks there (BASH_SOURCE is empty in zsh).
+13 tests verify `nx.sh` and family files actually source and dispatch correctly under zsh (catches issues `check-zsh-compat` cannot - e.g. the 1.3.1 glob-nomatch trip). Skipped when zsh is not installed. Test setup copies lib files into `$ENV_DIR` because `_nx_find_lib`'s zsh fallback looks there (BASH_SOURCE is empty in zsh).
 
 ### 9.4. Smoke tests (Docker)
 
