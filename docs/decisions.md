@@ -295,7 +295,7 @@ setup() {
 }
 ```
 
-This pattern makes bash scripts testable at a level normally associated with compiled languages - without mocking frameworks, without PATH manipulation, without subprocess overhead. It is the reason this project has 619 test cases across 32 test files for what is, at its core, a shell script.
+This pattern makes bash scripts testable at a level normally associated with compiled languages - without mocking frameworks, without PATH manipulation, without subprocess overhead. It is the reason this project has 620 test cases across 32 test files for what is, at its core, a shell script.
 
 ### Why JSON as the shared schema format
 
