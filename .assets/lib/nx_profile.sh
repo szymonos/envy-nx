@@ -16,20 +16,25 @@ nx profile regenerate --dry-run --shell bash   # rendered blocks to stdout
 # (sourcing nx.sh transitively brings this file in).
 
 # NOTE: this function is ~95% byte-identical to `render_env_block` in
-# .assets/lib/env_block.sh (only structural difference: the skip_local_bin
-# parameter and the `function ` keyword). The legacy zsh setup path uses the
-# env_block.sh copy. Any change to the rendered :certs / :gcloud / :aliases
-# sections here MUST be mirrored to env_block.sh byte-for-byte, or zsh-only
-# installs (legacy path) drift from bash-managed installs (nix path).
-# Consolidation is tracked in design/follow-ups (cycle 2026-05-13).
+# .assets/lib/env_block.sh (only structural difference: the `function `
+# keyword). The legacy zsh setup path uses the env_block.sh copy. Any change
+# to the rendered :certs / :gcloud / :aliases sections here MUST be mirrored
+# to env_block.sh byte-for-byte, or zsh-only installs (legacy path) drift
+# from bash-managed installs (nix path). Consolidation is tracked in
+# design/follow-ups (cycle 2026-05-13).
+#
+# The :local path section is always emitted. The runtime `case` guard makes
+# the addition idempotent: if $HOME/.local/bin is already on PATH (from user
+# code, another init script, or a previous shell layer), the pattern matches
+# and the export is skipped. A prior "skip if `.local/bin` mentioned anywhere
+# in the rc" heuristic was removed - it misfired on lines that referenced
+# `.local/bin/<bin>` without modifying PATH (uv completion eval, copilot
+# probes, comments), leaving copilot/az unreachable in new shells.
 function _nx_render_env_block() {
-  local skip_local_bin="${1:-false}"
-  if [ "$skip_local_bin" != "true" ]; then
-    printf '# :local path\n'
-    printf 'case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *)\n'
-    printf '  [ -d "$HOME/.local/bin" ] && export PATH="$HOME/.local/bin:$PATH"\n'
-    printf 'esac\n'
-  fi
+  printf '# :local path\n'
+  printf 'case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *)\n'
+  printf '  [ -d "$HOME/.local/bin" ] && export PATH="$HOME/.local/bin:$PATH"\n'
+  printf 'esac\n'
 
   if [ -f "$HOME/.config/shell/functions.sh" ]; then
     printf '\n# :aliases\n'
@@ -236,18 +241,8 @@ function _nx_profile_render_blocks() {
   }
   source "$_pb_lib_path"
 
-  # Default to false when the rc is absent - the rendered block then includes
-  # the standard .local/bin PATH handling, which is what a fresh install ships.
-  local _rc="$HOME/.${_shell}rc"
-  local _has_local_bin=false
-  if [ -f "$_rc" ] && awk '
-    /^# >>> .* >>>$/{skip=1;next} skip&&/^# <<< .* <<<$/{skip=0;next} !skip{print}
-  ' "$_rc" | grep -qF '.local/bin'; then
-    _has_local_bin=true
-  fi
-
   printf '%s\n' "$(_pb_begin_tag env:managed)"
-  _nx_render_env_block "$_has_local_bin"
+  _nx_render_env_block
   printf '%s\n' "$(_pb_end_tag env:managed)"
   printf '\n'
   printf '%s\n' "$(_pb_begin_tag nix:managed)"
@@ -294,17 +289,10 @@ function _nx_profile_regenerate() {
     fi
     [ "$_migrated" = true ] && printf "\e[33mMigrated legacy marker names in %s\e[0m\n" "${_rc/#$HOME/\~}"
 
-    # check if .local/bin PATH is already handled outside managed blocks
-    local _has_local_bin=false
-    if awk '
-      /^# >>> .* >>>$/{skip=1;next} skip&&/^# <<< .* <<<$/{skip=0;next} !skip{print}
-    ' "$_rc" | grep -qF '.local/bin'; then
-      _has_local_bin=true
-    fi
-
-    # render and upsert env block
+    # render and upsert env block (always includes :local path; the runtime
+    # case-guard inside the block handles dedup if PATH already has it).
     _tmp="$(mktemp)"
-    _nx_render_env_block "$_has_local_bin" >"$_tmp"
+    _nx_render_env_block >"$_tmp"
     manage_block "$_rc" "$_env_marker" upsert "$_tmp"
     rm -f "$_tmp"
 

@@ -147,7 +147,14 @@ RC
   grep -q 'aliases_nix' "$HOME/.bashrc"
 }
 
-@test "profile regenerate skips .local/bin in env block when already in profile" {
+@test "profile regenerate always includes .local/bin in env block (case-guard handles dedup)" {
+  # The :local path section is always emitted; the runtime case-guard
+  # `case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) ...` makes the addition
+  # idempotent, so duplicating a user's own .local/bin PATH addition is a
+  # no-op at shell-startup time. A previous "skip if .local/bin mentioned
+  # anywhere outside managed blocks" heuristic misfired on lines that named
+  # .local/bin/<bin> without modifying PATH (uv completion eval, copilot
+  # probes), leaving copilot/az unreachable in new shells.
   cat >"$HOME/.bashrc" <<'RC'
 if ! [[ "$PATH" =~ "$HOME/.local/bin" ]]; then
     PATH="$HOME/.local/bin:$PATH"
@@ -155,12 +162,11 @@ fi
 export PATH
 RC
   nx profile regenerate
-  # .local/bin should not appear inside the env:managed block
   local inside
   inside="$(awk '/^# >>> env:managed >>>$/{s=1;next} s&&/^# <<< env:managed <<<$/{s=0;next} s{print}' "$HOME/.bashrc")"
   run grep -cF '.local/bin' <<<"$inside"
-  [ "$output" -eq 0 ]
-  # original content preserved
+  [ "$output" -ge 1 ]
+  # original user content preserved outside managed blocks
   grep -q 'export PATH' "$HOME/.bashrc"
 }
 
@@ -171,6 +177,27 @@ RC
   inside="$(awk '/^# >>> env:managed >>>$/{s=1;next} s&&/^# <<< env:managed <<<$/{s=0;next} s{print}' "$HOME/.bashrc")"
   run grep -cF '.local/bin' <<<"$inside"
   [ "$output" -ge 1 ]
+}
+
+@test "profile regenerate emits .local/bin even when uv-completion block (probes ~/.local/bin/uv) exists outside managed blocks" {
+  # Regression: setup_profile_user.zsh appends a `# initialize uv autocompletion`
+  # block that references $HOME/.local/bin/uv but does NOT modify PATH. A prior
+  # bare-substring heuristic interpreted this as "PATH already handled" and
+  # rendered an empty env:managed block, breaking copilot CLI on fresh shells.
+  cat >"$HOME/.bashrc" <<'RC'
+# initialize uv autocompletion
+if [ -x "$HOME/.local/bin/uv" ]; then
+  export UV_SYSTEM_CERTS=true
+  eval "$($HOME/.local/bin/uv generate-shell-completion bash)"
+fi
+RC
+  nx profile regenerate
+  local inside
+  inside="$(awk '/^# >>> env:managed >>>$/{s=1;next} s&&/^# <<< env:managed <<<$/{s=0;next} s{print}' "$HOME/.bashrc")"
+  run grep -cF '.local/bin' <<<"$inside"
+  [ "$output" -ge 1 ]
+  # user's uv completion block preserved verbatim
+  grep -q 'uv generate-shell-completion bash' "$HOME/.bashrc"
 }
 
 @test "profile regenerate migrates legacy marker names to nix:managed / env:managed" {
