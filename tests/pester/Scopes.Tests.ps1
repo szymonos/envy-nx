@@ -89,6 +89,24 @@ Describe 'Resolve-ScopeDeps' {
         $set | Should -Contain 'k8s_dev'
         $set | Should -Contain 'docker'
     }
+
+    It 'accepts empty set and stays empty when no rules fire' {
+        # Reachable on fresh-distro setup: user runs `wsl_setup.ps1 <Distro>`
+        # with no -Scope, distro check returns no auto-scopes, $scopeSet is
+        # empty when Resolve-WslDistroScopes hands it down. Using a single set
+        # for both throw-check and post-state-check (Resolve-ScopeDeps mutates
+        # in-place, so re-invoking would double-mutate).
+        $set = [System.Collections.Generic.HashSet[string]]::new()
+        Resolve-ScopeDeps -ScopeSet $set
+        $set.Count | Should -Be 0
+    }
+
+    It 'accepts empty set with OmpTheme and adds oh_my_posh + shell' {
+        $set = [System.Collections.Generic.HashSet[string]]::new()
+        Resolve-ScopeDeps -ScopeSet $set -OmpTheme 'agnoster'
+        $set | Should -Contain 'oh_my_posh'
+        $set | Should -Contain 'shell'
+    }
 }
 
 Describe 'Get-SortedScopes' {
@@ -114,14 +132,15 @@ Describe 'Get-SortedScopes' {
         @($sorted)[0] | Should -Be 'python'
     }
 
-    It 'rejects truly-empty set due to Mandatory validation; single-element set returns one item' {
-        # PowerShell Mandatory validation rejects truly empty collections, so
-        # the smallest input we can drive the function with is a one-element
-        # set. Asserting count=1 documents that contract.
-        $set = [System.Collections.Generic.HashSet[string]]::new([string[]]@('python'))
+    It 'returns empty array for empty set' {
+        # Reachable on fresh-distro setup; previously rejected by Mandatory
+        # validation without [AllowEmptyCollection()], surfacing as a
+        # misleading binding error at the outer Resolve-WslDistroScopes call.
+        $set = [System.Collections.Generic.HashSet[string]]::new()
+        { Get-SortedScopes -ScopeSet $set } | Should -Not -Throw
         $sorted = Get-SortedScopes -ScopeSet $set
-        @($sorted) | Should -HaveCount 1
-        @($sorted)[0] | Should -Be 'python'
+        @($sorted) | Should -HaveCount 0
+        $sorted -is [string[]] | Should -BeTrue
     }
 
     It 'full install order is respected' {
