@@ -35,7 +35,8 @@ function Invoke-WslDistroCheck {
     try {
         $chk = $chkStr | ConvertFrom-Json -AsHashtable -ErrorAction Stop
     } catch {
-        Show-LogContext $_
+        Show-LogContext -Message "Phase: 'distro-check' (json-parse); $_" -Level ERROR -ErrorStackTrace $_.ScriptStackTrace
+        Show-LogContext -Message "raw check output: $chkStr" -Level ERROR
         Show-LogContext "Failed to check the distro '$Distro'." -Level WARNING
         Write-Host $parseFailMsg
         $DistroRecord.error = 'distro check failed'
@@ -51,7 +52,8 @@ function Invoke-WslDistroCheck {
             try {
                 $chk = $chkStr | ConvertFrom-Json -AsHashtable -ErrorAction Stop
             } catch {
-                Show-LogContext $_
+                Show-LogContext -Message "Phase: 'distro-check' (json-parse, post-user-setup); $_" -Level ERROR -ErrorStackTrace $_.ScriptStackTrace
+                Show-LogContext -Message "raw check output: $chkStr" -Level ERROR
                 Show-LogContext "Failed to check the distro '$Distro'." -Level WARNING
                 Write-Host $parseFailMsg
                 $DistroRecord.error = 'distro check failed'
@@ -253,6 +255,14 @@ function Sync-WslSshKeys {
     $sshDir = [System.IO.Path]::Combine($HOME, '.ssh')
     $winKey = [System.IO.Path]::Combine($sshDir, $sshKey)
     $winKeyPub = [System.IO.Path]::Combine($sshDir, "$sshKey.pub")
+    # Guard: $env:HOMEDRIVE / $env:HOMEPATH are normally set by Windows logon,
+    # but some Group Policy / locked-down profile contexts leave them blank.
+    # Without this guard the .Replace() chain below throws "You cannot call a
+    # method on a null-valued expression" - the cryptic message Marek hit on
+    # the legacy script.
+    if (-not $env:HOMEDRIVE -or -not $env:HOMEPATH) {
+        throw "Cannot derive Windows /mnt path for SSH key sync: `$env:HOMEDRIVE='$($env:HOMEDRIVE)' `$env:HOMEPATH='$($env:HOMEPATH)'. Set both env vars (e.g. C: and \Users\<you>) in your Windows session before re-running wsl_setup.ps1."
+    }
     $sshWinPath = "/mnt/$($env:HOMEDRIVE.Replace(':', '').ToLower())$($env:HOMEPATH.Replace('\', '/'))/.ssh"
 
     $winKeyExists = (Test-Path -Path $winKey) -and (Test-Path -Path $winKeyPub)
@@ -671,5 +681,11 @@ function Resolve-WslDistroScopes {
 
     [string[]]$sorted = Get-SortedScopes -ScopeSet $scopeSet
     $DistroRecord.scopes = $sorted
+    # Same -NoEnumerate guard as Get-SortedScopes: `return $sorted` would unwrap
+    # an empty array back to $null, breaking `[string[]]$scopes = ...` callers.
+    if ($sorted.Count -eq 0) {
+        Write-Output -InputObject ([string[]]@()) -NoEnumerate
+        return
+    }
     return $sorted
 }

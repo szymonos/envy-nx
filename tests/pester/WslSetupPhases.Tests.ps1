@@ -175,6 +175,22 @@ Describe 'Resolve-WslDistroScopes' {
                 -DistroRecord $rec
             $sorted | Should -Contain 'shell'
         }
+
+        It 'returns empty array when no -Scope and no auto-detected scopes (fresh-distro setup)' {
+            # Regression for the wsl_setup.ps1:231 binding error - reviewer note:
+            # before [AllowEmptyCollection()] was added to Resolve-ScopeDeps and
+            # Get-SortedScopes, this path threw a misleading "Cannot bind argument
+            # to parameter 'ScopeSet'" error attributed to the outer call site.
+            $check = New-CheckDistroHashtable
+            $rec = New-DistroRecord
+            $sorted = Resolve-WslDistroScopes `
+                -Scope @() `
+                -Check $check `
+                -WslVersion 2 `
+                -DistroRecord $rec
+            @($sorted) | Should -HaveCount 0
+            $rec.scopes | Should -HaveCount 0
+        }
     }
 }
 
