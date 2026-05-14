@@ -5,6 +5,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.10.2] - 2026-05-14
+
+### Changed
+
+- Bumped CI tooling: `astral-sh/setup-uv` to 0.11.13 in `docs-gh-pages.yml` and `repo_checks.yml`; `ruff-pre-commit` to v0.15.13 in `.pre-commit-config.yaml`. Refreshed `uv.lock` (`prek` 0.3.13 → 0.4.0, `ruff` 0.15.12 → 0.15.13, `idna`, `pymdown-extensions`, `requests` patch bumps).
+- Refreshed bats test-case counters in `docs/standards.md` and `docs/decisions.md` to match the live count (478 bats + 142 Pester = 620 cases) after the new `test_profile_migration.bats` regression cases shipped with the fix below.
+
+### Fixed
+
+- `nx profile regenerate` now always emits the `# :local path` PATH section in the `env:managed` block. Previously a heuristic in `_nx_profile_regenerate` / `_nx_profile_render_blocks` (`.assets/lib/nx_profile.sh`) bare-substring-grepped for `.local/bin` outside managed blocks and skipped the section if found, on the assumption that the user had already added `~/.local/bin` to `PATH`. The heuristic misfired on lines that referenced `.local/bin/<bin>` without modifying PATH (the uv-completion `eval "$($HOME/.local/bin/uv generate-shell-completion zsh)"` written by `setup_profile_user.zsh`, copilot-install probes, comments) - the env block then rendered empty and `~/.local/bin/copilot`, `~/.local/bin/az` etc. were unreachable in new zsh shells on macOS. The runtime case-guard `case ":$PATH:" in *":$HOME/.local/bin:"*) ;; ...` already makes the addition idempotent, so the heuristic was unnecessary; removing it brings `_nx_render_env_block` into actual byte-equivalence with `render_env_block` in `.assets/lib/env_block.sh` (the legacy zsh setup path, which has always emitted unconditionally). Cross-shell parity: bash and zsh both consume the fixed function; the pwsh `_aliases_nix.ps1` does not currently add `~/.local/bin` to `$env:PATH` (pre-existing asymmetry, tracked separately).
+
 ## [1.10.1] - 2026-05-14
 
 ### Added

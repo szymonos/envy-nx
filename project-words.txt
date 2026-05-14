@@ -111,6 +111,7 @@ pkgs
 powerline
 prek
 pscustomobject
+pymdown
 pypi
 pyproject
 readarray
