@@ -23,13 +23,12 @@ ENV_BLOCK_LEGACY_MARKER="managed env"
 # Caller writes output to a temp file and passes to manage_block.
 #
 # NOTE: this function is ~95% byte-identical to `_nx_render_env_block` in
-# .assets/lib/nx_profile.sh (only structural difference: the skip_local_bin
-# parameter and the `function ` keyword). The nix-managed path uses that
-# copy; this one is consumed by the legacy zsh setup path. Any change to
-# the rendered :certs / :gcloud / :aliases sections here MUST be mirrored
-# to nx_profile.sh byte-for-byte, or zsh-only installs drift from bash-
-# managed installs. Consolidation is tracked in design/follow-ups
-# (cycle 2026-05-13).
+# .assets/lib/nx_profile.sh (only structural difference: the `function `
+# keyword). The nix-managed path uses that copy; this one is consumed by
+# the legacy zsh setup path. Any change to the rendered :certs / :gcloud /
+# :aliases sections here MUST be mirrored to nx_profile.sh byte-for-byte,
+# or zsh-only installs drift from bash-managed installs. Consolidation is
+# tracked in design/follow-ups (cycle 2026-05-13).
 render_env_block() {
   # :local path
   printf '# :local path\n'
