@@ -5,6 +5,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.10.1] - 2026-05-14
+
+### Added
+
+- `prepare-release` skill: Phase 1.6 test-stats drift sweep with bundled `test_stats.py` helper. `scan` emits JSON of current bats / Pester file and case counts; `audit` walks a curated `STAT_LOCATIONS` table and flags numeric callouts in `docs/standards.md`, `docs/index.md`, and `ARCHITECTURE.md` that disagree with live counts. Phase fires only when `tests/` files changed since the last tag, so future releases catch stale "N test files / N test cases" callouts before they ship.
+
+### Changed
+
+- Catch blocks in `wsl/wsl_setup.ps1` (distro-install, distro-check, scope-resolution, base-setup, github-ssh) and the JSON-parse catches in `Invoke-WslDistroCheck` now log via `Show-LogContext -Message "Phase: '<name>'; $_" -Level ERROR -ErrorStackTrace $_.ScriptStackTrace`. The `-ErrorStackTrace` argument re-bases the log line's framing to the actual throw site instead of the catch site, so transcripts point at the inner function and file:line where the failure originated. Previously each catch only emitted `$_.Exception.Message` and the surrounding context was lost - exactly the information that would have pointed at `Resolve-ScopeDeps` instead of `Resolve-WslDistroScopes` in the bug below.
+- Refreshed test-suite, hook-count, and Pester per-file counters in `docs/standards.md`, `docs/index.md`, `docs/enterprise.md`, `docs/decisions.md`, `docs/architecture.md`, and `ARCHITECTURE.md` to match the live counts (32 unit test files / 619 cases; WslSetupPhases.Tests.ps1 at 52 tests; pre-commit at 24 hooks). Several of these had been stale since 1.7.x. Surfaced by the new `prepare-release` Phase 1.6 audit.
+
+### Fixed
+
+- `wsl/wsl_setup.ps1` no longer crashes with the misleading `Cannot bind argument to parameter 'ScopeSet' because it is an empty collection` (attributed to `Resolve-WslDistroScopes` at line 231) when a fresh distro is set up with no `-Scope` and no auto-detectable scopes. Root cause was inside `modules/utils-setup/Functions/scopes.ps1`: `Resolve-ScopeDeps` and `Get-SortedScopes` declared `[Parameter(Mandatory)]` on their `ScopeSet` HashSet without `[AllowEmptyCollection()]`, so PowerShell rejected the empty set the parent function legitimately built. PowerShell surfaced the binding failure at the *outer* caller's line, which obscured the actual culprit. Both functions now accept empty input; `Get-SortedScopes` and `Resolve-WslDistroScopes` use `Write-Output -NoEnumerate` so the empty `[string[]]` is preserved through the function boundary instead of unwrapping to `$null`.
+- `Sync-WslSshKeys` (in `modules/utils-setup/Functions/wsl_phases.ps1`) now throws an actionable error when `$env:HOMEDRIVE` or `$env:HOMEPATH` is unset, naming the offending env var and the required values, instead of the cryptic `You cannot call a method on a null-valued expression` from the `.Replace(...)` chain that derives the `/mnt/...` SSH path.
+
 ## [1.10.0] - 2026-05-13
 
 First chunked-review cycle of the certs shard. Adds `CURL_CA_BUNDLE` / `PIP_CERT` / `AWS_CA_BUNDLE` to the managed env blocks across bash, zsh, and PowerShell so corp-network users get cert verification automatically in tools that do not read the existing exports. Refactors consolidate duplicated probe and header-rendering logic; fixes restore long-broken npm cafile pinning on Debian/Ubuntu/fedora/opensuse.
