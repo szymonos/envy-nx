@@ -172,7 +172,7 @@ begin {
                 -WebDownload ([bool]$WebDownload)
         } catch {
             if ($_.FullyQualifiedErrorId -match '^WslRestartRequired') { exit 0 }
-            Show-LogContext "Distro install failed: $($_.Exception.Message)" -Level ERROR
+            Show-LogContext -Message "Phase: 'distro-install'; $_" -Level ERROR -ErrorStackTrace $_.ScriptStackTrace
             exit 1
         }
         if ($lxss.Where({ $_.Name -eq $Distro }).Version -eq 1) {
@@ -219,7 +219,7 @@ process {
         try {
             $chk = Invoke-WslDistroCheck -Distro $Distro -DistroRecord $script:distroRecords[$Distro]
         } catch {
-            Show-LogContext "Distro check failed: $($_.Exception.Message)" -Level ERROR
+            Show-LogContext -Message "Phase: 'distro-check'; $_" -Level ERROR -ErrorStackTrace $_.ScriptStackTrace
             exit 1
         }
         if ($null -eq $chk) {
@@ -228,12 +228,17 @@ process {
         }
 
         # *resolve scopes from -Scope, distro check, dependencies, install order
-        [string[]]$scopes = Resolve-WslDistroScopes `
-            -Scope $Scope `
-            -Check $chk `
-            -WslVersion $lx.Version `
-            -OmpTheme $OmpTheme `
-            -DistroRecord $script:distroRecords[$Distro]
+        try {
+            [string[]]$scopes = Resolve-WslDistroScopes `
+                -Scope $Scope `
+                -Check $chk `
+                -WslVersion $lx.Version `
+                -OmpTheme $OmpTheme `
+                -DistroRecord $script:distroRecords[$Distro]
+        } catch {
+            Show-LogContext -Message "Phase: 'scope-resolution'; $_" -Level ERROR -ErrorStackTrace $_.ScriptStackTrace
+            exit 1
+        }
         # display distro name and installed scopes
         Write-Host "`n`e[95;1m${Distro}$($scopes.Count ? " :`e[0;90m $($scopes -join ', ')`e[0m" : "`e[0m")"
         $script:distroRecords[$Distro].phase = 'base-setup'
@@ -248,7 +253,7 @@ process {
                 -AddCertificate ([bool]$AddCertificate) `
                 -DistroRecord $script:distroRecords[$Distro]
         } catch {
-            Show-LogContext "Base setup failed: $($_.Exception.Message)" -Level ERROR
+            Show-LogContext -Message "Phase: 'base-setup'; $_" -Level ERROR -ErrorStackTrace $_.ScriptStackTrace
             exit 1
         }
         # propagate auto-promoted switch values back to script scope
@@ -262,8 +267,13 @@ process {
 
         $script:distroRecords[$Distro].phase = 'github'
         #region setup GitHub and SSH keys
-        Sync-WslGitHubConfig -Distro $Distro -GhConfig $gh_cfg
-        Sync-WslSshKeys -Distro $Distro -HasWslKey ([bool]$chk.ssh_key)
+        try {
+            Sync-WslGitHubConfig -Distro $Distro -GhConfig $gh_cfg
+            Sync-WslSshKeys -Distro $Distro -HasWslKey ([bool]$chk.ssh_key)
+        } catch {
+            Show-LogContext -Message "Phase: 'github-ssh'; $_" -Level ERROR -ErrorStackTrace $_.ScriptStackTrace
+            exit 1
+        }
         #endregion
 
         $script:distroRecords[$Distro].phase = 'scopes'
