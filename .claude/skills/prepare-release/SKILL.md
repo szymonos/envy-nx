@@ -1,6 +1,6 @@
 ---
 name: prepare-release
-description: Cut a release end-to-end - commit uncommitted work, consolidate the branch's commits by Conventional Commits prefix via soft-reset, write the CHANGELOG entry, push the branch, then create or update the release PR. Bundled extract.py reads only the CHANGELOG sections needed (avoids the 100+ KB file); cspell_words.py reconciles new vocabulary with project-words.txt before committing. Use when the user types `/prepare-release <X.Y.Z>`, asks to cut a release, prepare release notes, ship X.Y.Z, or wrap a branch up. Disabled for auto-invocation.
+description: Cut a release end-to-end - commit uncommitted work, consolidate the branch's commits by Conventional Commits prefix via soft-reset, write the CHANGELOG entry, push the branch, then create or update the release PR. Bundled extract.py reads only the CHANGELOG sections needed (avoids the 100+ KB file); cspell_words.py reconciles new vocabulary with project-words.txt before committing; test_stats.py audits stat-callout drift in docs when `tests/` changed since the last tag. Use when the user types `/prepare-release <X.Y.Z>`, asks to cut a release, prepare release notes, ship X.Y.Z, or wrap a branch up. Disabled for auto-invocation.
 disable-model-invocation: true
 ---
 
@@ -16,7 +16,7 @@ End-to-end release prep for a feature branch. Optimized for the WIP workflow whe
 
 ## Workflow
 
-Five phases (Phase 1.5 is a small interstitial cspell sweep). Stop and surface the error if any phase fails - don't paper over.
+Five numbered phases plus two interstitials (Phase 1.5 cspell sweep, Phase 1.6 test-stats drift sweep). Stop and surface the error if any phase fails - don't paper over.
 
 ### Phase 1: Compose CHANGELOG entry
 
@@ -40,7 +40,7 @@ Five phases (Phase 1.5 is a small interstitial cspell sweep). Stop and surface t
    - **New version** anchor: `## [Unreleased]\n\n<UNRELEASED-content-from-extract>\n\n## [<last-tag>]`
    - **Merge** case: two `Edit`s - one to replace the existing `## [<X.Y.Z>] - <date>` block with merged content, one to clear `[Unreleased]`.
 
-### Phase 1.5: Cspell sweep
+### Phase 1.5: Cspell sweep (run only if release docs touched)
 
 Reconcile new vocabulary in the release docs with `project-words.txt` *before* committing - otherwise `make lint-diff` in Phase 4 fails on `Unknown word (...)` and you pay an amend cycle. Adding to the dictionary intentionally needs human-or-agent judgment (a typo and a new library name look identical to cspell), so it's a skill helper rather than a pre-commit hook.
 
@@ -66,6 +66,50 @@ Reconcile new vocabulary in the release docs with `project-words.txt` *before* c
    ```
 
    Idempotent: dedupes against existing entries, sorts, writes back. The updated `project-words.txt` rides along with the CHANGELOG in Phase 4's `docs(changelog)` commit (content-coupling).
+
+### Phase 1.6: Test-stats drift sweep (run only when `tests/` changed)
+
+Several docs hard-code counters that drift the moment a `.bats` file or an `It` block is added: `docs/standards.md`'s test-suite dashboard, `docs/index.md`'s quick-facts table, `ARCHITECTURE.md`'s test-infra section, and free-prose paragraphs in `docs/decisions.md` / `docs/architecture.md`. Stale numbers ship in releases and quietly degrade the docs' authority. This phase catches that *before* Phase 4 cuts the commits.
+
+**Trigger:** `git diff --name-only <last-tag>..HEAD -- tests/` returns any file. If empty, skip the rest of this phase. (`extract.py`'s `DIFF_STAT` block also makes the touched paths visible at a glance - if no `tests/...` lines appear there, this phase is a no-op.)
+
+1. Audit current callouts against live counts:
+
+   ```bash
+   .claude/skills/prepare-release/scripts/test_stats.py audit
+   ```
+
+   Prints `{counts, drift}` JSON. `drift` is a list of `{file, line, snippet, expected, actual, kind}` for each callout whose recorded number disagrees with the live count. Exit 1 = drift; exit 0 = clean.
+
+2. **Edit each drift entry.** Use `Edit` to replace the stale number (`actual`) with the live one (`expected`). Keep the surrounding sentence intact; do not paraphrase the prose unless the change made the surrounding claim wrong (e.g. a sentence that says "12 zsh runtime tests verify ..." stays unchanged if only the bats *total* drifted, but if the zsh suite itself grew by 3, edit that prose too).
+
+3. **Don't trust the audit alone.** The auditor only catches numbers in the curated `STAT_LOCATIONS` table inside `test_stats.py`. Manually skim the **Canonical statistics callouts** table below for callouts the regex doesn't cover - especially free-form prose like *"412 test cases across 22 test files"* in `docs/decisions.md`, which uses different phrasings the regex would have to enumerate. When you find an uncovered callout, fix it AND extend `STAT_LOCATIONS` (one `(file, regex, kind)` tuple, regex with exactly one `(\d+)` capture) so the next release catches it automatically.
+
+4. **Reflect the doc edits in the CHANGELOG bullets you wrote in Phase 1.** Add a `### Changed` bullet (or extend an existing one) along the lines of "Refreshed test/hook counters in `docs/standards.md`, `docs/index.md`, and `ARCHITECTURE.md` to match the current X bats / Y Pester totals after the new tests in this release." Don't list the old → new numbers in the bullet body - the searchable record is the diff.
+
+5. **Re-run `make lint`** after the doc edits - markdown table-alignment and trailing-whitespace hooks may auto-fix the touched files. (Same WATCHOUT as Phase 1: lint stages the modifications; Phase 4 will redo the staging.)
+
+#### Canonical statistics callouts
+
+The auditor knows about the entries below; the others are listed for the manual skim in step 3. When a doc adds a new stat callout, add a row here AND a tuple in `STAT_LOCATIONS`.
+
+| File                   | Type    | Counter                                                                                           | Audited        |
+| ---------------------- | ------- | ------------------------------------------------------------------------------------------------- | -------------- |
+| `docs/standards.md`    | table   | total / bats / Pester file counts                                                                 | yes            |
+| `docs/standards.md`    | table   | total / bats / Pester case counts                                                                 | yes            |
+| `docs/standards.md`    | prose   | "N bats files cover ..."                                                                          | yes            |
+| `docs/standards.md`    | prose   | "N Pester files mirror ..."                                                                       | yes            |
+| `docs/standards.md`    | prose   | "N hooks split across two categories"                                                             | no - free-form |
+| `docs/standards.md`    | prose   | per-suite case counts inside paragraph (`WslSetupPhases.Tests.ps1` - 49 unit tests)               | no - free-form |
+| `docs/index.md`        | table   | "across N test files"                                                                             | yes            |
+| `docs/index.md`        | prose   | "N mocked Pester tests"                                                                           | no - free-form |
+| `ARCHITECTURE.md`      | section | "N Pester files; full suite ..."                                                                  | yes            |
+| `ARCHITECTURE.md`      | prose   | per-file case counts in §9 (e.g. "12 tests verify nx.sh", "9 integration tests", "49 unit tests") | no - free-form |
+| `docs/decisions.md`    | prose   | "N test cases across M test files"                                                                | no - free-form |
+| `docs/architecture.md` | prose   | "N+ test cases across M test files"                                                               | no - free-form |
+| `docs/enterprise.md`   | table   | "N Pester tests cover orchestration logic"                                                        | no - free-form |
+
+The same drift principle applies to other counters that change with file additions (review charters in `design/reviews/charters/`, hook IDs in `.pre-commit-config.yaml`, scope `.nix` files in `nix/scopes/`, valid scopes in `.assets/lib/scopes.json`). The current helper only covers tests; expand `test_stats.py` (or split into a dedicated helper) when the same drift bites those counters.
 
 ### Phase 2: Categorize the diff
 
@@ -253,6 +297,8 @@ For the CHANGELOG entry composed in Phase 1.
 - **Skipping Phase 3 (release verification).** A patch release that's actually feature-shaped is the most common quiet bug - verify before destroying history, when fixing is one Edit.
 - **Skipping Phase 1.5 (cspell sweep).** Forces an amend cycle in Phase 4 when `lint-diff` flags `Unknown word (...)`. Run `cspell_words.py scan` once before committing - it's cheap and saves a reset.
 - **Auto-adding everything cspell flags without classification.** A typo silently becomes a "valid" word and persists in the dictionary forever. Phase 1.5's classification step is the safeguard.
+- **Shipping a release with stale test/hook/scope counts in the docs.** The numbers in `docs/standards.md`, `docs/index.md`, `ARCHITECTURE.md`'s §9 paragraphs, and the `docs/decisions.md` / `docs/architecture.md` test-cases-across-files prose decay every time a test or hook is added; they were correct at some point and read as authoritative until proven wrong. Phase 1.6 is the safeguard - the trigger (`git diff --name-only <last-tag>..HEAD -- tests/`) is one bash line and the audit is one script invocation.
+- **Trusting the test_stats.py auditor as exhaustive.** It only catches the regexes in `STAT_LOCATIONS` - free-form prose like "412 test cases across 22 test files" in `docs/decisions.md` slips past. Manually skim the **Canonical statistics callouts** table during Phase 1.6.
 - **Reading the full CHANGELOG.** Run `extract.py` first; agent context is what we're trying to save.
 - **Multi-paragraph bullets, SHAs / finding IDs / PR numbers in the body.** Searchable elsewhere; clutters the changelog.
 - **Tagging the release here** - real tags trigger release workflows; `make release` handles tagging post-merge.
@@ -264,3 +310,4 @@ For the CHANGELOG entry composed in Phase 1.
 - `/prepare-release 1.7.3` - full pipeline end-to-end
 - "Update the release PR with the new fixes" - re-run; CHANGELOG merges, force-push, PR body updates
 - "Add a `Fixed` bullet for the timeout regression" - append to the active version section via `Edit`; if the branch is already pushed, re-run Phase 4+5 to update the PR
+- "Refresh the test counts in the docs without cutting a release" - call `test_stats.py audit` directly outside the skill; fix the drift; commit as `docs(stats): refresh test counters` (this is the manual escape hatch when you notice drift between releases)
