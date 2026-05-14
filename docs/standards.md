@@ -6,8 +6,8 @@ This tool provisions developer environments - if it breaks, developers cannot wo
 
 | Metric                       | Value                                                                       |
 | ---------------------------- | --------------------------------------------------------------------------- |
-| Unit test files              | 30 (21 bats + 9 Pester)                                                     |
-| Individual test cases        | 583 (444 bats + 139 Pester)                                                 |
+| Unit test files              | 32 (23 bats + 9 Pester)                                                     |
+| Individual test cases        | 619 (477 bats + 142 Pester)                                                 |
 | Test code                    | 8,300+ lines                                                                |
 | Custom pre-commit hooks      | 12 Python scripts                                                           |
 | Pre-commit checks per commit | 24 hooks                                                                    |
@@ -46,7 +46,7 @@ The checks downstream exist to enforce four invariants. Reading them first makes
 
 ## Pre-commit hooks
 
-Every commit passes through 23 hooks split across two categories: **custom hooks** (Python scripts maintained in this repo, purpose-built for this codebase's invariants) and **vendored hooks** (third-party hooks pulled in via `.pre-commit-config.yaml`, covering general-purpose checks). For exact file scopes, hook IDs, and pinned revisions, read `.pre-commit-config.yaml` directly -- the tables below describe intent.
+Every commit passes through 24 hooks split across two categories: **custom hooks** (Python scripts maintained in this repo, purpose-built for this codebase's invariants) and **vendored hooks** (third-party hooks pulled in via `.pre-commit-config.yaml`, covering general-purpose checks). For exact file scopes, hook IDs, and pinned revisions, read `.pre-commit-config.yaml` directly -- the tables below describe intent.
 
 ### Custom hooks
 
@@ -83,9 +83,9 @@ Third-party hooks for general-purpose checks. Each is a problem the project woul
 
 ## Unit tests
 
-21 bats files cover bash logic: scope dependency resolution, `nx` CLI commands and tab completers, managed-block injection / removal, profile migration, the overlay system, health checks, certificate handling, manager-scope removal hooks (`conda`, `nodejs`, `python`), and zsh runtime smoke tests.
+23 bats files cover bash logic: scope dependency resolution, `nx` CLI commands and tab completers, managed-block injection / removal, profile migration, the overlay system, health checks, certificate handling, manager-scope removal hooks (`conda`, `nodejs`, `python`), and zsh runtime smoke tests.
 
-9 Pester files mirror this for PowerShell components: WSL orchestration (high-level integration in `WslSetup.Tests.ps1`), the 16 phase functions extracted from `wsl/wsl_setup.ps1` into the `utils-setup` module (`WslSetupPhases.Tests.ps1` - 49 unit tests across the new module surface), scope parsing, certificate conversion, and the `nx` CLI argument completer.
+9 Pester files mirror this for PowerShell components: WSL orchestration (high-level integration in `WslSetup.Tests.ps1`), the 16 phase functions extracted from `wsl/wsl_setup.ps1` into the `utils-setup` module (`WslSetupPhases.Tests.ps1` - 52 unit tests across the new module surface), scope parsing, certificate conversion, and the `nx` CLI argument completer.
 
 Phase functions from `nix/lib/phases/` are tested by sourcing them directly and overriding the `_io_nix` / `_io_run` / `_io_curl_probe` side-effect wrappers - three lines per test, no mocking framework, no external dependencies. The same pattern works identically on bash 3.2 and bash 5, so a single test file proves both portability and correctness.
 

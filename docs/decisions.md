@@ -295,7 +295,7 @@ setup() {
 }
 ```
 
-This pattern makes bash scripts testable at a level normally associated with compiled languages - without mocking frameworks, without PATH manipulation, without subprocess overhead. It is the reason this project has 412 test cases across 22 test files for what is, at its core, a shell script.
+This pattern makes bash scripts testable at a level normally associated with compiled languages - without mocking frameworks, without PATH manipulation, without subprocess overhead. It is the reason this project has 619 test cases across 32 test files for what is, at its core, a shell script.
 
 ### Why JSON as the shared schema format
 
@@ -337,11 +337,11 @@ The `curl | sh` pattern is an accepted trade-off for a bootstrapper: it runs onc
 
 **The objection:** "Bash was chosen because it's available everywhere, but the project has grown beyond what bash is suited for. Rewrite the logic layer in Python (or Go, or Rust) and keep bash only for the minimal bootstrap."
 
-The instinct is reasonable - bash is not a general-purpose programming language, and most projects that reach ~30 shell files and 400+ test cases have outgrown it. This project has not, because it solved the scalability problems that normally force a rewrite.
+The instinct is reasonable - bash is not a general-purpose programming language, and most projects that reach ~30 shell files and 600+ test cases have outgrown it. This project has not, because it solved the scalability problems that normally force a rewrite.
 
 **The codebase already has the structural properties of a well-engineered typed codebase.**
 
-- **Testability.** The phase library architecture with `_io_*` side-effect stubs gives function-level unit testing without mocking frameworks. Tests override wrappers by function redefinition before sourcing the phase under test - three lines per test, zero framework overhead. The result is 400+ test cases across 22 test files, with coverage of phase functions, scope resolution, profile block management, and CLI commands. This level of testing is not typical bash; it is typical of a well-engineered project in any language.
+- **Testability.** The phase library architecture with `_io_*` side-effect stubs gives function-level unit testing without mocking frameworks. Tests override wrappers by function redefinition before sourcing the phase under test - three lines per test, zero framework overhead. The result is 600+ test cases across 32 test files, with coverage of phase functions, scope resolution, profile block management, and CLI commands. This level of testing is not typical bash; it is typical of a well-engineered project in any language.
 - **Documented interfaces.** Each phase file has `# Reads:` / `# Writes:` header comments that document cross-phase data flow. The variable naming convention (`_IR_*` for install record, `_io_*` for wrappers, `phase_*` for public functions, `_<name>_*` for private helpers) makes ownership visible at a glance - the same information that module boundaries and type signatures provide in other languages.
 - **Mechanical constraint enforcement.** The bash 3.2 compatibility constraint is enforced by a pre-commit hook (`check_bash32.py`) that scans every nix-path file for bash 4+ constructs. ShellCheck runs on every commit. The macOS CI workflow validates the constraint end-to-end. These are not conventions that drift - they are gates that block.
 
