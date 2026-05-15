@@ -47,16 +47,16 @@ format = '[$symbol$branch]($style) '
 
 [git_status]
 style     = 'fg:#FF9248'
-format    = '[$all_status$ahead_behind]($style) '
-modified  = '!'
-staged    = '+'
-deleted   = '-'
-renamed   = '»'
-untracked = '?'
-conflicted = '~'
-ahead    = '↑${count}'
-behind   = '↓${count}'
-diverged = '↕'
+format    = '[$all_status$ahead_behind]($style)'
+modified  = '! '
+staged    = '+ '
+deleted   = '- '
+renamed   = '» '
+untracked = '? '
+conflicted = '~ '
+ahead    = '↑${count} '
+behind   = '↓${count} '
+diverged = '↕ '
 
 # -- Kubernetes (right prompt): ⎈ context::namespace --------------------------
 [kubernetes]
