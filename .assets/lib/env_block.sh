@@ -37,12 +37,34 @@ render_env_block() {
   printf 'esac\n'
 
   # :locale - silence "can't set the locale" from nix-glibc binaries (e.g.
-  # ~/.nix-profile/bin/man) on Linux distros that ship per-directory locale
-  # data without a locale-archive file (Fedora, modern Ubuntu/Debian). LOCPATH
-  # points glibc at the per-dir store; harmless on macOS (the dir check fails)
-  # and on NixOS (LOCALE_ARCHIVE still wins for nix's glibc).
+  # ~/.nix-profile/bin/man) on non-NixOS Linux. The branches are MUTUALLY
+  # EXCLUSIVE - LOCPATH and LOCALE_ARCHIVE are not additive in glibc:
+  # if LOCPATH is set, glibc uses per-directory lookup ONLY and never
+  # falls back to the archive (verified in a Debian 13 container with the
+  # `locales` apt package installed - LOCPATH alone reproduces the warning,
+  # LOCALE_ARCHIVE alone fixes it, both-set re-introduces the warning).
+  #
+  #   - /usr/lib/locale/locale-archive present  (Debian, RHEL, Ubuntu
+  #     with `locales` package installed): set LOCALE_ARCHIVE +
+  #     LOCALE_ARCHIVE_2_27 to point at the archive. The "2_27" suffix
+  #     is a nixpkgs patch; some nix-glibc builds honor only the
+  #     suffixed form, others only plain. Setting both is harmless -
+  #     plain is ignored when the suffixed form is set.
+  #   - else if /usr/lib/locale/ is a per-directory store  (Fedora,
+  #     Alpine, minimal Ubuntu): set LOCPATH so glibc finds the per-dir
+  #     locales it would otherwise miss.
+  #   - else  (macOS, container without locale data): no-op.
+  #
+  # WATCHOUT: do NOT set LOCPATH when the archive exists - it breaks
+  # the archive lookup. This is exactly the failure shape that hit
+  # Debian 13 users in the v1.10.3 single-export attempt.
   printf '\n# :locale\n'
-  printf '[ -d /usr/lib/locale ] && export LOCPATH=/usr/lib/locale\n'
+  printf 'if [ -f /usr/lib/locale/locale-archive ]; then\n'
+  printf '  export LOCALE_ARCHIVE=/usr/lib/locale/locale-archive\n'
+  printf '  export LOCALE_ARCHIVE_2_27=/usr/lib/locale/locale-archive\n'
+  printf 'elif [ -d /usr/lib/locale ]; then\n'
+  printf '  export LOCPATH=/usr/lib/locale\n'
+  printf 'fi\n'
 
   # :aliases (generic - nix-installed tools have their aliases in the nix block)
   if [ -f "$HOME/.config/shell/functions.sh" ]; then
