@@ -36,6 +36,14 @@ render_env_block() {
   printf '  [ -d "$HOME/.local/bin" ] && export PATH="$HOME/.local/bin:$PATH"\n'
   printf 'esac\n'
 
+  # :locale - silence "can't set the locale" from nix-glibc binaries (e.g.
+  # ~/.nix-profile/bin/man) on Linux distros that ship per-directory locale
+  # data without a locale-archive file (Fedora, modern Ubuntu/Debian). LOCPATH
+  # points glibc at the per-dir store; harmless on macOS (the dir check fails)
+  # and on NixOS (LOCALE_ARCHIVE still wins for nix's glibc).
+  printf '\n# :locale\n'
+  printf '[ -d /usr/lib/locale ] && export LOCPATH=/usr/lib/locale\n'
+
   # :aliases (generic - nix-installed tools have their aliases in the nix block)
   if [ -f "$HOME/.config/shell/functions.sh" ]; then
     printf '\n# :aliases\n'

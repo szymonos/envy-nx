@@ -207,6 +207,25 @@ function _NxProfileRegenerate {
         Write-Host "`e[32m  updated nix:path`e[0m"
     }
 
+    # -- nix:locale - silence nix-glibc "can't set the locale" warnings ---
+    # Mirrors the bash/zsh `# :locale` block in _nx_render_env_block. Linux
+    # distros that ship per-directory locale data without a locale-archive
+    # file (Fedora, modern Ubuntu/Debian) need LOCPATH to point at the
+    # per-dir store - otherwise nix-glibc binaries (e.g. ~/.nix-profile/bin/man)
+    # invoked from pwsh inherit no LOCPATH and emit the warning. Native
+    # Windows pwsh has no /usr/lib/locale (the inner check fails); NixOS
+    # pwsh has its own LOCALE_ARCHIVE setup that takes precedence.
+    $localeRegion = [string[]]@(
+        '#region nix:locale'
+        'if ([IO.Directory]::Exists(''/usr/lib/locale'')) {'
+        '    $env:LOCPATH = ''/usr/lib/locale'''
+        '}'
+        '#endregion'
+    )
+    if (_NxUpdateProfileRegion -Lines $profileContent -RegionName 'nix:locale' -Content $localeRegion) {
+        Write-Host "`e[32m  updated nix:locale`e[0m"
+    }
+
     # -- nix:certs - cert env vars for nix tools and corp-network HTTPS ---
     # Mirrors the bash/zsh `# :certs` block in _nx_render_env_block (cross-shell
     # parity rule). Bash side gates on ca-bundle.crt for the bundle vars and on
@@ -433,8 +452,9 @@ function _NxProfileUninstall {
         $content = [System.Collections.Generic.List[string]]::new(
             [IO.File]::ReadAllLines($profilePath)
         )
-        foreach ($region in @('nix:base', 'nix:path', 'nix:certs', 'nix:starship',
-                'nix:oh-my-posh', 'nix:uv', 'nix:fnm', 'nix:gcloud', 'local-path')) {
+        foreach ($region in @('nix:base', 'nix:path', 'nix:locale', 'nix:certs',
+                'nix:starship', 'nix:oh-my-posh', 'nix:uv', 'nix:fnm', 'nix:gcloud',
+                'local-path')) {
             _NxRemoveProfileRegion -Lines $content -RegionName $region | Out-Null
         }
         [IO.File]::WriteAllText($profilePath, "$(($content -join "`n").Trim())`n")
