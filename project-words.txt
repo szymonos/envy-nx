@@ -74,6 +74,7 @@ kyverno
 lastexitcode
 libicu
 lockfiles
+locpath
 logind
 lstrip
 makefiles
