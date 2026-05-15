@@ -5,6 +5,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.10.4] - 2026-05-15
+
+### Added
+
+- `phase_bootstrap_refresh_repo` (`nix/lib/phases/bootstrap.sh`) now switches to the remote's default branch when the upstream is gone (PR merged + auto-deleted on GitHub) and re-execs `nix/setup.sh`. Refuses on uncommitted changes or HEAD commits not on default. Regression suite at `tests/bats/test_bootstrap_refresh.bats`.
+
+### Changed
+
+- Refreshed test-case counters in `docs/standards.md`, `docs/index.md`, `docs/decisions.md`, and `docs/architecture.md` to match the live count (489 bats + 142 Pester = 631 cases across 33 files) after `tests/bats/test_bootstrap_refresh.bats` shipped with the new bootstrap recovery.
+
+### Fixed
+
+- The `# :locale` block in `.assets/lib/{nx_profile,env_block}.sh` and the pwsh `nix:locale` mirror now branches by distro layout - `LOCALE_ARCHIVE` for archive distros (Debian, RHEL), `LOCPATH` for per-directory (Fedora, Alpine). The two are mutually exclusive in glibc; v1.10.3's unconditional `LOCPATH` broke nix-glibc locale lookup on Debian.
+- `phase_bootstrap_refresh_repo` no longer prints `fatal: ambiguous argument 'origin/<branch>'` and crashes when the local remote-tracking ref is stale. Two unguarded sites (`git rev-parse "$upstream"`, `git reset --hard "$upstream"`) now use `--verify` and `if !` warn-and-return-0. The reconstruction-from-branch-config path that handles `@{upstream}` resolution failure now guards each `var="$(git config ...)"` with `|| var=""` and short-circuits on detached HEAD - the unguarded form took down all CI jobs at the bootstrap phase under `set -e`.
+- The `# :oh-my-posh` block in `.assets/lib/nx_profile.sh` now gates the bash `eval` on `BASH_VERSINFO[0] >= 4` so macOS legacy `/bin/bash` 3.2 sessions stay clean instead of erroring on every shell start. `nix/configure/omp.sh` prints a yellow warning at install when `/bin/bash` is older than 4.
+
 ## [1.10.3] - 2026-05-15
 
 ### Changed
