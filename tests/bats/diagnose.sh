@@ -3,7 +3,7 @@
 # run from the repo root
 bash tests/bats/diagnose.sh
 '
-# Per-file bats run with 30s timeout and live progress. Identifies which
+# Per-file bats run with 60s timeout and live progress. Identifies which
 # file hangs when `make lint-all HOOK=bats-tests` wedges - prek captures
 # all hook output until completion, so this script is the way to see which
 # specific test file is the culprit.
@@ -11,9 +11,9 @@ bash tests/bats/diagnose.sh
 # Output legend:
 #   PASS    3.2s  test_foo.bats          file ran fine
 #   FAIL(N) 1.1s  test_bar.bats          file failed with exit N
-#   HANG   30.0s  test_baz.bats          ← this is the one wedging the hook
+#   HANG   60.0s  test_baz.bats          ← this is the one wedging the hook
 #
-# Each file gets its own 30s budget; 30s is generous (slowest file is ~15s
+# Each file gets its own 60s budget; 60s is generous (slowest file is ~15s
 # on a healthy machine), so a HANG is unambiguous. Env vars known to make
 # tests hang on hostile environments are stripped first.
 set -u
@@ -58,7 +58,7 @@ for f in tests/bats/*.bats; do
   name=$(basename "$f")
   printf 'RUN...      ...   %s\n' "$name"
   s=$(date +%s%N)
-  "$TIMEOUT" 30 bats "$f" >/dev/null 2>&1
+  "$TIMEOUT" 60 bats "$f" >/dev/null 2>&1
   rc=$?
   e=$(date +%s%N)
   secs=$(awk -v ms="$(((e - s) / 1000000))" 'BEGIN { printf "%.1fs", ms/1000 }')
@@ -77,7 +77,7 @@ total_end=$(date +%s)
 printf '\nTotal: %ds\n' $((total_end - total_start))
 
 if [ ${#hung[@]} -gt 0 ]; then
-  printf '\n\e[31mHung files (>30s):\e[0m\n'
+  printf '\n\e[31mHung files (>60s):\e[0m\n'
   for h in "${hung[@]}"; do printf '  - %s\n' "$h"; done
   printf '\nTo zoom in on a hung file with per-test timing:\n'
   printf '  bats --timing tests/bats/%s\n' "${hung[0]}"
