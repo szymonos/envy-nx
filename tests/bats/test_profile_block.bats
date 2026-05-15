@@ -229,6 +229,65 @@ _count_begin() {
 }
 
 # ---------------------------------------------------------------------------
+# POSIX/BSD awk portability + safety guard (regression for 1.10.2 wipe)
+# ---------------------------------------------------------------------------
+
+@test "upsert REPLACE path works under POSIX-strict awk (BSD-awk emulation)" {
+  # macOS ships BSD awk by default. The pre-fix code passed the multi-line
+  # replacement block via `-v replacement="$new_block"`, which BSD/POSIX awk
+  # rejects with `newline in string ... at source line 1`. awk emitted no
+  # output, the pipeline still exited 0 (no pipefail), and `mv -f $tmp $rc`
+  # truncated the user's profile to empty. Skip if gawk is unavailable -
+  # this test relies on `gawk --posix` to emulate BSD awk strictness.
+  command -v gawk >/dev/null || skip "gawk not available for --posix emulation"
+
+  # Seed an rc that already has the managed block (forces REPLACE path).
+  printf 'before\n# >>> %s >>>\nold\n# <<< %s <<<\nafter\n' "$MARKER" "$MARKER" >"$RC"
+  _write_content "line1
+line2
+line3"
+
+  # Shadow awk with `gawk --posix` only inside this subshell.
+  (
+    awk() { gawk --posix "$@"; }
+    export -f awk 2>/dev/null || true # exported for child procs; harmless if unsupported
+    manage_block "$RC" "$MARKER" upsert "$CONTENT"
+  )
+  [ "$?" -eq 0 ]
+
+  # rc must NOT be empty (the bug-shape symptom).
+  [ -s "$RC" ]
+  # Block was actually replaced, surrounding content preserved.
+  grep -q "before" "$RC"
+  grep -q "after" "$RC"
+  grep -q "line2" "$RC"
+  run grep -c "old" "$RC"
+  [ "$output" -eq 0 ]
+}
+
+@test "upsert refuses to overwrite rc when awk fails (defense-in-depth)" {
+  # Even if a future portability bug surfaces, the safety guard must keep
+  # the user's profile intact. Force awk to fail by shadowing it inside a
+  # subshell, run upsert, assert rc is unchanged byte-for-byte.
+  printf 'before\n# >>> %s >>>\nold\n# <<< %s <<<\nafter\n' "$MARKER" "$MARKER" >"$RC"
+  _write_content "replacement"
+  local before_hash
+  before_hash="$(md5sum "$RC" | cut -d' ' -f1)"
+
+  (
+    awk() { return 2; } # forced failure, no stdout
+    export -f awk 2>/dev/null || true
+    run manage_block "$RC" "$MARKER" upsert "$CONTENT"
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "refusing to overwrite" ]]
+  )
+
+  local after_hash
+  after_hash="$(md5sum "$RC" | cut -d' ' -f1)"
+  [ "$before_hash" = "$after_hash" ]
+}
+
+# ---------------------------------------------------------------------------
 # _pb_normalize_trailing
 # ---------------------------------------------------------------------------
 
