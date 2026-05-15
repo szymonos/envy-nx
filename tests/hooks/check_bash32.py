@@ -18,20 +18,37 @@ from pathlib import Path
 from typing import NamedTuple
 
 # ---------------------------------------------------------------------------
-# Checked file patterns (nix-path files + bats tests that run on macOS CI)
+# Checked file patterns. The set must mirror ARCHITECTURE.md §12.1 nix-path:
+# every shell file that may execute on macOS under the system bash 3.2 / BSD
+# awk / BSD sed before nix-installed bash 5 is on PATH. Past gaps in this
+# list let real bugs ship - the v1.10.2 BSD-awk wipe (`awk -v VAR=$multi`
+# in profile_block.sh) was a tracked nix-path file but cousin files
+# (env_block.sh, nx_profile.sh, nx_doctor.sh, helpers.sh, certs.sh,
+# install_record.sh, setup_log.sh, vscode.sh, the nix/lib/ phase library,
+# nix/uninstall.sh) were not. Keep this list in sync with the table in
+# ARCHITECTURE.md §12.1; `.assets/lib/*.sh` covers every file in that
+# directory because ARCHITECTURE.md classifies all of them as nix-path.
 # ---------------------------------------------------------------------------
 NIX_PATH_PATTERNS: tuple[str, ...] = (
+    # nix orchestrator + uninstall
     "nix/setup.sh",
+    "nix/uninstall.sh",
+    # nix phase library
+    "nix/lib/io.sh",
+    "nix/lib/phases/*.sh",
+    # per-scope post-install hooks (incl. *_remove.sh cleanup hooks)
     "nix/configure/*.sh",
-    ".assets/lib/scopes.sh",
-    ".assets/lib/profile_block.sh",
-    ".assets/lib/nx.sh",
-    ".assets/config/shell_cfg/aliases_nix.sh",
-    ".assets/config/shell_cfg/aliases_git.sh",
-    ".assets/config/shell_cfg/aliases_kubectl.sh",
-    ".assets/config/shell_cfg/functions.sh",
+    # shared libraries (scope catalog, install record, log lifecycle, certs,
+    # vscode env, profile/env block managers, nx CLI verb families, helpers)
+    ".assets/lib/*.sh",
+    # shell aliases + functions sourced into managed blocks
+    ".assets/config/shell_cfg/*.sh",
+    # post-install setup (legacy zsh setup is Linux-only; setup_common.sh
+    # is the only nix-path file under .assets/setup/)
     ".assets/setup/setup_common.sh",
+    # post-install provisioner that runs on macOS via setup_common.sh
     ".assets/provision/install_copilot.sh",
+    # bats tests run on macOS CI under the same bash 3.2 / BSD constraints
     "tests/bats/*.bats",
 )
 
@@ -115,6 +132,33 @@ RULES: tuple[Rule, ...] = (
     Rule(
         re.compile(r"\bgrep\b.*\\d"),
         r"grep \d is a PCRE/GNU extension - use [0-9]",
+    ),
+    # -- awk -v with multi-line value (BSD/POSIX awk rejects) ----------------
+    # macOS ships BSD awk; gawk in --posix mode behaves the same way and
+    # rejects `-v VAR=value` when `value` contains an embedded newline with
+    # `newline in string ... at source line 1` (POSIX: "POSIX does not allow
+    # physical newlines in string values"). awk emits nothing, the pipeline
+    # silently exits 0 if pipefail is unset, and a downstream `mv -f tmp rc`
+    # truncates the user's profile to empty - the v1.10.2 BSD-awk wipe.
+    # Static analysis can't prove a shell variable is multi-line, so flag
+    # by NAMING CONVENTION: the left-side -v parameter name is the smoking
+    # gun (the bug shape was `awk -v replacement="$new_block"`). Use
+    # `VAR="$multiline" awk ... 'ENVIRON["VAR"]'` instead - BSD and GNU awk
+    # both accept any string value including newlines via ENVIRON[].
+    #
+    # Regex shape: `\bawk\b[^\n]*?\s-v\s+<NAME>\s*=`. Lazy `[^\n]*?` permits
+    # any preceding awk options on the same line without nested optional
+    # quantifiers - the prior `(?:-[a-zA-Z]+(?:\s+\S+)?\s+)*` form was ReDoS-
+    # vulnerable (CodeQL py/redos), exponential backtracking on inputs like
+    # `awk -A -A -A ...` because each `-A` could either consume an optional
+    # value or not. Lazy any-char with no inner ambiguity is linear.
+    Rule(
+        re.compile(
+            r"\bawk\b[^\n]*?\s-v\s+"
+            r"(?:replacement|new_block|block|content|body|payload|rendered|markdown|html|json|yaml|lines|text|doc)\s*="
+        ),
+        "awk -v VAR= with a multi-line-suspect name fails on BSD awk (macOS); "
+        'use VAR="$multi" awk ... \'ENVIRON["VAR"]\' instead',
     ),
 )
 

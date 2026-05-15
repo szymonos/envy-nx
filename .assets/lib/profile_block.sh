@@ -118,9 +118,15 @@ function manage_block() {
         printf '%s\n' "$new_block"
       } | _pb_normalize_trailing >"$tmp"
     else
-      # Replace: use awk to substitute first occurrence, delete rest
-      awk -v begin="$begin_tag" -v end="$end_tag" -v replacement="$new_block" '
-        BEGIN { done=0; skip=0 }
+      # Replace: use awk to substitute first occurrence, delete rest.
+      # The replacement block is multi-line; passing it via `-v` would fail
+      # on POSIX/BSD awk (macOS default) with "newline in string at source
+      # line 1" - awk would emit nothing, the pipeline would still exit 0
+      # (no pipefail), and `mv -f $tmp $rc` would truncate the rc to empty.
+      # Use ENVIRON[] which both BSD and GNU awk accept for any string
+      # value including embedded newlines.
+      NEW_BLOCK="$new_block" awk -v begin="$begin_tag" -v end="$end_tag" '
+        BEGIN { done=0; skip=0; replacement=ENVIRON["NEW_BLOCK"] }
         $0 == begin {
           if (!done) { print replacement; done=1 }
           skip=1; next
@@ -128,6 +134,21 @@ function manage_block() {
         skip && $0 == end { skip=0; next }
         !skip { print }
       ' "$rc" | _pb_normalize_trailing >"$tmp"
+      # Defense-in-depth: empty-output guard. If the source rc had content
+      # but the staged tmp is empty, awk produced nothing - refuse the
+      # overwrite. Catches the v1.10.2 multi-line `-v` wipe shape (BSD awk
+      # emits zero bytes on parse failure) and any future portability bug
+      # that fails the same way. PIPESTATUS-based exit-code capture was
+      # tried earlier but slowed bats parallel runs by 25% (an extra
+      # mktemp + two wc invocations per upsert pushed test_nx_doctor over
+      # the 60s timeout); the empty-output check covers the same bug shape
+      # at zero per-call overhead.
+      if [ -s "$rc" ] && [ ! -s "$tmp" ]; then
+        rm -f "$tmp"
+        printf '\e[31merror: manage_block: refusing to overwrite %s - awk produced empty output (source bytes=%s); file left unchanged\e[0m\n' \
+          "$rc" "$(wc -c <"$rc" | tr -d ' ')" >&2
+        return 1
+      fi
     fi
 
     command mv -f "$tmp" "$rc"
