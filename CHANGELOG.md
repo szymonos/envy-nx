@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - `tests/hooks/run_bats.py` per-file wall-clock timeout bumped from 60s to 120s. `test_nx_doctor.bats` runs ~40s standalone and tipped over the 60s ceiling under `xargs -P 4` parallel CPU contention (other heavy files in the same wave: `test_nix_setup.bats` ~30s, `test_nx_commands.bats` ~27s). 120s preserves the hang-prevention purpose - any bats file legitimately running over 2 minutes has a real bug - while accommodating parallel-load slowdown without false-positive timeouts. The `TIMEOUT after Xs` log message now reflects the actual configured value.
 - `tests/hooks/run_bats.py` multi-file path now parses each child's TAP output and prints a final summary: `>>> [bats] SUMMARY: N passed, M failed (K skipped) across F file(s) in Ts`. When any test fails, lists the offending file(s) (with rc) and the failing test names underneath. Replaces `xargs -P 4 sh -c '...'` with a `concurrent.futures.ThreadPoolExecutor` so each child's stdout can be captured and emitted as one block - the prior parallel runs interleaved bats lines into unreadable noise. Single-file path is unchanged (streams directly without buffering or summary).
 - Refreshed bats test-case counters in `docs/standards.md` and `docs/decisions.md` to match the live count (480 bats + 142 Pester = 622 cases) after the new `test_profile_block.bats` regression cases for the BSD-awk wipe shipped with the fix below.
+- Rearranged `nix/setup.sh` script execution examples to better reflect the most common usage patterns.
 
 ### Fixed
 

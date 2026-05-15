@@ -10,15 +10,16 @@ nix/setup.sh
 # :upgrade all packages to latest nixpkgs
 nix/setup.sh --upgrade
 # :add new scopes (merged with existing config)
-nix/setup.sh --pwsh
-nix/setup.sh --k8s-base --pwsh --python --omp-theme "base"
-nix/setup.sh --az --k8s-base --pwsh --python --nodejs --omp-theme "base"
-nix/setup.sh --az --k8s-dev --pwsh --python --bun --omp-theme "nerd"
-nix/setup.sh --az --k8s-ext --rice --pwsh
+nix/setup.sh --shell
 # :run with oh-my-posh theme
-nix/setup.sh --shell --omp-theme "base"
+nix/setup.sh --omp-theme "base"
+nix/setup.sh --omp-theme "base" --az --gcloud --k8s-ext --nodejs
+nix/setup.sh --omp-theme "base" --az --pwsh --python --k8s-base
+nix/setup.sh --omp-theme "nerd" --az --pwsh --python --k8s-dev --bun
 # :run with starship prompt
-nix/setup.sh --shell --starship-theme "nerd"
+nix/setup.sh --starship-theme "base"
+nix/setup.sh --starship-theme "nerd"
+nix/setup.sh --starship-theme "omp_base"
 # :remove a scope
 nix/setup.sh --remove oh_my_posh
 # :unattended mode (skip all interactive steps - for MDM/Ansible/CI)
