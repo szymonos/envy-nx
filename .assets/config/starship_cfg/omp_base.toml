@@ -42,20 +42,20 @@ truncate_to_repo  = false
 [git_branch]
 style  = 'fg:#D4AAFC'
 symbol = ''
-format = '[\(](fg:#E8CC97)[**$branch**]($style)[\)](fg:#E8CC97) '
+format = '[\(](fg:#E8CC97)[$branch]($style)[\)](fg:#E8CC97) '
 
 [git_status]
 style    = 'fg:#FF9248'
-format   = '[$all_status$ahead_behind]($style) '
-modified = '!'
-staged   = '+'
-deleted  = '-'
-renamed  = '»'
-untracked = '?'
-conflicted = '~'
-ahead    = '↑${count}'
-behind   = '↓${count}'
-diverged = '↕'
+format   = '[$all_status$ahead_behind]($style)'
+modified = '! '
+staged   = '+ '
+deleted  = '- '
+renamed  = '» '
+untracked = '? '
+conflicted = '~ '
+ahead    = '↑${count} '
+behind   = '↓${count} '
+diverged = '↕ '
 
 # -- Kubernetes (right prompt): context::namespace ----------------------------
 [kubernetes]
