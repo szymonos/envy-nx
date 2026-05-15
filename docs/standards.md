@@ -6,8 +6,8 @@ This tool provisions developer environments - if it breaks, developers cannot wo
 
 | Metric                       | Value                                                                       |
 | ---------------------------- | --------------------------------------------------------------------------- |
-| Unit test files              | 32 (23 bats + 9 Pester)                                                     |
-| Individual test cases        | 622 (480 bats + 142 Pester)                                                 |
+| Unit test files              | 33 (24 bats + 9 Pester)                                                     |
+| Individual test cases        | 631 (489 bats + 142 Pester)                                                 |
 | Test code                    | 8,300+ lines                                                                |
 | Custom pre-commit hooks      | 12 Python scripts                                                           |
 | Pre-commit checks per commit | 24 hooks                                                                    |
@@ -83,7 +83,7 @@ Third-party hooks for general-purpose checks. Each is a problem the project woul
 
 ## Unit tests
 
-23 bats files cover bash logic: scope dependency resolution, `nx` CLI commands and tab completers, managed-block injection / removal, profile migration, the overlay system, health checks, certificate handling, manager-scope removal hooks (`conda`, `nodejs`, `python`), and zsh runtime smoke tests.
+24 bats files cover bash logic: scope dependency resolution, `nx` CLI commands and tab completers, managed-block injection / removal, profile migration, the overlay system, health checks, certificate handling, manager-scope removal hooks (`conda`, `nodejs`, `python`), and zsh runtime smoke tests.
 
 9 Pester files mirror this for PowerShell components: WSL orchestration (high-level integration in `WslSetup.Tests.ps1`), the 16 phase functions extracted from `wsl/wsl_setup.ps1` into the `utils-setup` module (`WslSetupPhases.Tests.ps1` - 52 unit tests across the new module surface), scope parsing, certificate conversion, and the `nx` CLI argument completer.
 
