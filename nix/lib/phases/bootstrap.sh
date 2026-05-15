@@ -34,15 +34,55 @@ phase_bootstrap_refresh_repo() {
   git -C "$SCRIPT_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
 
   local upstream
-  upstream="$(git -C "$SCRIPT_ROOT" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null)" || return 0
+  if ! upstream="$(git -C "$SCRIPT_ROOT" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null)"; then
+    # rev-parse exits 128 when @{upstream} can't be resolved - either the
+    # current branch has no upstream configured (detached HEAD, fresh local
+    # branch -> nothing to do) or the remote-tracking ref is gone locally.
+    # Reconstruct from branch config and let the ls-remote check below
+    # decide between "ref gone locally but exists on origin" (regular
+    # fetch path) vs "branch actually deleted from origin" (recovery).
+    #
+    # WATCHOUT: every `var="$(cmd)"` in this block needs `|| var=""` to
+    # survive `set -e` in nix/setup.sh - a bare $(failing-cmd) propagates
+    # the non-zero exit through the assignment and kills the script. The
+    # GitHub Actions PR-merge checkout runs in detached HEAD, where every
+    # `git config branch.HEAD.*` exits 1 (key not found); the unguarded
+    # form took down all CI jobs at the bootstrap phase on the v1.10.4
+    # cut. Detached HEAD has no branch to refresh against either way, so
+    # the early `return 0` skips the rest of the function entirely.
+    local _head_branch _branch_remote _branch_merge
+    _head_branch="$(git -C "$SCRIPT_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null)" || _head_branch=""
+    [ "$_head_branch" = "HEAD" ] && return 0
+    _branch_remote="$(git -C "$SCRIPT_ROOT" config --get "branch.$_head_branch.remote" 2>/dev/null)" || _branch_remote=""
+    _branch_merge="$(git -C "$SCRIPT_ROOT" config --get "branch.$_head_branch.merge" 2>/dev/null)" || _branch_merge=""
+    [ -n "$_branch_remote" ] && [ -n "$_branch_merge" ] || return 0
+    upstream="$_branch_remote/${_branch_merge#refs/heads/}"
+  fi
   [ -n "$upstream" ] || return 0
   local remote="${upstream%%/*}"
   local branch="${upstream#*/}"
 
   local remote_sha local_sha
-  remote_sha="$(git -C "$SCRIPT_ROOT" ls-remote --heads "$remote" "$branch" 2>/dev/null | awk 'NR==1{print $1}')"
-  local_sha="$(git -C "$SCRIPT_ROOT" rev-parse "$upstream" 2>/dev/null)"
-  if [ -n "$remote_sha" ] && [ -n "$local_sha" ] && [ "$remote_sha" = "$local_sha" ]; then
+  remote_sha="$(git -C "$SCRIPT_ROOT" ls-remote --heads "$remote" "$branch" 2>/dev/null | awk 'NR==1{print $1}')" || remote_sha=""
+
+  # Branch no longer exists on the remote (typical: PR merged + auto-deleted,
+  # rename, hand-pruned tip). Try to recover by switching to the remote's
+  # default branch instead of dying with a cryptic `fatal: ambiguous
+  # argument` later in the flow.
+  if [ -z "$remote_sha" ]; then
+    _bootstrap_recover_from_missing_upstream "$remote" "$branch" "$@"
+    return 0
+  fi
+
+  # `--verify` so rev-parse on a missing ref outputs nothing and exits 128
+  # (the bare form prints the ref name to stdout; 2>/dev/null swallows the
+  # error message but the junk on stdout would pollute the SHA-equality
+  # check below and force the slow fetch path on every run). The `|| true`
+  # tail makes the assignment safe under `shopt -s inherit_errexit`
+  # (bats-core enables this by default; nix/setup.sh does not, but better
+  # to be defensive than rely on a flag that callers control).
+  local_sha="$(git -C "$SCRIPT_ROOT" rev-parse --verify "$upstream" 2>/dev/null || true)"
+  if [ -n "$local_sha" ] && [ "$remote_sha" = "$local_sha" ]; then
     [ "$(git -C "$SCRIPT_ROOT" rev-parse HEAD)" = "$local_sha" ] && return 0
     _bootstrap_refresh_apply "$upstream" "$@"
     return 0
@@ -54,7 +94,14 @@ phase_bootstrap_refresh_repo() {
   fi
   local head_sha upstream_sha
   head_sha="$(git -C "$SCRIPT_ROOT" rev-parse HEAD)"
-  upstream_sha="$(git -C "$SCRIPT_ROOT" rev-parse "$upstream")"
+  upstream_sha="$(git -C "$SCRIPT_ROOT" rev-parse --verify "$upstream" 2>/dev/null || true)"
+  if [ -z "$upstream_sha" ]; then
+    # ls-remote saw the SHA but the post-fetch ref is missing - either a
+    # race (concurrent force-push during fetch) or a refspec mismatch. Treat
+    # as branch-deleted and let recovery handle it.
+    _bootstrap_recover_from_missing_upstream "$remote" "$branch" "$@"
+    return 0
+  fi
   [ "$head_sha" = "$upstream_sha" ] && return 0
   _bootstrap_refresh_apply "$upstream" "$@"
 }
@@ -78,8 +125,77 @@ _bootstrap_refresh_apply() {
     warn "local branch has diverged from $upstream - skipping auto-update"
     return 0
   fi
-  git -C "$SCRIPT_ROOT" reset --hard "$upstream" >/dev/null
+  if ! git -C "$SCRIPT_ROOT" reset --hard "$upstream" >/dev/null 2>&1; then
+    warn "failed to reset to $upstream - skipping auto-update"
+    return 0
+  fi
   info "repository updated to $upstream - re-executing with new source"
+  export NX_REEXECED=1
+  exec bash "$SCRIPT_ROOT/nix/setup.sh" "$@"
+}
+
+# When the current branch's @{upstream} no longer exists on the remote
+# (typical: PR merged + auto-deleted, branch renamed, hand-pruned tip),
+# try to switch to the remote's default branch (main / master / etc.) so a
+# stale clone doesn't get stuck. Refuses to switch when:
+#   - the working tree has uncommitted changes (would be discarded by reset)
+#   - HEAD has commits not on the default branch (would lose unmerged work)
+#   - the remote default branch is itself unreachable (offline / misconfig)
+# On success, exec's the new setup.sh against the now-default branch so the
+# user invocation continues transparently in one go (parallel to
+# _bootstrap_refresh_apply's exec).
+_bootstrap_recover_from_missing_upstream() {
+  local remote="$1" branch="$2"
+  shift 2
+  warn "current branch '$branch' no longer exists on $remote (likely merged/deleted upstream)"
+
+  if [ -n "$(git -C "$SCRIPT_ROOT" status --porcelain 2>/dev/null)" ]; then
+    warn "uncommitted changes in $SCRIPT_ROOT - skipping auto-recovery; commit/stash and re-run, or pass --skip-repo-update"
+    return 0
+  fi
+
+  local default
+  default="$(git -C "$SCRIPT_ROOT" symbolic-ref --short "refs/remotes/$remote/HEAD" 2>/dev/null | sed "s|^$remote/||")"
+  if [ -z "$default" ]; then
+    # symbolic-ref unset on older clones (pre-`git remote set-head`); probe
+    # common default-branch names against the remote.
+    local _cand
+    for _cand in main master; do
+      if [ -n "$(git -C "$SCRIPT_ROOT" ls-remote --heads "$remote" "$_cand" 2>/dev/null)" ]; then
+        default="$_cand"
+        break
+      fi
+    done
+  fi
+  if [ -z "$default" ]; then
+    warn "could not determine default branch on $remote - skipping auto-recovery"
+    return 0
+  fi
+  if [ "$branch" = "$default" ]; then
+    # Default branch itself missing on the remote - more likely a transient
+    # network quirk than a real deletion. Don't auto-switch (we have nowhere
+    # to switch to); let the user investigate.
+    warn "default branch '$default' itself appears missing on $remote - skipping auto-recovery"
+    return 0
+  fi
+
+  # Pull the latest default-branch tip so the ancestry check sees current state.
+  if ! git -C "$SCRIPT_ROOT" fetch --tags --prune --prune-tags --force "$remote" "$default" 2>/dev/null; then
+    warn "failed to fetch $remote/$default - skipping auto-recovery"
+    return 0
+  fi
+
+  if ! git -C "$SCRIPT_ROOT" merge-base --is-ancestor HEAD "refs/remotes/$remote/$default" 2>/dev/null; then
+    warn "HEAD has commits not on $remote/$default - skipping auto-recovery; rebase/merge onto $default manually"
+    return 0
+  fi
+
+  info "switching to '$default' (working tree clean, HEAD is ancestor of $remote/$default)"
+  if ! git -C "$SCRIPT_ROOT" checkout -B "$default" "refs/remotes/$remote/$default" >/dev/null 2>&1; then
+    warn "failed to checkout $default - skipping auto-recovery"
+    return 0
+  fi
+  info "repository now on $default - re-executing with new source"
   export NX_REEXECED=1
   exec bash "$SCRIPT_ROOT/nix/setup.sh" "$@"
 }
