@@ -21,6 +21,23 @@ if ! command -v oh-my-posh &>/dev/null; then
   exit 0
 fi
 
+# macOS ships /bin/bash 3.2 (Apple's stance on GPLv3); oh-my-posh's bash init
+# uses assoc-array syntax that 3.2 rejects, so the prompt would error on every
+# bash session start. The renderer in .assets/lib/nx_profile.sh gates the eval
+# on BASH_VERSINFO[0] >= 4, so bash sessions stay clean. Surface this once at
+# install time so the user knows why their bash prompt looks plain. Probe
+# /bin/bash directly (not $BASH_VERSINFO of this script) because by the time
+# omp.sh runs, $PATH may already point at a nix-installed bash 5.x.
+if [[ "$(uname -s)" == "Darwin" ]] && [[ -x /bin/bash ]]; then
+  sys_bash_major="$(/bin/bash -c 'echo ${BASH_VERSINFO[0]}' 2>/dev/null || echo 0)"
+  if [[ "$sys_bash_major" -lt 4 ]]; then
+    warn "macOS /bin/bash is ${sys_bash_major}.x - oh-my-posh skipped in bash sessions."
+    warn "  zsh and pwsh prompts work normally. To enable the prompt in bash too,"
+    warn "  install a newer bash (e.g. 'brew install bash' or 'nix profile install nixpkgs#bash')"
+    warn "  and start a fresh bash session."
+  fi
+fi
+
 SCRIPT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 # -- Fixed theme path --------------------------------------------------------

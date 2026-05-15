@@ -208,16 +208,20 @@ function _NxProfileRegenerate {
     }
 
     # -- nix:locale - silence nix-glibc "can't set the locale" warnings ---
-    # Mirrors the bash/zsh `# :locale` block in _nx_render_env_block. Linux
-    # distros that ship per-directory locale data without a locale-archive
-    # file (Fedora, modern Ubuntu/Debian) need LOCPATH to point at the
-    # per-dir store - otherwise nix-glibc binaries (e.g. ~/.nix-profile/bin/man)
-    # invoked from pwsh inherit no LOCPATH and emit the warning. Native
-    # Windows pwsh has no /usr/lib/locale (the inner check fails); NixOS
-    # pwsh has its own LOCALE_ARCHIVE setup that takes precedence.
+    # Mirrors the bash/zsh `# :locale` block in _nx_render_env_block. The
+    # branches are MUTUALLY EXCLUSIVE - LOCPATH disables nix-glibc's
+    # archive lookup, so we set LOCPATH only on per-directory distros
+    # (Fedora, Alpine, minimal Ubuntu) and LOCALE_ARCHIVE/_2_27 only on
+    # bundled-archive distros (Debian, RHEL, Ubuntu with `locales` apt
+    # package). Setting both reproduces the v1.10.3 Debian-13 wipe shape:
+    # LOCPATH wins, archive ignored, warning persists.
+    # Native Windows pwsh has neither path; both branches fail silently.
     $localeRegion = [string[]]@(
         '#region nix:locale'
-        'if ([IO.Directory]::Exists(''/usr/lib/locale'')) {'
+        'if ([IO.File]::Exists(''/usr/lib/locale/locale-archive'')) {'
+        '    $env:LOCALE_ARCHIVE = ''/usr/lib/locale/locale-archive'''
+        '    $env:LOCALE_ARCHIVE_2_27 = ''/usr/lib/locale/locale-archive'''
+        '} elseif ([IO.Directory]::Exists(''/usr/lib/locale'')) {'
         '    $env:LOCPATH = ''/usr/lib/locale'''
         '}'
         '#endregion'
