@@ -1,0 +1,986 @@
+
+<!DOCTYPE html>
+
+<html class="no-js" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width,initial-scale=1" name="viewport"/>
+<meta content="Universal, cross-platform developer environment provisioning with Nix" name="description"/>
+<link href="https://szymonos.github.io/envy-nx/standards/" rel="canonical"/>
+<link href="../decisions/" rel="prev"/>
+<link href="../enterprise/" rel="next"/>
+<link href="../assets/images/favicon.png" rel="icon"/>
+<meta content="mkdocs-1.6.1, mkdocs-material-9.7.6" name="generator"/>
+<title>Quality &amp; Testing - Dev Environment Setup</title>
+<link href="../assets/stylesheets/main.484c7ddc.min.css" rel="stylesheet"/>
+<link href="../assets/stylesheets/palette.ab4e12ef.min.css" rel="stylesheet"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&amp;display=fallback" rel="stylesheet"/>
+<style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+<link href="../assets/stylesheets/layout-wide-screen.css" rel="stylesheet"/>
+<link href="../assets/stylesheets/mermaid-lightbox.css" rel="stylesheet"/>
+<script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+</head>
+<body data-md-color-accent="blue" data-md-color-primary="indigo" data-md-color-scheme="slate" dir="ltr">
+<input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox"/>
+<input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox"/>
+<label class="md-overlay" for="__drawer"></label>
+<div data-md-component="skip">
+<a class="md-skip" href="#quality-testing">
+          Skip to content
+        </a>
+</div>
+<div data-md-component="announce">
+</div>
+<header class="md-header md-header--shadow" data-md-component="header">
+<nav aria-label="Header" class="md-header__inner md-grid">
+<a aria-label="Dev Environment Setup" class="md-header__button md-logo" data-md-component="logo" href=".." title="Dev Environment Setup">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
+</a>
+<label class="md-header__button md-icon" for="__drawer">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"></path></svg>
+</label>
+<div class="md-header__title" data-md-component="header-title">
+<div class="md-header__ellipsis">
+<div class="md-header__topic">
+<span class="md-ellipsis">
+            Dev Environment Setup
+          </span>
+</div>
+<div class="md-header__topic" data-md-component="header-topic">
+<span class="md-ellipsis">
+            
+              Quality &amp; Testing
+            
+          </span>
+</div>
+</div>
+</div>
+<label class="md-header__button md-icon" for="__search">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+</label>
+<div class="md-search" data-md-component="search" role="dialog">
+<label class="md-search__overlay" for="__search"></label>
+<div class="md-search__inner" role="search">
+<form class="md-search__form" name="search">
+<input aria-label="Search" autocapitalize="off" autocomplete="off" autocorrect="off" class="md-search__input" data-md-component="search-query" name="query" placeholder="Search" required="" spellcheck="false" type="text"/>
+<label class="md-search__icon md-icon" for="__search">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
+</label>
+<nav aria-label="Search" class="md-search__options">
+<button aria-label="Clear" class="md-search__icon md-icon" tabindex="-1" title="Clear" type="reset">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
+</button>
+</nav>
+</form>
+<div class="md-search__output">
+<div class="md-search__scrollwrap" data-md-scrollfix="" tabindex="0">
+<div class="md-search-result" data-md-component="search-result">
+<div class="md-search-result__meta">
+            Initializing search
+          </div>
+<ol class="md-search-result__list" role="presentation"></ol>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="md-header__source">
+<a class="md-source" data-md-component="source" href="https://github.com/szymonos/envy-nx" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewbox="0 0 512 512" xmlns="http://www.w3.org/2000/svg"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"></path></svg>
+</div>
+<div class="md-source__repository">
+    szymonos/envy-nx
+  </div>
+</a>
+</div>
+</nav>
+</header>
+<div class="md-container" data-md-component="container">
+<main class="md-main" data-md-component="main">
+<div class="md-main__inner md-grid">
+<div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Navigation" class="md-nav md-nav--primary" data-md-level="0">
+<label class="md-nav__title" for="__drawer">
+<a aria-label="Dev Environment Setup" class="md-nav__button md-logo" data-md-component="logo" href=".." title="Dev Environment Setup">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
+</a>
+    Dev Environment Setup
+  </label>
+<div class="md-nav__source">
+<a class="md-source" data-md-component="source" href="https://github.com/szymonos/envy-nx" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewbox="0 0 512 512" xmlns="http://www.w3.org/2000/svg"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"></path></svg>
+</div>
+<div class="md-source__repository">
+    szymonos/envy-nx
+  </div>
+</a>
+</div>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="..">
+<span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../benefits/">
+<span class="md-ellipsis">
+    
+  
+    Benefits
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../nx/">
+<span class="md-ellipsis">
+    
+  
+    The nx CLI
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../architecture/">
+<span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../decisions/">
+<span class="md-ellipsis">
+    
+  
+    Design Decisions
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item md-nav__item--active">
+<input class="md-nav__toggle md-toggle" id="__toc" type="checkbox"/>
+<label class="md-nav__link md-nav__link--active" for="__toc">
+<span class="md-ellipsis">
+    
+  
+    Quality &amp; Testing
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<a class="md-nav__link md-nav__link--active" href="./">
+<span class="md-ellipsis">
+    
+  
+    Quality &amp; Testing
+  
+
+    
+  </span>
+</a>
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#by-the-numbers">
+<span class="md-ellipsis">
+      
+        By the numbers
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#why-these-standards-exist">
+<span class="md-ellipsis">
+      
+        Why these standards exist
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#what-we-defend">
+<span class="md-ellipsis">
+      
+        What we defend
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#pre-commit-hooks">
+<span class="md-ellipsis">
+      
+        Pre-commit hooks
+      
+    </span>
+</a>
+<nav aria-label="Pre-commit hooks" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#custom-hooks">
+<span class="md-ellipsis">
+      
+        Custom hooks
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#vendored-hooks">
+<span class="md-ellipsis">
+      
+        Vendored hooks
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#unit-tests">
+<span class="md-ellipsis">
+      
+        Unit tests
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#ci-pipelines">
+<span class="md-ellipsis">
+      
+        CI pipelines
+      
+    </span>
+</a>
+<nav aria-label="CI pipelines" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#integration-matrix">
+<span class="md-ellipsis">
+      
+        Integration matrix
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#cross-version-upgrade-walk">
+<span class="md-ellipsis">
+      
+        Cross-version upgrade walk
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#docker-smoke-tests">
+<span class="md-ellipsis">
+      
+        Docker smoke tests
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#make-the-unified-entry-point">
+<span class="md-ellipsis">
+      
+        Make: the unified entry point
+      
+    </span>
+</a>
+<nav aria-label="Make: the unified entry point" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#one-contract-four-consumers">
+<span class="md-ellipsis">
+      
+        One contract, four consumers
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#tab-completion">
+<span class="md-ellipsis">
+      
+        Tab completion
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#mitm-proxy-support-transparent">
+<span class="md-ellipsis">
+      
+        MITM proxy support, transparent
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#beyond-automated-gates-periodic-review">
+<span class="md-ellipsis">
+      
+        Beyond automated gates: periodic review
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../enterprise/">
+<span class="md-ellipsis">
+    
+  
+    Enterprise Readiness
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../proxy/">
+<span class="md-ellipsis">
+    
+  
+    Corporate Proxy
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../releasing/">
+<span class="md-ellipsis">
+    
+  
+    Releasing
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../customization/">
+<span class="md-ellipsis">
+    
+  
+    Customization
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#by-the-numbers">
+<span class="md-ellipsis">
+      
+        By the numbers
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#why-these-standards-exist">
+<span class="md-ellipsis">
+      
+        Why these standards exist
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#what-we-defend">
+<span class="md-ellipsis">
+      
+        What we defend
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#pre-commit-hooks">
+<span class="md-ellipsis">
+      
+        Pre-commit hooks
+      
+    </span>
+</a>
+<nav aria-label="Pre-commit hooks" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#custom-hooks">
+<span class="md-ellipsis">
+      
+        Custom hooks
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#vendored-hooks">
+<span class="md-ellipsis">
+      
+        Vendored hooks
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#unit-tests">
+<span class="md-ellipsis">
+      
+        Unit tests
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#ci-pipelines">
+<span class="md-ellipsis">
+      
+        CI pipelines
+      
+    </span>
+</a>
+<nav aria-label="CI pipelines" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#integration-matrix">
+<span class="md-ellipsis">
+      
+        Integration matrix
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#cross-version-upgrade-walk">
+<span class="md-ellipsis">
+      
+        Cross-version upgrade walk
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#docker-smoke-tests">
+<span class="md-ellipsis">
+      
+        Docker smoke tests
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#make-the-unified-entry-point">
+<span class="md-ellipsis">
+      
+        Make: the unified entry point
+      
+    </span>
+</a>
+<nav aria-label="Make: the unified entry point" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#one-contract-four-consumers">
+<span class="md-ellipsis">
+      
+        One contract, four consumers
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#tab-completion">
+<span class="md-ellipsis">
+      
+        Tab completion
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#mitm-proxy-support-transparent">
+<span class="md-ellipsis">
+      
+        MITM proxy support, transparent
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#beyond-automated-gates-periodic-review">
+<span class="md-ellipsis">
+      
+        Beyond automated gates: periodic review
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-content" data-md-component="content">
+<article class="md-content__inner md-typeset">
+<h1 id="quality-testing">Quality &amp; Testing<a class="headerlink" href="#quality-testing" title="Permanent link">¤</a></h1>
+<p>This tool provisions developer environments - if it breaks, developers cannot work. The engineering standards applied to this repository reflect that criticality. This page documents how the codebase enforces its own quality, primarily through automated, CI-validated constraints, backstopped by a periodic human-triggered review framework for what diff-based gates cannot see.</p>
+<h2 id="by-the-numbers">By the numbers<a class="headerlink" href="#by-the-numbers" title="Permanent link">¤</a></h2>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Unit test files</td>
+<td>33 (24 bats + 9 Pester)</td>
+</tr>
+<tr>
+<td>Individual test cases</td>
+<td>631 (489 bats + 142 Pester)</td>
+</tr>
+<tr>
+<td>Test code</td>
+<td>8,300+ lines</td>
+</tr>
+<tr>
+<td>Custom pre-commit hooks</td>
+<td>12 Python scripts</td>
+</tr>
+<tr>
+<td>Pre-commit checks per commit</td>
+<td>24 hooks</td>
+</tr>
+<tr>
+<td>CI workflows</td>
+<td>7 (preflight, CodeQL, Linux, macOS, upgrade walk, release, docs)</td>
+</tr>
+<tr>
+<td>CI matrix axes</td>
+<td>5 (Linux daemon, Linux rootless, Linux tarball, macOS Sequoia, macOS Tahoe)</td>
+</tr>
+<tr>
+<td>Platforms validated per PR</td>
+<td>macOS (bash 3.2 + BSD), Ubuntu (bash 5 + GNU)</td>
+</tr>
+<tr>
+<td>Standing review shards</td>
+<td>9 charter-driven, manual <code>/review</code> trigger</td>
+</tr>
+</tbody>
+</table>
+<h2 id="why-these-standards-exist">Why these standards exist<a class="headerlink" href="#why-these-standards-exist" title="Permanent link">¤</a></h2>
+<p>Every check on this page is here for the same reason: <strong>backpressure</strong>. Automated, machine-readable feedback that catches mistakes at the point they're made, not three review rounds later or in production on a developer's laptop.<sup id="fnref:1"><a class="footnote-ref" href="#fn:1">1</a></sup> The rest of this page describes <em>what</em> the project defends and <em>how</em> it defends it; this section is about <em>why</em> the investment is worth it.</p>
+<p>Backpressure helps human reviewers - a CI failure on the first push is cheaper than a comment thread on the fifth. But the bar gets higher when AI coding agents (Claude Code, Cursor, Codex, and others) are in the loop. A human re-reads a diff, recognizes a typo from context, fixes it without comment, and moves on. An agent's loop is <code>propose change -&gt; observe feedback -&gt; revise</code>, and if the feedback is silent, slow, or noisy the loop diverges. Optimizing the check infrastructure for agents incidentally makes it better for humans too. The five properties this codebase optimizes for:</p>
+<ul>
+<li><strong>Fast</strong> - iteration must complete in seconds, not minutes. <code>make lint</code> runs only the hooks affected by the changed files (smart bats / Pester runners parse <code>source</code> directives to map files to tests). The full suite runs in CI; the local feedback loop stays under 10 seconds for most commits.</li>
+<li><strong>Specific</strong> - "lint failed" is unhelpful. <code>check_bash32.py</code> doesn't say "incompatible bash"; it says "line 47 uses <code>mapfile</code>, which fails on macOS bash 3.2 -- use <code>while IFS= read -r line; do arr+=("$line"); done &lt; &lt;(...)</code> instead". Both humans and agents can act on that.</li>
+<li><strong>Machine-readable</strong> - structured exit codes, file paths, and line numbers. No interactive prompts, no tty-only output, no swallowed stderr. <code>check-no-tty-read</code> even forbids the pattern that would silently hang an agent's headless terminal.</li>
+<li><strong>Symmetric</strong> - the same hook set runs in pre-commit AND in CI (<code>repo_checks.yml</code>). Whatever passes locally is what CI re-runs. No second class of "CI-only failures" surfacing five minutes after the change felt done.</li>
+<li><strong>Closed-loop</strong> - the project's <code>CLAUDE.md</code> and <code>AGENTS.md</code> files instruct agents to run <code>make lint</code> after every change and fix failures before reporting completion. The loop is explicit, not aspirational.</li>
+</ul>
+<p><code>nx doctor --strict</code> is the canonical example of compounding backpressure. A human running setup might shrug off a yellow warning ("oh, that scope binary isn't on PATH, I'll deal with it later"). An agent reading <code>doctor --strict</code>'s exit code sees a hard failure, traces it to a missing symlink in <code>~/.nix-profile/</code>, and fixes it in the same iteration. Same signal, different consumers - but only the strict-mode signal makes the agent loop converge.</p>
+<h2 id="what-we-defend">What we defend<a class="headerlink" href="#what-we-defend" title="Permanent link">¤</a></h2>
+<p>The checks downstream exist to enforce four invariants. Reading them first makes the rest of the page easier to navigate - every hook, test, and CI workflow is defending one of these.</p>
+<p><strong>Bash 3.2 compatibility.</strong> Nix-path scripts must run on macOS's stock bash 3.2 (no <code>mapfile</code>, no <code>declare -A</code>, no <code>${var,,}</code>, no <code>declare -n</code>, no negative array indices). Enforced by <code>check_bash32.py</code> at commit time and re-validated on macOS Sequoia in CI - the scan covers 14 categories of bash 4+ constructs and rejects with line numbers.</p>
+<p><strong>Scope consistency.</strong> A scope is a four-tuple: <code>scopes.json</code> definition, <code>nix/scopes/&lt;name&gt;.nix</code> package list, dependency declarations, and <code># bins:</code> binary declarations. <code>validate_scopes.py</code> rejects any partial addition - the four artifacts must agree before commit, not after a runtime failure on a developer's machine.</p>
+<p><strong>Idempotency.</strong> Running <code>nix/setup.sh</code> twice must produce identical results: no duplicate managed blocks, no accumulated profile entries, no leftover state. CI explicitly runs setup twice and diffs the result. Without this, recurring <code>nx upgrade</code> would slowly corrupt a working install.</p>
+<p><strong>Install provenance.</strong> Every setup run (success or failure) writes <code>~/.config/dev-env/install.json</code> with version, scopes, timestamp, and exit status. CI validates the file shape on every PR. This makes fleet-wide audit possible: which developers have which versions, when they last ran setup, whether it succeeded.</p>
+<h2 id="pre-commit-hooks">Pre-commit hooks<a class="headerlink" href="#pre-commit-hooks" title="Permanent link">¤</a></h2>
+<p>Every commit passes through 24 hooks split across two categories: <strong>custom hooks</strong> (Python scripts maintained in this repo, purpose-built for this codebase's invariants) and <strong>vendored hooks</strong> (third-party hooks pulled in via <code>.pre-commit-config.yaml</code>, covering general-purpose checks). For exact file scopes, hook IDs, and pinned revisions, read <code>.pre-commit-config.yaml</code> directly -- the tables below describe intent.</p>
+<h3 id="custom-hooks">Custom hooks<a class="headerlink" href="#custom-hooks" title="Permanent link">¤</a></h3>
+<p>12 Python scripts under <code>tests/hooks/</code>, wired in as <code>repo: local</code> entries:</p>
+<table>
+<thead>
+<tr>
+<th>Hook</th>
+<th>Why it exists</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>gremlins-check</code></td>
+<td>Catches invisible Unicode (zero-width spaces, smart quotes pasted from chat) before it lands in shell scripts where it changes execution semantics.</td>
+</tr>
+<tr>
+<td><code>validate-docs-words</code></td>
+<td>Keeps the cspell custom dictionary tied to actual docs usage -- removes entries no doc still references, so the dictionary doesn't become a graveyard of words from deleted pages.</td>
+</tr>
+<tr>
+<td><code>align-tables</code></td>
+<td>Auto-aligns markdown table columns so a one-character cell change doesn't produce a multi-hundred-column git diff.</td>
+</tr>
+<tr>
+<td><code>validate-scopes</code></td>
+<td>A scope is a four-tuple (JSON definition, Nix package list, dependency rules, binary declarations). Catches partial additions where one of the four is updated but the others aren't.</td>
+</tr>
+<tr>
+<td><code>check-bash32</code></td>
+<td>Blocks bash 4+ syntax in scripts that have to run on macOS's stock bash 3.2. The diagnostic includes the offending line and the recommended portable rewrite, not just "incompatible".</td>
+</tr>
+<tr>
+<td><code>check-zsh-compat</code></td>
+<td>All bash scripts that get sourced into the user's zsh profile must avoid the patterns where bash and zsh disagree (function declarations, glob no-match behavior, completion builtins).</td>
+</tr>
+<tr>
+<td><code>check-no-tty-read</code></td>
+<td>Forbids <code>read</code> redirected from <code>/dev/tty</code> in setup scripts unless explicitly self-attested. The pattern silently hangs in interactive shells but silently passes in headless CI / agents -- the worst kind of bug to ship.</td>
+</tr>
+<tr>
+<td><code>check-md-html-tags</code></td>
+<td>Forbids unbalanced tag-like <code>&lt;...</code> substrings in <code>docs/*.md</code> -- Python-Markdown's HTML preprocessor consumes them as malformed tag openers (even inside backticks), silently dropping subsequent rendered content. Recurrence guard.</td>
+</tr>
+<tr>
+<td><code>check-changelog</code></td>
+<td>Runtime file changes require a CHANGELOG entry under <code>[Unreleased]</code>. Can be skipped via a label when the change is genuinely doc-only.</td>
+</tr>
+<tr>
+<td><code>check-nx-generated</code></td>
+<td>The <code>nx</code> CLI's bash, zsh, and PowerShell completers are generated from a single JSON surface description. Catches mismatches between the source and the generated artifacts -- usually means somebody hand-edited a generated file.</td>
+</tr>
+<tr>
+<td><code>bats-tests</code> / <code>pester-tests</code></td>
+<td>Smart test runners that map changed files to the tests that source them -- only re-runs tests the change could affect, not the full suite.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="vendored-hooks">Vendored hooks<a class="headerlink" href="#vendored-hooks" title="Permanent link">¤</a></h3>
+<p>Third-party hooks for general-purpose checks. Each is a problem the project would otherwise have to write itself; trading the dependency for not maintaining yet another linter is the right call.</p>
+<table>
+<thead>
+<tr>
+<th>Source</th>
+<th>Hook(s)</th>
+<th>Why it exists</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>pre-commit/pre-commit-hooks</code></td>
+<td><code>check-executables-have-shebangs</code>, <code>check-shebang-scripts-are-executable</code>, <code>end-of-file</code>, <code>line-ending</code>, <code>trailing-whitespace</code></td>
+<td>Filesystem hygiene the editor often lets through: executable bits matching shebangs, consistent line endings across platforms, no whitespace drift.</td>
+</tr>
+<tr>
+<td><code>astral-sh/ruff-pre-commit</code></td>
+<td><code>ruff-check</code>, <code>ruff-format</code></td>
+<td>Python lint and formatter for the custom hooks under <code>tests/hooks/</code> -- the only Python in the repo, but held to the same standard as a real Python project.</td>
+</tr>
+<tr>
+<td><code>DavidAnson/markdownlint-cli2</code></td>
+<td><code>markdownlint-cli2</code></td>
+<td>Markdown structural rules: heading hierarchy, list spacing, fenced-code language hints, link form. The <code>align-tables</code> custom hook handles column padding, which markdownlint deliberately doesn't.</td>
+</tr>
+<tr>
+<td><code>streetsidesoftware/cspell-cli</code></td>
+<td><code>cspell</code></td>
+<td>Spell check on every <code>.md</code> file plus on commit messages -- PR titles and changelog entries don't ship typos.</td>
+</tr>
+<tr>
+<td><code>scop/pre-commit-shfmt</code></td>
+<td><code>shfmt</code></td>
+<td>Shell formatter (2-space indent, OTBS braces). Consistent shape across hundreds of script files, applied automatically.</td>
+</tr>
+<tr>
+<td><code>koalaman/shellcheck-precommit</code></td>
+<td><code>shellcheck</code></td>
+<td>Shell static analysis. Catches unquoted expansions, the consequences of missing <code>set -e</code>, and the long tail of shell foot-guns that aren't worth manually reviewing.</td>
+</tr>
+</tbody>
+</table>
+<p><code>mkdocs build --strict</code> is intentionally not a pre-commit hook - it requires the full docs dependency set, so it lives in CI (<code>repo_checks.yml</code>) where the environment is reliable.</p>
+<h2 id="unit-tests">Unit tests<a class="headerlink" href="#unit-tests" title="Permanent link">¤</a></h2>
+<p>24 bats files cover bash logic: scope dependency resolution, <code>nx</code> CLI commands and tab completers, managed-block injection / removal, profile migration, the overlay system, health checks, certificate handling, manager-scope removal hooks (<code>conda</code>, <code>nodejs</code>, <code>python</code>), and zsh runtime smoke tests.</p>
+<p>9 Pester files mirror this for PowerShell components: WSL orchestration (high-level integration in <code>WslSetup.Tests.ps1</code>), the 16 phase functions extracted from <code>wsl/wsl_setup.ps1</code> into the <code>utils-setup</code> module (<code>WslSetupPhases.Tests.ps1</code> - 52 unit tests across the new module surface), scope parsing, certificate conversion, and the <code>nx</code> CLI argument completer.</p>
+<p>Phase functions from <code>nix/lib/phases/</code> are tested by sourcing them directly and overriding the <code>_io_nix</code> / <code>_io_run</code> / <code>_io_curl_probe</code> side-effect wrappers - three lines per test, no mocking framework, no external dependencies. The same pattern works identically on bash 3.2 and bash 5, so a single test file proves both portability and correctness.</p>
+<p>Tests run locally in two ways: the file-aware <code>bats-tests</code> and <code>pester-tests</code> pre-commit hooks (only relevant tests on commit) and <code>make test-unit</code> (the full suite, parallelized across 4 bats workers and one Pester session). Both paths complete in under 30 seconds on a modern laptop.</p>
+<h2 id="ci-pipelines">CI pipelines<a class="headerlink" href="#ci-pipelines" title="Permanent link">¤</a></h2>
+<p>Local checks catch what the developer can iterate on quickly; CI re-runs them in a clean environment and adds checks that need real platforms, more time, or deferred timing.</p>
+<table>
+<thead>
+<tr>
+<th>Workflow</th>
+<th>Trigger</th>
+<th>What it adds beyond local hooks</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>repo_checks.yml</code></td>
+<td>every PR (auto)</td>
+<td>Re-runs the full pre-commit hook set against the PR diff in a clean Ubuntu image (catches "works on my machine" gaps, missing dependencies, hooks the developer skipped). Builds the docs with <code>mkdocs build --strict</code> -- broken cross-references fail the PR.</td>
+</tr>
+<tr>
+<td>CodeQL</td>
+<td>every PR + push to main</td>
+<td>Static security analysis on Python (custom hooks under <code>tests/hooks/</code>) and on the GitHub Actions workflows themselves. Catches injection patterns, unsafe interpolations, secret leakage, and workflow-side privilege escalation that no shell linter would surface.</td>
+</tr>
+<tr>
+<td><code>test_linux.yml</code></td>
+<td>label <code>test:integration</code> + manual</td>
+<td>Full provisioning matrix on real Ubuntu runners across the two Nix install modes: <code>daemon</code> (multi-user, WSL / bare-metal / managed-Mac scenario) and <code>no-daemon</code> (rootless / Coder scenario). Plus the tarball-mode job for installs without <code>.git</code> history.</td>
+</tr>
+<tr>
+<td><code>test_macos.yml</code></td>
+<td>label <code>test:integration</code> + manual</td>
+<td>Full provisioning matrix on macOS Sequoia (the bash 3.2 + BSD baseline) and macOS Tahoe (forward-compat signal). The single most expensive backstop for the bash 3.2 portability rule.</td>
+</tr>
+<tr>
+<td><code>test_upgrade_walk.yml</code></td>
+<td>weekly cron + manual</td>
+<td>Cross-version upgrade walk -- see below. Asynchronous because no PR should pay for it, but it bisects upgrade regressions before users hit them.</td>
+</tr>
+<tr>
+<td><code>release.yml</code></td>
+<td>tag push</td>
+<td>Builds and publishes the release artifacts on tag. Validates that the tag exists on <code>main</code> and that <code>CHANGELOG.md</code> has a matching section.</td>
+</tr>
+<tr>
+<td><code>docs-gh-pages.yml</code></td>
+<td>push to main</td>
+<td>Publishes the rendered docs site. Doubles as a second <code>mkdocs build --strict</code> run on the merged tree.</td>
+</tr>
+</tbody>
+</table>
+<p>Integration tests are gated by a <code>test:integration</code> label rather than running on every PR because they take 10-25 minutes per matrix axis. The label is sticky: once added, every push to that PR re-runs the matrix automatically.</p>
+<h3 id="integration-matrix">Integration matrix<a class="headerlink" href="#integration-matrix" title="Permanent link">¤</a></h3>
+<p>The Linux + macOS workflows together exercise five real-OS axes in parallel:</p>
+<div class="mermaid">flowchart LR
+    subgraph "Linux CI"
+        LD["Ubuntu&lt;br/&gt;daemon mode"]
+        LN["Ubuntu&lt;br/&gt;rootless (Coder)"]
+        LT["Ubuntu&lt;br/&gt;tarball (no .git)"]
+    end
+
+    subgraph "macOS CI"
+        MS["macOS Sequoia&lt;br/&gt;bash 3.2 + BSD"]
+        MT["macOS Tahoe&lt;br/&gt;forward-compat signal"]
+    end
+
+    LD &amp; LN &amp; LT &amp; MS &amp; MT --&gt; V["Verify"]
+
+    V --&gt; V1["Scope binaries on PATH"]
+    V --&gt; V2["nx doctor --strict"]
+    V --&gt; V3["Managed block idempotency"]
+    V --&gt; V4["install.json provenance"]
+    V --&gt; V5["Uninstall --env-only cleanup"]</div>
+<p>Each axis runs the full setup with a representative scope set, then verifies:</p>
+<ul>
+<li>Setup completes with the requested scope flags</li>
+<li>Core binaries (<code>git</code>, <code>gh</code>, <code>jq</code>, <code>curl</code>, <code>openssl</code>) resolve on PATH</li>
+<li>Scope-specific binaries resolve (mapped from scope flags)</li>
+<li><code>nx doctor --strict</code> passes (warnings and failures both break the build)</li>
+<li>Second run produces exactly one managed block (idempotency invariant)</li>
+<li><code>install.json</code> records <code>status: success</code> (provenance invariant)</li>
+<li><code>nix/uninstall.sh --env-only</code> removes nix-env state while preserving generic config</li>
+</ul>
+<h3 id="cross-version-upgrade-walk">Cross-version upgrade walk<a class="headerlink" href="#cross-version-upgrade-walk" title="Permanent link">¤</a></h3>
+<p><code>.github/workflows/test_upgrade_walk.yml</code> walks every released tag newest → oldest in a single sequential job. For each tag it installs at the old version, switches the repo to HEAD, runs <code>nx setup</code> (the user-facing upgrade path), and verifies the result: family files synced, <code>nx version</code> matches HEAD, <code>nx doctor --strict</code> passes. The walk fail-fasts at the first failure, surfacing the <strong>upgrade-supported floor</strong> - the oldest version that still upgrades cleanly to HEAD.</p>
+<p>Cheap relative to the platform matrix: ONE Nix install per run, package cache warms across iterations. Only user-scope state (<code>~/.config/nix-env/</code>, managed shell blocks, alias files) is wiped between iterations via <code>nix/uninstall.sh --env-only</code>; <code>/nix/store</code> and the per-user nix profile persist (those are validated by the matrix). Triggered by <code>workflow_dispatch</code> (with optional single-tag and floor-version inputs) plus a weekly cron (Mondays 06:00 UTC).</p>
+<p>This catches a class of regression the matrix cannot: a refactor on HEAD that breaks the migration path from a real installed version. The matrix runs fresh installs in parallel; nothing exercises "user installed at v1.x.y, then ran <code>nx setup</code> against today's HEAD" until the walk does. As an agent-friendly side-effect, an investigator can dispatch the workflow with <code>from-version=v1.5.4</code> and read a structured pass/fail summary - bisection without a human in the loop.</p>
+<h3 id="docker-smoke-tests">Docker smoke tests<a class="headerlink" href="#docker-smoke-tests" title="Permanent link">¤</a></h3>
+<p><code>make test-nix</code> builds a throwaway Docker image that runs a full nix provisioning pass, verifies the <code>nx</code> CLI, validates <code>install.json</code>, and tests the <code>--env-only</code> uninstaller - all in an isolated container. Slower than unit tests but catches integration issues that mocking cannot. Run on demand by maintainers before merging anything that touches the nix path; not part of the default <code>make test</code> because of the Docker pull.</p>
+<p><code>make test-upgrade-walk</code> runs the cross-version upgrade walk in the same Docker base image, sharing the script with the CI workflow (<code>.github/scripts/upgrade_walk.sh</code>). Use it to reproduce a CI walk failure locally without waiting for the next cron.</p>
+<h2 id="make-the-unified-entry-point">Make: the unified entry point<a class="headerlink" href="#make-the-unified-entry-point" title="Permanent link">¤</a></h2>
+<p>Every check, test, build, and operation in this repo is reachable through a <code>make</code> target. There is no second command surface to learn -- not <code>prek run --hook-id ...</code>, not <code>bats tests/bats/foo.bats</code>, not <code>python3 -m tests.hooks.gen_nx_completions</code>. <code>make help</code> enumerates everything, parsed automatically from <code>##</code>-prefixed comments next to each target so new tooling shows up without a separate doc update.</p>
+<div class="highlight"><pre><span></span><code>make<span class="w"> </span>install<span class="w">                      </span><span class="c1"># install pre-commit hooks (one-time)</span>
+make<span class="w"> </span>lint<span class="w">                         </span><span class="c1"># run hooks on changed files (before every commit)</span>
+make<span class="w"> </span>test-unit<span class="w">                    </span><span class="c1"># bats + Pester unit tests (fast, no Docker)</span>
+make<span class="w"> </span><span class="nb">test</span><span class="w">                         </span><span class="c1"># all tests including Docker smoke tests</span>
+make<span class="w"> </span>test-nix<span class="w">                     </span><span class="c1"># Docker smoke test for the nix path</span>
+make<span class="w"> </span>test-upgrade-walk<span class="w">            </span><span class="c1"># cross-version upgrade walk in Docker</span>
+make<span class="w"> </span>lint-diff<span class="w">                    </span><span class="c1"># hooks on files changed since main</span>
+make<span class="w"> </span>hooks<span class="w">                        </span><span class="c1"># list available hook IDs</span>
+make<span class="w"> </span>lint-all<span class="w"> </span><span class="nv">HOOK</span><span class="o">=</span>&lt;hook_id&gt;<span class="w">      </span><span class="c1"># run a single hook on all files (fast iteration)</span>
+make<span class="w"> </span>mkdocs-serve<span class="w">                 </span><span class="c1"># live-reload documentation preview</span>
+</code></pre></div>
+<h3 id="one-contract-four-consumers">One contract, four consumers<a class="headerlink" href="#one-contract-four-consumers" title="Permanent link">¤</a></h3>
+<p>The backpressure properties at the top of this page depend on <code>make</code> being a single, consistent target surface across every party that needs to run a check:</p>
+<table>
+<thead>
+<tr>
+<th>Consumer</th>
+<th>Command</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Pre-commit hook (every commit)</td>
+<td><code>make lint</code></td>
+</tr>
+<tr>
+<td>CI workflow <code>repo_checks.yml</code></td>
+<td><code>make lint</code></td>
+</tr>
+<tr>
+<td><code>CLAUDE.md</code> / <code>AGENTS.md</code> (every AI agent change)</td>
+<td><code>make lint</code></td>
+</tr>
+<tr>
+<td>Contributor reading the README</td>
+<td><code>make lint</code></td>
+</tr>
+</tbody>
+</table>
+<p>Same target, same expectation. Drift is impossible -- if <code>make lint</code> is wrong, every consumer is wrong simultaneously, which means it gets fixed instantly. Without this layer every consumer would maintain its own list of invocations and they'd silently disagree the moment a hook moves.</p>
+<p>For agents specifically, this is the part that closes the backpressure loop. An agent can grep the <code>Makefile</code> for <code>^[a-z-]+:</code> lines to discover the full command surface without project-specific training, then dispatch via the consistent <code>make &lt;target&gt;</code> form. The Makefile <em>is</em> the library -- there's no list of project-specific invocations to memorize, and <code>make</code> returns a clean exit code for every target so the output streams straight into a self-correction loop.</p>
+<h3 id="tab-completion">Tab completion<a class="headerlink" href="#tab-completion" title="Permanent link">¤</a></h3>
+<p>The <code>shell</code> scope installs <code>bash-completion</code> and configures <code>compinit</code> for zsh as part of standard developer setup. Tab-completing <code>make te&lt;TAB&gt;</code> in either shell cycles through <code>test</code>, <code>test-nix</code>, <code>test-unit</code>, <code>test-upgrade-walk</code> -- both shells parse the local <code>Makefile</code> for available targets natively. PowerShell users get a <code>Register-MakeCompleter</code> function (vendored from the <code>do-linux</code> module) they can add to their profile for the same behavior; not auto-invoked, since pwsh sessions don't always sit in a Make-aware directory.</p>
+<p>Discoverability without RTFM matters more for agents than humans. A human can be told once that <code>make help</code> exists; an agent in a fresh session needs the surface to be shell-discoverable, and tab completion is exactly that signal.</p>
+<h3 id="mitm-proxy-support-transparent">MITM proxy support, transparent<a class="headerlink" href="#mitm-proxy-support-transparent" title="Permanent link">¤</a></h3>
+<p>The Makefile detects custom CA certificates (<code>~/.config/certs/ca-custom.crt</code>, written by the cert-overlay machinery during setup) and exports <code>PREK_NATIVE_TLS=1</code> for the pre-commit runner plus <code>NODE_EXTRA_CA_CERTS</code> for Node-based hooks (markdownlint, cspell). Developers behind corporate proxies don't need to configure anything; agents don't need to know the proxy exists. One more thing the contract handles so the consumer doesn't have to.</p>
+<h2 id="beyond-automated-gates-periodic-review">Beyond automated gates: periodic review<a class="headerlink" href="#beyond-automated-gates-periodic-review" title="Permanent link">¤</a></h2>
+<p>Every check above this section fires on a diff: a commit, a PR, a push. That's the right shape for catching the regression you're about to introduce, but it cannot see what's already standing in the codebase - drift, dead code, workarounds whose upstream bug got fixed years ago, cross-shard inconsistencies that each per-PR review correctly let through in isolation. A diff-blind problem needs a diff-blind tool.</p>
+<p><img alt="PDCA loops: per-PR daily cycle alongside chunked review periodic cycle" src="../assets/pdca-loops.svg"/></p>
+<p>Per-PR fires per diff (full PDCA, all four phases). Chunked fires per shard on a manual cadence (Plan / Check / Act only - no Do, since the code already exists). Per-PR catches what's being added; chunked catches what's already there.</p>
+<p>The repo runs a periodic chunked agentic-review framework orthogonally to the daily PR cycle. Nine shards by concern (<code>certs</code>, <code>orchestration</code>, <code>nx-cli</code>, <code>config-templates</code>, <code>system-installers</code>, <code>wsl-orchestration</code>, <code>precommit-hooks</code>, <code>test-quality</code>, <code>enterprise-readiness</code>), each with a versioned charter that defines scope, "what good looks like", and what NOT to flag. One shard is reviewed at a time on a manual cadence (<code>/review &lt;shard&gt;</code>), rotating through the nine so the whole repo cycles every two months without overloading any single review's context.</p>
+<p>Three subagents with deliberately separated roles and restricted tool sets:</p>
+<ul>
+<li><strong>Reviewer</strong> - <code>Read, Grep, Glob, Bash</code> only. Cannot edit code; the tool restriction is the bias-control mechanism (cannot pick easy issues because cannot fix anything). Outputs structured findings JSON.</li>
+<li><strong>Triage</strong> - interactive, human in the loop. Each finding gets <code>apply | defer | dispute</code>; defers and disputes accumulate in a versioned ledger so the next review skips them.</li>
+<li><strong>Fixer</strong> - minimum-scope edits, one commit per finding, gates each commit on <code>make lint &amp;&amp; make test-unit</code>. Hard DONE marker is machine-verifiable, not LLM judgment.</li>
+<li><strong>Verifier</strong> - read-only second opinion on the fixer's diff. Reads cold; asks whether each fix addresses the root cause or just silences the symptom. Escalates via report; cannot edit, cannot approve a PR.</li>
+</ul>
+<p>This is <strong>manual machinery, not automated</strong>. There is no cron, no CI gate, no auto-merge. The framework's value is not "more enforcement" - it's a periodic outside view on the standing state, with bias controls baked into the agent definitions rather than left to convention. Findings drive triage; human judgment decides which to fix.</p>
+<p>Just landed as v1; charters were seeded from the existing codebase before any actual review run, so expect the first cycle on each shard to surface things the charter didn't anticipate. Design rationale: <a href="../decisions/#process-decisions">Process decisions</a>.</p>
+<div class="footnote">
+<hr/>
+<ol>
+<li id="fn:1">
+<p>Bassim Eledath, <a href="https://www.bassimeledath.com/blog/levels-of-agentic-engineering">"The Levels of Agentic Engineering"</a>, 2025. <a class="footnote-backref" href="#fnref:1" title="Jump back to footnote 1 in the text">↩</a></p>
+</li>
+</ol>
+</div>
+</article>
+</div>
+<script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+</div>
+</main>
+<footer class="md-footer">
+<div class="md-footer-meta md-typeset">
+<div class="md-footer-meta__inner md-grid">
+<div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" rel="noopener" target="_blank">
+      Material for MkDocs
+    </a>
+</div>
+</div>
+</div>
+</footer>
+</div>
+<div class="md-dialog" data-md-component="dialog">
+<div class="md-dialog__inner md-typeset"></div>
+</div>
+<script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.indexes", "navigation.sections", "content.code.copy", "content.tabs.link"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+<script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+<script src="../assets/javascripts/diagram-zoom.js"></script>
+<script type="module">import mermaid from "https://unpkg.com/mermaid@10.4.0/dist/mermaid.esm.min.mjs";
+mermaid.initialize({
+    startOnLoad: true,
+    theme: "dark",
+    securityLevel: "loose",
+    themeVariables: {
+        clusterBkg: "#263238",
+        darkMode: true,
+        edgeLabelBackground: "#263238",
+        fontFamily: "Roboto, sans-serif",
+        lineColor: "#90a4ae",
+        mainBkg: "#2c3e50",
+        nodeBorder: "#5c6bc0",
+        secondBkg: "#34495e",
+        tertiaryColor: "#455a64",
+        useMaxWidth: true,
+        htmlLabels: true,
+        curve: "basis"
+    },
+    sequence: {
+        useMaxWidth: true
+    },
+    gantt: {
+        useMaxWidth: true
+    },
+    flowchart: {
+        useMaxWidth: true,
+        htmlLabels: true,
+        curve: "basis"
+    }
+});</script></body>
+</html>

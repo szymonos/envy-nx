@@ -1,0 +1,1166 @@
+
+<!DOCTYPE html>
+
+<html class="no-js" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width,initial-scale=1" name="viewport"/>
+<meta content="Universal, cross-platform developer environment provisioning with Nix" name="description"/>
+<link href="https://szymonos.github.io/envy-nx/architecture/" rel="canonical"/>
+<link href="../nx/" rel="prev"/>
+<link href="../decisions/" rel="next"/>
+<link href="../assets/images/favicon.png" rel="icon"/>
+<meta content="mkdocs-1.6.1, mkdocs-material-9.7.6" name="generator"/>
+<title>Architecture - Dev Environment Setup</title>
+<link href="../assets/stylesheets/main.484c7ddc.min.css" rel="stylesheet"/>
+<link href="../assets/stylesheets/palette.ab4e12ef.min.css" rel="stylesheet"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&amp;display=fallback" rel="stylesheet"/>
+<style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+<link href="../assets/stylesheets/layout-wide-screen.css" rel="stylesheet"/>
+<link href="../assets/stylesheets/mermaid-lightbox.css" rel="stylesheet"/>
+<script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+</head>
+<body data-md-color-accent="blue" data-md-color-primary="indigo" data-md-color-scheme="slate" dir="ltr">
+<input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox"/>
+<input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox"/>
+<label class="md-overlay" for="__drawer"></label>
+<div data-md-component="skip">
+<a class="md-skip" href="#architecture">
+          Skip to content
+        </a>
+</div>
+<div data-md-component="announce">
+</div>
+<header class="md-header md-header--shadow" data-md-component="header">
+<nav aria-label="Header" class="md-header__inner md-grid">
+<a aria-label="Dev Environment Setup" class="md-header__button md-logo" data-md-component="logo" href=".." title="Dev Environment Setup">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
+</a>
+<label class="md-header__button md-icon" for="__drawer">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"></path></svg>
+</label>
+<div class="md-header__title" data-md-component="header-title">
+<div class="md-header__ellipsis">
+<div class="md-header__topic">
+<span class="md-ellipsis">
+            Dev Environment Setup
+          </span>
+</div>
+<div class="md-header__topic" data-md-component="header-topic">
+<span class="md-ellipsis">
+            
+              Architecture
+            
+          </span>
+</div>
+</div>
+</div>
+<label class="md-header__button md-icon" for="__search">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+</label>
+<div class="md-search" data-md-component="search" role="dialog">
+<label class="md-search__overlay" for="__search"></label>
+<div class="md-search__inner" role="search">
+<form class="md-search__form" name="search">
+<input aria-label="Search" autocapitalize="off" autocomplete="off" autocorrect="off" class="md-search__input" data-md-component="search-query" name="query" placeholder="Search" required="" spellcheck="false" type="text"/>
+<label class="md-search__icon md-icon" for="__search">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
+</label>
+<nav aria-label="Search" class="md-search__options">
+<button aria-label="Clear" class="md-search__icon md-icon" tabindex="-1" title="Clear" type="reset">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
+</button>
+</nav>
+</form>
+<div class="md-search__output">
+<div class="md-search__scrollwrap" data-md-scrollfix="" tabindex="0">
+<div class="md-search-result" data-md-component="search-result">
+<div class="md-search-result__meta">
+            Initializing search
+          </div>
+<ol class="md-search-result__list" role="presentation"></ol>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="md-header__source">
+<a class="md-source" data-md-component="source" href="https://github.com/szymonos/envy-nx" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewbox="0 0 512 512" xmlns="http://www.w3.org/2000/svg"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"></path></svg>
+</div>
+<div class="md-source__repository">
+    szymonos/envy-nx
+  </div>
+</a>
+</div>
+</nav>
+</header>
+<div class="md-container" data-md-component="container">
+<main class="md-main" data-md-component="main">
+<div class="md-main__inner md-grid">
+<div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Navigation" class="md-nav md-nav--primary" data-md-level="0">
+<label class="md-nav__title" for="__drawer">
+<a aria-label="Dev Environment Setup" class="md-nav__button md-logo" data-md-component="logo" href=".." title="Dev Environment Setup">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
+</a>
+    Dev Environment Setup
+  </label>
+<div class="md-nav__source">
+<a class="md-source" data-md-component="source" href="https://github.com/szymonos/envy-nx" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewbox="0 0 512 512" xmlns="http://www.w3.org/2000/svg"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"></path></svg>
+</div>
+<div class="md-source__repository">
+    szymonos/envy-nx
+  </div>
+</a>
+</div>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="..">
+<span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../benefits/">
+<span class="md-ellipsis">
+    
+  
+    Benefits
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../nx/">
+<span class="md-ellipsis">
+    
+  
+    The nx CLI
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item md-nav__item--active">
+<input class="md-nav__toggle md-toggle" id="__toc" type="checkbox"/>
+<label class="md-nav__link md-nav__link--active" for="__toc">
+<span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<a class="md-nav__link md-nav__link--active" href="./">
+<span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+</a>
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#the-bootstrapper-model">
+<span class="md-ellipsis">
+      
+        The bootstrapper model
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#provisioning-the-phase-pipeline">
+<span class="md-ellipsis">
+      
+        Provisioning: the phase pipeline
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#durable-state-where-the-environment-lives">
+<span class="md-ellipsis">
+      
+        Durable state: where the environment lives
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#the-nx-cli-the-daily-interface">
+<span class="md-ellipsis">
+      
+        The nx CLI: the daily interface
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#package-composition-four-layers-one-profile">
+<span class="md-ellipsis">
+      
+        Package composition: four layers, one profile
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#managed-block-pattern-idempotent-profile-injection">
+<span class="md-ellipsis">
+      
+        Managed-block pattern: idempotent profile injection
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#corporate-proxy-and-mitm-detection">
+<span class="md-ellipsis">
+      
+        Corporate proxy and MITM detection
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#cross-platform-consistency">
+<span class="md-ellipsis">
+      
+        Cross-platform consistency
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#testability-by-design">
+<span class="md-ellipsis">
+      
+        Testability by design
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#bootstrap-problem-how-jq-arrives">
+<span class="md-ellipsis">
+      
+        Bootstrap problem: how jq arrives
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#bash-32-bsd-constraints">
+<span class="md-ellipsis">
+      
+        Bash 3.2 + BSD constraints
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#reproducibility-and-provenance">
+<span class="md-ellipsis">
+      
+        Reproducibility and provenance
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#customization-without-forking">
+<span class="md-ellipsis">
+      
+        Customization without forking
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#design-principles">
+<span class="md-ellipsis">
+      
+        Design principles
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#further-reading">
+<span class="md-ellipsis">
+      
+        Further reading
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../decisions/">
+<span class="md-ellipsis">
+    
+  
+    Design Decisions
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../standards/">
+<span class="md-ellipsis">
+    
+  
+    Quality &amp; Testing
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../enterprise/">
+<span class="md-ellipsis">
+    
+  
+    Enterprise Readiness
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../proxy/">
+<span class="md-ellipsis">
+    
+  
+    Corporate Proxy
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../releasing/">
+<span class="md-ellipsis">
+    
+  
+    Releasing
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../customization/">
+<span class="md-ellipsis">
+    
+  
+    Customization
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#the-bootstrapper-model">
+<span class="md-ellipsis">
+      
+        The bootstrapper model
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#provisioning-the-phase-pipeline">
+<span class="md-ellipsis">
+      
+        Provisioning: the phase pipeline
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#durable-state-where-the-environment-lives">
+<span class="md-ellipsis">
+      
+        Durable state: where the environment lives
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#the-nx-cli-the-daily-interface">
+<span class="md-ellipsis">
+      
+        The nx CLI: the daily interface
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#package-composition-four-layers-one-profile">
+<span class="md-ellipsis">
+      
+        Package composition: four layers, one profile
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#managed-block-pattern-idempotent-profile-injection">
+<span class="md-ellipsis">
+      
+        Managed-block pattern: idempotent profile injection
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#corporate-proxy-and-mitm-detection">
+<span class="md-ellipsis">
+      
+        Corporate proxy and MITM detection
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#cross-platform-consistency">
+<span class="md-ellipsis">
+      
+        Cross-platform consistency
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#testability-by-design">
+<span class="md-ellipsis">
+      
+        Testability by design
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#bootstrap-problem-how-jq-arrives">
+<span class="md-ellipsis">
+      
+        Bootstrap problem: how jq arrives
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#bash-32-bsd-constraints">
+<span class="md-ellipsis">
+      
+        Bash 3.2 + BSD constraints
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#reproducibility-and-provenance">
+<span class="md-ellipsis">
+      
+        Reproducibility and provenance
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#customization-without-forking">
+<span class="md-ellipsis">
+      
+        Customization without forking
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#design-principles">
+<span class="md-ellipsis">
+      
+        Design principles
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#further-reading">
+<span class="md-ellipsis">
+      
+        Further reading
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-content" data-md-component="content">
+<article class="md-content__inner md-typeset">
+<h1 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">¤</a></h1>
+<p>This page explains the design behind the tool - the patterns that make it portable, idempotent, and testable. It is a guided tour for engineers evaluating, adopting, or operating the tool. For exhaustive file tables, recipes, and constraint references aimed at maintainers, see <a href="https://github.com/szymonos/envy-nx/blob/main/ARCHITECTURE.md"><code>ARCHITECTURE.md</code></a> in the repository root.</p>
+<h2 id="the-bootstrapper-model">The bootstrapper model<a class="headerlink" href="#the-bootstrapper-model" title="Permanent link">¤</a></h2>
+<p>The tool <strong>provisions; it does not run continuously</strong>. One <code>nix/setup.sh</code> invocation produces a self-contained environment in <code>~/.config/nix-env/</code> and exits. There is no daemon, no agent, no background process, no central server. After setup, the source repository clone is <strong>disposable</strong> - <code>nx upgrade</code>, <code>nx scope</code>, <code>nx install</code>, <code>nx doctor</code>, and <code>nix/uninstall.sh</code> all operate on <code>~/.config/nix-env/</code> without needing the repo.</p>
+<div class="mermaid">flowchart LR
+    REPO["Source repo
+    (cloned or tarball)"] --&gt;|nix/setup.sh| PROV["Provisioning
+    7 phases"]
+    PROV --&gt;|writes| STATE["~/.config/nix-env/
+    + ~/.config/shell/
+    + ~/.config/certs/
+    + ~/.config/dev-env/"]
+    STATE --&gt; CLI["nx CLI
+    (daily use, no repo needed)"]
+    REPO -.-&gt;|safe to delete after setup| X((( )))
+
+    style REPO fill:#1a1a2e,stroke:#16213e
+    style PROV fill:#0f3460,stroke:#16213e
+    style STATE fill:#16213e,stroke:#16213e
+    style CLI fill:#533483,stroke:#16213e</div>
+<p>This shape has practical consequences for everyday use:</p>
+<ul>
+<li><strong>Zero operational overhead.</strong> Nothing to monitor, nothing to keep running, no service to restart.</li>
+<li><strong>Offline after install.</strong> Day-to-day <code>nx</code> commands need only the local environment. <code>nx upgrade</code> is the one verb that goes to the network, on demand.</li>
+<li><strong>Clean uninstall.</strong> <code>nix/uninstall.sh</code> removes only what the tool created. Generic config (certs, local PATH, third-party shell aliases) is preserved.</li>
+<li><strong>Disposable repo, durable environment.</strong> Delete the repo, keep working. Re-clone six months later, <code>nx setup</code> finds the canonical location automatically.</li>
+</ul>
+<h2 id="provisioning-the-phase-pipeline">Provisioning: the phase pipeline<a class="headerlink" href="#provisioning-the-phase-pipeline" title="Permanent link">¤</a></h2>
+<p><code>nix/setup.sh</code> is a slim ~110-line orchestrator. All logic lives in <strong>phase libraries</strong> under <code>nix/lib/phases/</code>, each independently testable. The orchestrator's only job is sequencing.</p>
+<div class="mermaid">flowchart TD
+    B["Bootstrap
+    repo refresh, root guard,
+    nix detect/install, jq bootstrap,
+    arg parsing"] --&gt; PL["Platform
+    OS detect, overlay discovery,
+    pre-setup hooks"]
+    PL --&gt; SC["Scopes
+    load existing config.nix,
+    apply --remove, resolve deps,
+    write config.nix"]
+    SC --&gt; NP["Nix Profile
+    flake update (--upgrade only),
+    nix profile add/upgrade,
+    MITM probe + CA bundle"]
+    NP --&gt; CF["Configure
+    gh auth, git config,
+    per-scope configure scripts"]
+    CF --&gt; PR["Profiles
+    bash, zsh, PowerShell
+    managed block rendering"]
+    PR --&gt; PI["Post-install
+    setup_common, GC, summary,
+    install.json provenance"]</div>
+<p>Each phase has a single responsibility:</p>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>What it solves</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Bootstrap</strong></td>
+<td>Make the script self-correcting: refresh the repo if behind, install Nix on a bare machine, install <code>jq</code> via Nix if it's missing</td>
+</tr>
+<tr>
+<td><strong>Platform</strong></td>
+<td>Detect macOS/Linux differences once, run user-supplied pre-setup hooks</td>
+</tr>
+<tr>
+<td><strong>Scopes</strong></td>
+<td>Resolve which packages the user wants (flags + auto-detection + overlay), persist to <code>config.nix</code></td>
+</tr>
+<tr>
+<td><strong>Nix Profile</strong></td>
+<td>Apply the resolved environment as a single atomic <code>nix profile add/upgrade</code>, detect MITM proxies and build the merged CA bundle</td>
+</tr>
+<tr>
+<td><strong>Configure</strong></td>
+<td>Run per-scope post-install steps (<code>gh auth login</code>, <code>git config</code>, conda init, terraform install, prompt theme copy, etc.)</td>
+</tr>
+<tr>
+<td><strong>Profiles</strong></td>
+<td>Write the <strong>managed blocks</strong> into <code>~/.bashrc</code>, <code>~/.zshrc</code>, and the PowerShell profile</td>
+</tr>
+<tr>
+<td><strong>Post-install</strong></td>
+<td>Install non-Nix extras (Copilot CLI, zsh plugins, PowerShell modules), garbage-collect old generations, write <code>install.json</code></td>
+</tr>
+</tbody>
+</table>
+<p>Re-running setup is <strong>idempotent</strong>: the same flags produce the same output. New flags are additive - adding <code>--terraform</code> to an existing install does not remove anything else. <code>setup.sh --upgrade</code> is the explicit verb that pulls fresh package versions.</p>
+<h2 id="durable-state-where-the-environment-lives">Durable state: where the environment lives<a class="headerlink" href="#durable-state-where-the-environment-lives" title="Permanent link">¤</a></h2>
+<p>After provisioning, every piece of state lives under the user's home directory. The repo is a one-time bootstrapper.</p>
+<div class="mermaid">flowchart LR
+    subgraph home["~/"]
+        subgraph nix_env["~/.config/nix-env/"]
+            F["flake.nix
+            scopes/*.nix"]
+            C["config.nix
+            (resolved scope set)"]
+            P["packages.nix
+            (nx install / remove)"]
+            NX["nx.sh + family files
+            nx_doctor.sh
+            profile_block.sh"]
+        end
+        subgraph shell_cfg["~/.config/shell/"]
+            A["aliases_*.sh
+            functions.sh
+            completions.{bash,zsh}"]
+        end
+        subgraph powershell_cfg["~/.config/powershell/"]
+            PS["Scripts/
+            _aliases_nix.ps1"]
+        end
+        subgraph certs["~/.config/certs/"]
+            CC["ca-custom.crt
+            ca-bundle.crt"]
+        end
+        subgraph prov["~/.config/dev-env/"]
+            IJ["install.json
+            (provenance)"]
+        end
+    end</div>
+<table>
+<thead>
+<tr>
+<th>Directory</th>
+<th>What it holds</th>
+<th>Survives uninstall?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>~/.config/nix-env/</code></td>
+<td>Nix environment: flake, scopes, config, <code>nx</code> CLI source</td>
+<td>No (removable)</td>
+</tr>
+<tr>
+<td><code>~/.config/shell/</code></td>
+<td>Bash/zsh aliases, functions, generated completions</td>
+<td>Partial</td>
+</tr>
+<tr>
+<td><code>~/.config/powershell/</code></td>
+<td>PowerShell aliases + nx wrapper</td>
+<td>Partial</td>
+</tr>
+<tr>
+<td><code>~/.config/certs/</code></td>
+<td>Custom CA + merged bundle (used by all tools)</td>
+<td>Yes (preserved)</td>
+</tr>
+<tr>
+<td><code>~/.config/dev-env/</code></td>
+<td><code>install.json</code> - version, scopes, status, timestamp</td>
+<td>Yes (preserved)</td>
+</tr>
+</tbody>
+</table>
+<p>The <code>nx</code> CLI runs entirely against <code>~/.config/nix-env/</code> - no network access, no server dependency, no repository clone required for day-to-day operations. <code>nx setup</code> is the one verb that needs the repo (and clones it on demand to a canonical location if missing).</p>
+<h2 id="the-nx-cli-the-daily-interface">The <code>nx</code> CLI: the daily interface<a class="headerlink" href="#the-nx-cli-the-daily-interface" title="Permanent link">¤</a></h2>
+<p>Nix is powerful but its surface (profiles, generations, closures, flake URIs) is steep. <code>nx</code> is a thin layer that wraps the daily verbs in vocabulary developers already know from <code>apt</code>, <code>brew</code>, and <code>pip</code>.</p>
+<div class="highlight"><pre><span></span><code>nx<span class="w"> </span>install<span class="w"> </span>httpie<span class="w">       </span><span class="c1"># add a package</span>
+nx<span class="w"> </span>remove<span class="w"> </span>httpie<span class="w">        </span><span class="c1"># remove it</span>
+nx<span class="w"> </span>upgrade<span class="w">              </span><span class="c1"># pull latest of everything</span>
+nx<span class="w"> </span>rollback<span class="w">             </span><span class="c1"># back out the last change</span>
+nx<span class="w"> </span>list<span class="w">                 </span><span class="c1"># show every package, annotated by origin</span>
+nx<span class="w"> </span>search<span class="w"> </span>ripgrep<span class="w">       </span><span class="c1"># find a package before installing</span>
+</code></pre></div>
+<p>Beyond package management, <code>nx</code> exposes the rest of the system as first-class verbs: <code>nx scope</code> (curated bundles), <code>nx overlay</code> (team/org customization), <code>nx pin</code> (lock nixpkgs to a commit), <code>nx profile</code> (managed shell-rc blocks), <code>nx doctor</code> (health checks), <code>nx version</code> (install provenance), <code>nx setup</code> / <code>nx self update</code> (re-provision / refresh source).</p>
+<p>Internally, <code>nx.sh</code> is a small entry point that sources four <strong>family files</strong> by domain - <code>nx_pkg.sh</code> (package management), <code>nx_scope.sh</code> (scopes/overlay/pin), <code>nx_profile.sh</code> (managed blocks), <code>nx_lifecycle.sh</code> (setup/self/doctor/version) - plus <code>nx_doctor.sh</code> for health checks. Splitting by domain keeps each file focused and makes adding verbs a localized change.</p>
+<p><strong>Tab completion</strong> is generated, not hand-maintained. The user-facing surface (verbs, subverbs, aliases, flags, dynamic completers) is declared once in <code>.assets/lib/nx_surface.json</code>. A generator emits bash, zsh, and PowerShell completers from that single source. Adding a flag is a one-file edit; pre-commit hooks (<code>check-nx-completions</code>, <code>check-nx-profile-parity</code>) defend against drift.</p>
+<p>See <a href="../nx/">The <code>nx</code> CLI</a> for the full command reference.</p>
+<h2 id="package-composition-four-layers-one-profile">Package composition: four layers, one profile<a class="headerlink" href="#package-composition-four-layers-one-profile" title="Permanent link">¤</a></h2>
+<p>Packages assemble bottom-up into a single Nix <code>buildEnv</code> profile entry. No layer can shadow or break another.</p>
+<div class="mermaid">graph TD
+    subgraph "Nix buildEnv (single profile entry)"
+        L4["Layer 4: Extra packages
+        packages.nix - nx install/remove"]
+        L3["Layer 3: Overlay scopes
+        local_*.nix - team/org overlays"]
+        L2["Layer 2: Repo scopes
+        shell.nix, python.nix - nix/setup.sh flags"]
+        L1["Layer 1: Base
+        base.nix - always installed"]
+    end
+
+    L4 --&gt; L3 --&gt; L2 --&gt; L1</div>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>What</th>
+<th>Source</th>
+<th>Who manages it</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Base</strong></td>
+<td>Core tools (git, gh, jq, openssl, vim, ...)</td>
+<td><code>nix/scopes/base.nix</code></td>
+<td>Always installed</td>
+</tr>
+<tr>
+<td><strong>Repo scopes</strong></td>
+<td>Curated groups (shell, python, k8s, terraform)</td>
+<td><code>nix/scopes/&lt;name&gt;.nix</code></td>
+<td><code>setup.sh</code> flags</td>
+</tr>
+<tr>
+<td><strong>Overlay scopes</strong></td>
+<td>Custom groups (team CLIs, org utilities)</td>
+<td><code>local_*.nix</code> in scopes dir</td>
+<td><code>nx scope add</code> / overlay dir</td>
+</tr>
+<tr>
+<td><strong>Extra packages</strong></td>
+<td>Individual tools, ad-hoc</td>
+<td><code>packages.nix</code></td>
+<td><code>nx install</code> / <code>nx remove</code></td>
+</tr>
+</tbody>
+</table>
+<p>All four merge into a single <code>nix profile upgrade</code> - one atomic operation, one rollback point. There is no layered priority or shadowing; the flake concatenates them and asks Nix to build the union. Conflict (same binary from two layers) is a build error, surfaced at provisioning time, not at runtime.</p>
+<p>This design enables the three customization patterns without forking:</p>
+<ul>
+<li><strong>Solo developer</strong> - <code>nx install httpie</code> adds a package to layer 4, no scope involved.</li>
+<li><strong>Team</strong> - point <code>NIX_ENV_OVERLAY_DIR</code> at a shared git repo with team-specific scopes (layer 3).</li>
+<li><strong>Organization</strong> - distribute org-wide scopes, hooks, and pinned <code>nixpkgs</code> revisions through the same overlay mechanism.</li>
+</ul>
+<p>See <a href="../customization/">Customization</a> for the full guide.</p>
+<h2 id="managed-block-pattern-idempotent-profile-injection">Managed-block pattern: idempotent profile injection<a class="headerlink" href="#managed-block-pattern-idempotent-profile-injection" title="Permanent link">¤</a></h2>
+<p>Every shell configuration tool eventually reaches for <code>~/.bashrc</code>. The naive approach - <code>grep -q 'pattern' || echo 'line' &gt;&gt; ~/.bashrc</code> - is fragile: it duplicates on re-run if the grep is imperfect, can't update existing entries in place, and leaves orphaned lines after uninstall. This tool uses a <strong>managed block</strong> pattern instead.</p>
+<p>Configuration is written between sentinel markers and <strong>fully regenerated</strong> on each run:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># &gt;&gt;&gt; nix-env managed &gt;&gt;&gt;</span>
+<span class="c1"># :path</span>
+.<span class="w"> </span><span class="nv">$HOME</span>/.nix-profile/etc/profile.d/nix.sh
+<span class="nb">export</span><span class="w"> </span><span class="nv">PATH</span><span class="o">=</span><span class="s2">"</span><span class="nv">$HOME</span><span class="s2">/.nix-profile/bin:</span><span class="nv">$PATH</span><span class="s2">"</span>
+<span class="nb">export</span><span class="w"> </span><span class="nv">NIX_SSL_CERT_FILE</span><span class="o">=</span><span class="s2">"</span><span class="nv">$HOME</span><span class="s2">/.config/certs/ca-bundle.crt"</span>
+<span class="c1"># :aliases</span>
+.<span class="w"> </span><span class="s2">"</span><span class="nv">$HOME</span><span class="s2">/.config/shell/aliases_nix.sh"</span>
+<span class="c1"># :oh-my-posh</span>
+<span class="o">[</span><span class="w"> </span>-x<span class="w"> </span><span class="s2">"</span><span class="nv">$HOME</span><span class="s2">/.nix-profile/bin/oh-my-posh"</span><span class="w"> </span><span class="o">]</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">eval</span><span class="w"> </span><span class="s2">"</span><span class="k">$(</span>oh-my-posh<span class="w"> </span>init<span class="w"> </span>bash<span class="w"> </span>...<span class="k">)</span><span class="s2">"</span>
+<span class="c1"># &lt;&lt;&lt; nix-env managed &lt;&lt;&lt;</span>
+
+<span class="c1"># &gt;&gt;&gt; managed env &gt;&gt;&gt;</span>
+<span class="c1"># :local path</span>
+<span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span>-d<span class="w"> </span><span class="s2">"</span><span class="nv">$HOME</span><span class="s2">/.local/bin"</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">  </span><span class="nb">export</span><span class="w"> </span><span class="nv">PATH</span><span class="o">=</span><span class="s2">"</span><span class="nv">$HOME</span><span class="s2">/.local/bin:</span><span class="nv">$PATH</span><span class="s2">"</span>
+<span class="k">fi</span>
+<span class="c1"># :certs</span>
+<span class="nb">export</span><span class="w"> </span><span class="nv">NODE_EXTRA_CA_CERTS</span><span class="o">=</span><span class="s2">"</span><span class="nv">$HOME</span><span class="s2">/.config/certs/ca-custom.crt"</span>
+<span class="c1"># &lt;&lt;&lt; managed env &lt;&lt;&lt;</span>
+</code></pre></div>
+<p>Two blocks are written to each rc file, with an explicit purpose split:</p>
+<table>
+<thead>
+<tr>
+<th>Block</th>
+<th>Contents</th>
+<th>Removed by uninstall?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>nix-env managed</code></td>
+<td>Nix-specific: PATH, nix aliases, completions, prompt</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td><code>managed env</code></td>
+<td>Generic: local PATH, cert env vars, shared functions</td>
+<td>No (preserved)</td>
+</tr>
+</tbody>
+</table>
+<p>The split means <strong>uninstalling Nix-specific config preserves things other tools need</strong>: certificates configured in <code>managed env</code> keep working for any future package manager; the <code>~/.local/bin</code> PATH addition keeps working for <code>pip install --user</code> and similar.</p>
+<p>PowerShell uses the same pattern with <code>#region nix:* / #endregion</code> markers, managed natively in PowerShell rather than proxied to bash. The <code>$PROFILE</code> path and region syntax are PowerShell-specific - implementing them natively keeps each side idiomatic. The user-facing <code>nx profile</code> subverb surface stays in sync via a pre-commit parity hook.</p>
+<p>Properties:</p>
+<ul>
+<li><strong>Idempotent</strong> - running setup any number of times produces identical output. CI verifies this on every PR.</li>
+<li><strong>Updatable</strong> - the block content is replaced atomically, not appended to.</li>
+<li><strong>Removable</strong> - <code>nix/uninstall.sh</code> deletes the block cleanly.</li>
+<li><strong>Diagnosable</strong> - <code>nx profile doctor</code> detects duplicate or missing blocks.</li>
+</ul>
+<h2 id="corporate-proxy-and-mitm-detection">Corporate proxy and MITM detection<a class="headerlink" href="#corporate-proxy-and-mitm-detection" title="Permanent link">¤</a></h2>
+<p>Nix-installed binaries ship with an isolated Mozilla CA bundle - they do <strong>not</strong> consult the macOS Keychain or Linux system CA store. A MITM proxy cert trusted by the OS is invisible to nix tools. Python's <code>certifi</code> and Node's built-in CA bundle have the same blind spot. Each ecosystem needs its own configuration.</p>
+<p>The setup detects and resolves this automatically:</p>
+<div class="mermaid">flowchart LR
+    P["TLS probe
+    (default: google.com,
+    override: NIX_ENV_TLS_PROBE_URL)"] --&gt; D{SSL
+    verification
+    fails?}
+    D --&gt;|Yes| I["cert_intercept
+    Extract intermediate + root certs
+    from TLS chain, deduplicate"]
+    D --&gt;|No| S["Skip
+    No proxy detected"]
+    I --&gt; SAVE["Save to
+    ~/.config/certs/ca-custom.crt"]
+    SAVE --&gt; B["build_ca_bundle
+    Merge nix CAs + custom certs"]
+    B --&gt; FILE["Write
+    ~/.config/certs/ca-bundle.crt"]
+    FILE --&gt; E["Configure env vars
+    NIX_SSL_CERT_FILE
+    NODE_EXTRA_CA_CERTS
+    REQUESTS_CA_BUNDLE
+    SSL_CERT_FILE
+    UV_SYSTEM_CERTS"]</div>
+<p>A single merged CA bundle and a small set of well-known environment variables - set in the <code>managed env</code> block - cover every tool ecosystem the project supports. On macOS, certificates are exported directly from the Keychain to capture corporate CAs deployed via MDM. The two helper functions <code>cert_intercept</code> and <code>fixcertpy</code> are available afterward for ongoing certificate management (new VPN, additional hosts, fresh Python virtualenv).</p>
+<p>VS Code Server has a separate problem: it does not source <code>~/.bashrc</code>, so shell-profile env vars are invisible to extensions. The setup writes <code>~/.vscode-server/server-env-setup</code>, which VS Code Server sources before launching extensions, eliminating <code>SELF_SIGNED_CERT_IN_CHAIN</code> errors in GitHub Actions, GitHub Pull Requests, and similar HTTPS-using extensions.</p>
+<p>See <a href="../proxy/">Corporate Proxy</a> for the full operational details.</p>
+<h2 id="cross-platform-consistency">Cross-platform consistency<a class="headerlink" href="#cross-platform-consistency" title="Permanent link">¤</a></h2>
+<p>The same setup, the same scopes, and the same <code>nx</code> commands work identically across all supported platforms:</p>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Entry point</th>
+<th>Root required</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>macOS (Apple Silicon, Intel)</td>
+<td><code>nix/setup.sh</code></td>
+<td>One-time</td>
+<td>bash 3.2 path; certs from Keychain</td>
+</tr>
+<tr>
+<td>Linux (Debian/Ubuntu/Fedora/...)</td>
+<td><code>nix/setup.sh</code></td>
+<td>One-time</td>
+<td>Optional: <code>linux_setup.sh</code> for system prep</td>
+</tr>
+<tr>
+<td>WSL</td>
+<td><code>wsl/wsl_setup.ps1</code></td>
+<td>Windows admin</td>
+<td>Provisions distro, then runs <code>nix/setup.sh</code></td>
+</tr>
+<tr>
+<td>Coder / devcontainers</td>
+<td><code>nix/setup.sh</code></td>
+<td>None</td>
+<td>Rootless, no daemon</td>
+</tr>
+</tbody>
+</table>
+<p>Cross-platform parity is structural, not aspirational. The same <code>scopes.json</code> defines the scope catalog for all entry points (parsed natively by bash, PowerShell, and Python). The same <code>nx</code> verbs work in every shell. The only platform-specific divergence is <em>what packages each scope ships</em>: on Linux the <code>zsh</code> scope ships only plugins (zsh comes from the system package manager); on macOS the <code>zsh</code> scope ships zsh itself. This is centralized in <code>phase_scopes_skip_system_prefer</code> rather than scattered through callers.</p>
+<h2 id="testability-by-design">Testability by design<a class="headerlink" href="#testability-by-design" title="Permanent link">¤</a></h2>
+<p>Bash is not commonly thought of as a test-friendly language. This codebase has 600+ test cases across 33 test files because the architecture deliberately enables it.</p>
+<p>The key choice: <strong>every side effect is called through a thin wrapper</strong>. Phase functions never call <code>nix</code>, <code>curl</code>, or external scripts directly - they call <code>_io_nix</code>, <code>_io_curl_probe</code>, or <code>_io_run</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># nix/lib/io.sh - production wrappers</span>
+_io_nix<span class="o">()</span><span class="w">        </span><span class="o">{</span><span class="w"> </span>nix<span class="w"> </span><span class="s2">"</span><span class="nv">$@</span><span class="s2">"</span><span class="p">;</span><span class="w"> </span><span class="o">}</span>
+_io_curl_probe<span class="o">()</span><span class="w"> </span><span class="o">{</span><span class="w"> </span>curl<span class="w"> </span>-sS<span class="w"> </span><span class="s2">"</span><span class="nv">$@</span><span class="s2">"</span><span class="p">;</span><span class="w"> </span><span class="o">}</span>
+_io_run<span class="o">()</span><span class="w">        </span><span class="o">{</span><span class="w"> </span><span class="s2">"</span><span class="nv">$@</span><span class="s2">"</span><span class="p">;</span><span class="w"> </span><span class="o">}</span>
+</code></pre></div>
+<p>Tests redefine these wrappers - three lines, no mocking framework, no PATH manipulation, no subprocess overhead:</p>
+<div class="highlight"><pre><span></span><code>setup<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">  </span><span class="nb">source</span><span class="w"> </span><span class="s2">"</span><span class="nv">$REPO_ROOT</span><span class="s2">/nix/lib/io.sh"</span>
+<span class="w">  </span><span class="nb">source</span><span class="w"> </span><span class="s2">"</span><span class="nv">$REPO_ROOT</span><span class="s2">/nix/lib/phases/nix_profile.sh"</span>
+<span class="w">  </span>_io_nix<span class="o">()</span><span class="w"> </span><span class="o">{</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"nix </span><span class="nv">$*</span><span class="s2">"</span><span class="w"> </span>&gt;&gt;<span class="s2">"</span><span class="nv">$BATS_TEST_TMPDIR</span><span class="s2">/nix.log"</span><span class="p">;</span><span class="w"> </span><span class="o">}</span>
+<span class="o">}</span>
+
+@test<span class="w"> </span><span class="s2">"nix_profile: apply runs profile upgrade"</span><span class="w"> </span><span class="o">{</span>
+<span class="w">  </span>phase_nix_profile_apply
+<span class="w">  </span>grep<span class="w"> </span>-q<span class="w"> </span><span class="s1">'nix profile upgrade'</span><span class="w"> </span><span class="s2">"</span><span class="nv">$BATS_TEST_TMPDIR</span><span class="s2">/nix.log"</span>
+<span class="o">}</span>
+</code></pre></div>
+<p>This pattern works identically on bash 3.2 (macOS) and bash 5 (Linux). Reading a test shows exactly which commands a phase executes - the test <em>is</em> the documentation. Configure scripts are themselves invoked via <code>_io_run</code>, so their internal commands are already wrapped at the call site without needing <code>_io_*</code> calls inside.</p>
+<p>For the parts of the system that can't be unit-tested in isolation, the project layers additional guards:</p>
+<ul>
+<li><strong>Static hooks</strong> at edit time - <code>check-bash32</code>, <code>check-zsh-compat</code>, <code>validate-scopes</code>, <code>check-nx-completions</code>, <code>check-nx-profile-parity</code>, ShellCheck.</li>
+<li><strong>Runtime smoke tests</strong> - <code>tests/bats/test_nx_zsh.bats</code> actually sources the <code>nx</code> CLI under zsh and exercises every dispatcher path (catches issues no static analyzer can - like the difference between bash and zsh array indexing).</li>
+<li><strong>Docker integration tests</strong> - <code>make test-nix</code> runs the full provisioning pass in a clean container and verifies binaries land on PATH, <code>install.json</code> records success, and <code>nx doctor --strict</code> passes.</li>
+<li><strong>CI matrix</strong> - <code>test_linux.yml</code> (daemon + rootless) and <code>test_macos.yml</code> (Sequoia + Tahoe) run the full setup, verify scope binaries, and assert idempotency on every PR.</li>
+</ul>
+<p>Coverage is not measured as a percentage - the policy is "every phase function, every <code>nx</code> verb, every doctor check has at least one test." See <a href="../standards/">Quality &amp; Testing</a> for the full breakdown.</p>
+<h2 id="bootstrap-problem-how-jq-arrives">Bootstrap problem: how <code>jq</code> arrives<a class="headerlink" href="#bootstrap-problem-how-jq-arrives" title="Permanent link">¤</a></h2>
+<p><code>scopes.json</code> is the single source of truth for scope metadata, parsed by three runtimes:</p>
+<table>
+<thead>
+<tr>
+<th>Consumer</th>
+<th>Parser</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>bash</td>
+<td><code>jq</code></td>
+</tr>
+<tr>
+<td>PowerShell</td>
+<td><code>ConvertFrom-Json</code></td>
+</tr>
+<tr>
+<td>Python</td>
+<td><code>json</code> stdlib</td>
+</tr>
+</tbody>
+</table>
+<p>JSON is the only format all three parse natively without a custom parser. But on bare macOS, <code>jq</code> doesn't exist - and the tool that installs <code>jq</code> needs <code>jq</code> to resolve the scope set.</p>
+<p>The solution is a tiny bootstrap layer:</p>
+<ol>
+<li><code>nix/scopes/base_init.nix</code> - minimal package list (<code>jq</code>, <code>curl</code>) included only during bootstrap.</li>
+<li><code>isInit</code> flag in <code>config.nix</code> - set to <code>true</code> on the very first run when <code>jq</code> is missing.</li>
+<li><code>flake.nix</code> conditionally includes <code>base_init.nix</code> packages when <code>isInit</code> is true.</li>
+<li>First run installs <code>jq</code> via Nix, flips <code>isInit</code> to false. All subsequent runs find <code>jq</code> and skip the bootstrap block entirely.</li>
+</ol>
+<p>The total cost is ~13 lines of <code>setup.sh</code>, one <code>.nix</code> file, and one config flag. It runs once per machine in seconds, then <code>jq</code> is an ordinary Nix-managed package. This pattern - a minimal bootstrap layer that becomes invisible after first run - is one of the load-bearing design choices that makes the tool work on a stock macOS shell.</p>
+<p>See <a href="../decisions/#why-json-as-the-shared-schema-format">Design Decisions → Why JSON as the shared schema format</a> for the alternatives that were rejected.</p>
+<h2 id="bash-32-bsd-constraints">Bash 3.2 + BSD constraints<a class="headerlink" href="#bash-32-bsd-constraints" title="Permanent link">¤</a></h2>
+<p>macOS ships bash 3.2 as the system default and Apple will not update it (GPLv3 licensing). The setup script must run on a stock macOS - a tool that requires you to already have a setup environment defeats its own purpose.</p>
+<p>Concretely, all nix-path scripts must avoid:</p>
+<table>
+<thead>
+<tr>
+<th>Blocked construct</th>
+<th>Portable alternative</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mapfile</code> / <code>readarray</code></td>
+<td><code>while IFS= read -r; do arr+=(); done &lt; &lt;(...)</code></td>
+</tr>
+<tr>
+<td><code>declare -A</code> (associative)</td>
+<td>Space-delimited strings + helper functions</td>
+</tr>
+<tr>
+<td><code>${var,,}</code> / <code>${var^^}</code></td>
+<td><code>tr '[:upper:]' '[:lower:]'</code></td>
+</tr>
+<tr>
+<td><code>declare -n</code> (namerefs)</td>
+<td>Pass variable name as string</td>
+</tr>
+<tr>
+<td><code>sed -i ''</code> (BSD in-place)</td>
+<td>Write to temp file + <code>mv</code></td>
+</tr>
+<tr>
+<td><code>grep -P</code> (PCRE)</td>
+<td><code>grep -E</code> or <code>sed</code></td>
+</tr>
+<tr>
+<td><code>sed -r</code></td>
+<td><code>sed -E</code></td>
+</tr>
+<tr>
+<td>Negative array indices</td>
+<td><code>${arr[$((${#arr[@]}-1))]}</code></td>
+</tr>
+</tbody>
+</table>
+<p>This is <strong>enforced by automation</strong>, not convention - the <code>check-bash32</code> pre-commit hook scans every nix-path file for 14 categories of bash 4+ constructs and blocks the commit. The macOS CI workflow validates the same constraints end-to-end on every pull request. Linux-only scripts (<code>linux_setup.sh</code>, system installers, system checks) use bash 5 features freely; the constraint applies only to files that run on macOS.</p>
+<p>A related constraint applies to files sourced into the user's interactive shell (<code>shell_cfg/*.sh</code>, <code>nx*.sh</code>, <code>profile_block.sh</code>): they must work under both bash and zsh. The <code>check-zsh-compat</code> hook enforces this - it auto-recognizes safe <code>BASH_SOURCE</code> patterns (default-value, <code>||</code> fallback, equality test, guarded blocks) so the rule rarely needs explicit annotations.</p>
+<h2 id="reproducibility-and-provenance">Reproducibility and provenance<a class="headerlink" href="#reproducibility-and-provenance" title="Permanent link">¤</a></h2>
+<p>Every setup run writes <code>~/.config/dev-env/install.json</code>. This single file answers the questions every operations team eventually asks:</p>
+<ul>
+<li><em>What version of the tool is installed?</em></li>
+<li><em>Which scopes is this developer running?</em></li>
+<li><em>Did the last setup succeed?</em></li>
+<li><em>When did it run?</em></li>
+<li><em>Where is the source repo?</em></li>
+</ul>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"version"</span><span class="p">:</span><span class="w"> </span><span class="s2">"v1.3.2"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"entry_point"</span><span class="p">:</span><span class="w"> </span><span class="s2">"nix"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"scopes"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"shell"</span><span class="p">,</span><span class="w"> </span><span class="s2">"python"</span><span class="p">,</span><span class="w"> </span><span class="s2">"pwsh"</span><span class="p">,</span><span class="w"> </span><span class="s2">"k8s_base"</span><span class="p">],</span>
+<span class="w">  </span><span class="nt">"status"</span><span class="p">:</span><span class="w"> </span><span class="s2">"success"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"phase"</span><span class="p">:</span><span class="w"> </span><span class="s2">"post_install"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"platform"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Linux x86_64"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"user"</span><span class="p">:</span><span class="w"> </span><span class="s2">"me"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"repo_path"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/home/me/source/repos/szymonos/envy-nx"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"timestamp"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2026-04-29T14:32:11Z"</span>
+<span class="p">}</span>
+</code></pre></div>
+<p><code>nx version</code> reads this file and prints a human-readable summary. Fleet operators can collect <code>install.json</code> from each developer machine to build deployment dashboards. The data is structured (JSON), versioned, and written by an <code>EXIT</code> trap so it is captured even when setup fails - <code>status: "failed"</code> plus <code>phase: "&lt;where it died&gt;"</code> is far more actionable than a missing entry.</p>
+<p>For coordinated reproducibility across a team, <code>nx pin set &lt;rev&gt;</code> locks the entire <code>nixpkgs</code> input to a specific commit SHA. Everyone resolves the same package versions until the pin is updated. No shipped <code>flake.lock</code> in the repo; the per-user lock in <code>~/.config/nix-env/flake.lock</code> gives run-to-run reproducibility on one machine without forcing a single revision on every consumer.</p>
+<h2 id="customization-without-forking">Customization without forking<a class="headerlink" href="#customization-without-forking" title="Permanent link">¤</a></h2>
+<p>The tool is extensible at three levels - without forking the base repository or modifying upstream files:</p>
+<div class="mermaid">graph TD
+    A["Base layer
+    (this repo)"] --&gt; B["Overlay layer
+    (team or org)"]
+    B --&gt; C["User layer
+    (individual)"]
+    A -- "nix/scopes/*.nix" --&gt; D["Curated scopes"]
+    B -- "overlay/scopes/*.nix" --&gt; E["Custom scopes
+    (local_ prefix)"]
+    B -- "overlay/shell_cfg/*" --&gt; F["Extra shell config"]
+    B -- "overlay/hooks/*.d/" --&gt; G["Pre/post-setup hooks"]
+    C -- "packages.nix" --&gt; H["nx install &lt;pkg&gt;"]</div>
+<table>
+<thead>
+<tr>
+<th>Level</th>
+<th>Mechanism</th>
+<th>Use case</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Individual</td>
+<td><code>nx install &lt;pkg&gt;</code> → <code>packages.nix</code></td>
+<td>One-off tools</td>
+</tr>
+<tr>
+<td>Team</td>
+<td>Shared overlay via <code>NIX_ENV_OVERLAY_DIR</code></td>
+<td>Team-specific scopes, aliases, hooks</td>
+</tr>
+<tr>
+<td>Organization</td>
+<td>Org-managed overlay repo</td>
+<td>Org standards, pinned revisions, compliance hooks</td>
+</tr>
+</tbody>
+</table>
+<p>Overlay scopes are copied with a <code>local_</code> prefix to avoid collisions with base scope names. Hooks (<code>pre-setup.d/</code> and <code>post-setup.d/</code>) run during <code>nix/setup.sh</code> with documented environment variables (<code>NIX_ENV_VERSION</code>, <code>NIX_ENV_PLATFORM</code>, <code>NIX_ENV_SCOPES</code>, <code>NIX_ENV_PHASE</code>). A typical organization use case: a <code>pre-setup.d/pin_nixpkgs.sh</code> hook writes the org-approved <code>pinned_rev</code> so every developer resolves the same <code>nixpkgs</code> revision.</p>
+<p>See <a href="../customization/">Customization</a> for the full guide and worked examples.</p>
+<h2 id="design-principles">Design principles<a class="headerlink" href="#design-principles" title="Permanent link">¤</a></h2>
+<p>The choices above are not isolated - they share a small set of principles applied consistently:</p>
+<ul>
+<li><strong>Bootstrapper, not agent.</strong> Run once, provision, exit. No daemon, no background process, no runtime dependency on infrastructure.</li>
+<li><strong>Explicit upgrades.</strong> <code>nix/setup.sh</code> without <code>--upgrade</code> re-applies configuration using existing package versions. Package updates require an explicit <code>--upgrade</code> or <code>nx upgrade</code>. No silent breakage.</li>
+<li><strong>Additive scopes.</strong> Adding a scope never removes existing tools. Removal is an explicit action (<code>setup.sh --remove &lt;scope&gt;</code>). Scope dependencies are resolved automatically.</li>
+<li><strong>Tested constraints, not documented conventions.</strong> Bash 3.2 / BSD sed compatibility is enforced by a pre-commit hook. Scope consistency is validated by Python script. Idempotency is verified in CI on every PR. Constraints that depend on humans remembering them eventually drift.</li>
+<li><strong>Single source of truth for cross-runtime data.</strong> <code>scopes.json</code> (catalog) and <code>nx_surface.json</code> (CLI surface) are each read by bash, PowerShell, and Python. JSON is the only format all three parse natively without a custom parser.</li>
+<li><strong>Symmetric, not duplicated.</strong> Bash and PowerShell <code>nx profile</code> dispatchers operate on structurally different files (<code>~/.bashrc</code> vs <code>$PROFILE</code>); each is implemented natively in its own shell. The user-facing surface stays in sync via a parity hook, not by trying to share code that cannot be shared.</li>
+<li><strong>Disposable source.</strong> The repo is a bootstrapper, not a runtime dependency. After setup, everything needed for day-to-day use lives in <code>~/.config/nix-env/</code>.</li>
+</ul>
+<h2 id="further-reading">Further reading<a class="headerlink" href="#further-reading" title="Permanent link">¤</a></h2>
+<ul>
+<li><a href="https://github.com/szymonos/envy-nx/blob/main/ARCHITECTURE.md"><code>ARCHITECTURE.md</code></a> - implementation reference for maintainers (file tables, recipes, constraint reference, hook reference, runtime layout)</li>
+<li><a href="../decisions/">Design Decisions</a> - reasoning behind key choices and the alternatives that were rejected</li>
+<li><a href="../nx/">The <code>nx</code> CLI</a> - full command reference</li>
+<li><a href="../customization/">Customization</a> - overlay, hook, scope, and pin guide</li>
+<li><a href="../proxy/">Corporate Proxy</a> - certificate detection and configuration flow</li>
+<li><a href="../standards/">Quality &amp; Testing</a> - test infrastructure and quality gates</li>
+</ul>
+</article>
+</div>
+<script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+</div>
+</main>
+<footer class="md-footer">
+<div class="md-footer-meta md-typeset">
+<div class="md-footer-meta__inner md-grid">
+<div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" rel="noopener" target="_blank">
+      Material for MkDocs
+    </a>
+</div>
+</div>
+</div>
+</footer>
+</div>
+<div class="md-dialog" data-md-component="dialog">
+<div class="md-dialog__inner md-typeset"></div>
+</div>
+<script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.indexes", "navigation.sections", "content.code.copy", "content.tabs.link"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+<script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+<script src="../assets/javascripts/diagram-zoom.js"></script>
+<script type="module">import mermaid from "https://unpkg.com/mermaid@10.4.0/dist/mermaid.esm.min.mjs";
+mermaid.initialize({
+    startOnLoad: true,
+    theme: "dark",
+    securityLevel: "loose",
+    themeVariables: {
+        clusterBkg: "#263238",
+        darkMode: true,
+        edgeLabelBackground: "#263238",
+        fontFamily: "Roboto, sans-serif",
+        lineColor: "#90a4ae",
+        mainBkg: "#2c3e50",
+        nodeBorder: "#5c6bc0",
+        secondBkg: "#34495e",
+        tertiaryColor: "#455a64",
+        useMaxWidth: true,
+        htmlLabels: true,
+        curve: "basis"
+    },
+    sequence: {
+        useMaxWidth: true
+    },
+    gantt: {
+        useMaxWidth: true
+    },
+    flowchart: {
+        useMaxWidth: true,
+        htmlLabels: true,
+        curve: "basis"
+    }
+});</script></body>
+</html>
