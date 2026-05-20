@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.10.5] - 2026-05-20
+
+### Fixed
+
+- `.assets/config/pwsh_cfg/profile_nix.ps1`'s fallback `function Prompt` now only defines itself when both `$env:POSH_SHELL` is unset and `~/.nix-profile/bin/starship` is absent. The unconditional definition clobbered the oh-my-posh prompt that `~/.config/powershell/profile.ps1` had just installed (init runs *before* the dot-source of `profile_base.ps1`), so shells opened with a hand-rolled fallback (visually close to `base.omp.json`) instead of the configured `theme.omp.json`. `$env:POSH_THEME` is only populated at first prompt render and is empty during profile load, hence the `$env:POSH_SHELL` probe.
+
 ## [1.10.4] - 2026-05-15
 
 ### Added
