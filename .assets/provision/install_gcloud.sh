@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 : '
 # Install Google Cloud CLI from the official tarball into $HOME/google-cloud-sdk.
-# Skips when already installed (re-run is a no-op; refresh via
-# `gcloud components update` or the deferred `nx upgrade --all` flag).
+# Re-run is a no-op when already installed; pass --unattended true to
+# auto-update via `gcloud components update --quiet` on re-runs.
 .assets/provision/install_gcloud.sh
 .assets/provision/install_gcloud.sh --with_gke true --fix_certify true
+.assets/provision/install_gcloud.sh --with_gke true --fix_certify true --unattended true
 '
 set -euo pipefail
 
@@ -16,6 +17,7 @@ fi
 # parse named parameters
 with_gke=${with_gke:-false}
 fix_certify=${fix_certify:-false}
+unattended=${unattended:-false}
 while [ $# -gt 0 ]; do
   if [[ $1 == *"--"* ]]; then
     param="${1/--/}"
@@ -30,13 +32,19 @@ SCRIPT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 GCLOUD_HOME="$HOME/google-cloud-sdk"
 GCLOUD_BIN="$GCLOUD_HOME/bin/gcloud"
 
-# Skip-on-installed gate. Re-runs of `nix/setup.sh` do not refresh gcloud;
-# users upgrade explicitly via `gcloud components update` or the deferred
-# `nx upgrade --all` flag (see design/followups.md).
+# Skip-on-installed gate. Interactive re-runs skip the update and print a hint;
+# unattended re-runs auto-update via `gcloud components update --quiet` so
+# MDM/Ansible/CI flows keep gcloud current without manual intervention.
 if [ -x "$GCLOUD_BIN" ]; then
   ver="$("$GCLOUD_BIN" version 2>/dev/null | sed -En 's/Google Cloud SDK ([0-9.]+).*/\1/p' | head -n1 || true)"
-  printf '\e[32mgcloud v%s already installed at %s; skipping (use `gcloud components update` to refresh).\e[0m\n' \
-    "${ver:-?}" "$GCLOUD_HOME" >&2
+  if [ "$unattended" = "true" ]; then
+    printf '\e[96mgcloud v%s already installed at %s; updating components...\e[0m\n' \
+      "${ver:-?}" "$GCLOUD_HOME" >&2
+    CLOUDSDK_CORE_DISABLE_PROMPTS=1 "$GCLOUD_BIN" components update --quiet >&2
+  else
+    printf '\e[32mgcloud v%s already installed at %s; skipping (use `gcloud components update` to refresh).\e[0m\n' \
+      "${ver:-?}" "$GCLOUD_HOME" >&2
+  fi
   if [ "$with_gke" = "true" ] && ! [ -x "$GCLOUD_HOME/bin/gke-gcloud-auth-plugin" ]; then
     _io_step "installing gke-gcloud-auth-plugin component"
     CLOUDSDK_CORE_DISABLE_PROMPTS=1 "$GCLOUD_BIN" components install --quiet gke-gcloud-auth-plugin >&2
