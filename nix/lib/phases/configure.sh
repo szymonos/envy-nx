@@ -57,7 +57,7 @@ phase_configure_per_scope() {
       for _s in "${_scope_sorted[@]}"; do
         [ "$_s" = "k8s_base" ] && _with_gke="true" && break
       done
-      _io_run "$CONFIGURE_DIR/gcloud.sh" "$_with_gke" || warn "gcloud configuration failed"
+      _io_run "$CONFIGURE_DIR/gcloud.sh" "$_with_gke" "${unattended:-false}" || warn "gcloud configuration failed"
       ;;
     oh_my_posh)
       _io_run "$CONFIGURE_DIR/omp.sh" "$omp_theme" || warn "oh-my-posh configuration failed"
