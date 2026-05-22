@@ -11,14 +11,15 @@ This project supports **bash, zsh, and PowerShell as first-class user shells**. 
 
 Identify the paired-file location and decide whether it needs the same change. The mapping is not always 1:1 - pwsh consolidates more, so one bash/zsh file may map to a section of one pwsh file:
 
-| bash/zsh                                             | pwsh                                                                | What it covers                                            |
-| ---------------------------------------------------- | ------------------------------------------------------------------- | --------------------------------------------------------- |
-| `.assets/lib/nx_profile.sh` (`_nx_render_nix_block`) | `.assets/config/pwsh_cfg/_aliases_nix.ps1` (`#region nix:*` blocks) | nix-managed profile region: PATH, env vars, fnm self-heal |
-| `.assets/config/shell_cfg/aliases_git.sh`            | `.assets/config/pwsh_cfg/_aliases_common.ps1` (git section)         | git aliases                                               |
-| `.assets/config/shell_cfg/aliases_kubectl.sh`        | `.assets/config/pwsh_cfg/_aliases_common.ps1` (kubectl section)     | kubectl aliases                                           |
-| `.assets/config/shell_cfg/aliases_nix.sh`            | `.assets/config/pwsh_cfg/_aliases_nix.ps1`                          | nix navigation aliases                                    |
-| `.assets/config/shell_cfg/functions.sh`              | `.assets/config/pwsh_cfg/_aliases_common.ps1`                       | shell utility functions                                   |
-| `nix/lib/phases/profiles.sh`                         | (orchestration only - invokes both renderers)                       | profile-rendering phase (both sides)                      |
+| bash/zsh                                                                          | pwsh                                                                                   | What it covers                                                               |
+| --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `.assets/lib/nx_profile.sh` (`_nx_render_nix_block`)                              | `.assets/config/pwsh_cfg/_aliases_nix.ps1` (`#region nix:*` blocks)                    | nix-managed profile region: PATH, env vars, fnm self-heal                    |
+| `.assets/config/shell_cfg/aliases_git.sh`                                         | `.assets/config/pwsh_cfg/_aliases_common.ps1` (git section)                            | git aliases                                                                  |
+| `.assets/config/shell_cfg/aliases_kubectl.sh`                                     | `.assets/config/pwsh_cfg/_aliases_common.ps1` (kubectl section)                        | kubectl aliases                                                              |
+| `.assets/config/shell_cfg/aliases_nix.sh`                                         | `.assets/config/pwsh_cfg/_aliases_nix.ps1`                                             | nix navigation aliases                                                       |
+| `.assets/config/shell_cfg/functions.sh`                                           | `.assets/config/pwsh_cfg/_aliases_common.ps1`                                          | shell utility functions                                                      |
+| `.assets/lib/nx.sh` (`_nx_clear_stale_caches`) + `nix/lib/phases/post_install.sh` | (same helper sweeps `~/.cache/powershell/*` and `~/.cache/oh-my-posh/init.*.{sh,ps1}`) | post-upgrade cache sweep for shell-init files that embed `/nix/store/` paths |
+| `nix/lib/phases/profiles.sh`                                                      | (orchestration only - invokes both renderers)                                          | profile-rendering phase (both sides)                                         |
 
 ## Three outcomes for any cross-shell change
 
