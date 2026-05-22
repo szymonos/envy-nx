@@ -1016,6 +1016,37 @@ STUB
   grep -q 'nix store gc' "$BATS_TEST_TMPDIR/nix.log"
 }
 
+@test "post_install: gc sweeps stale shell caches after nix store gc" {
+  HOME="$TEST_HOME"
+  mkdir -p "$TEST_HOME/.cache/powershell" "$TEST_HOME/.cache/oh-my-posh"
+  : >"$TEST_HOME/.cache/powershell/ModuleAnalysisCache-DEAD"
+  : >"$TEST_HOME/.cache/powershell/StartupProfileData-Interactive"
+  : >"$TEST_HOME/.cache/powershell/PowerShellGet" # unrelated, must be kept
+  : >"$TEST_HOME/.cache/oh-my-posh/init.42.sh"
+  : >"$TEST_HOME/.cache/oh-my-posh/init.43.ps1"
+  : >"$TEST_HOME/.cache/oh-my-posh/init.44.zsh"         # zsh init does NOT embed path - keep
+  : >"$TEST_HOME/.cache/oh-my-posh/segment-1.omp.cache" # unrelated, must be kept
+
+  phase_post_install_gc
+
+  [[ ! -e "$TEST_HOME/.cache/powershell/ModuleAnalysisCache-DEAD" ]]
+  [[ ! -e "$TEST_HOME/.cache/powershell/StartupProfileData-Interactive" ]]
+  [[ -e "$TEST_HOME/.cache/powershell/PowerShellGet" ]]
+  [[ ! -e "$TEST_HOME/.cache/oh-my-posh/init.42.sh" ]]
+  [[ ! -e "$TEST_HOME/.cache/oh-my-posh/init.43.ps1" ]]
+  [[ -e "$TEST_HOME/.cache/oh-my-posh/init.44.zsh" ]]
+  [[ -e "$TEST_HOME/.cache/oh-my-posh/segment-1.omp.cache" ]]
+}
+
+@test "post_install: gc is silent when cache dirs are absent" {
+  HOME="$TEST_HOME"
+  [[ ! -d "$TEST_HOME/.cache/powershell" ]]
+  [[ ! -d "$TEST_HOME/.cache/oh-my-posh" ]]
+  run phase_post_install_gc
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"stale shell cache"* ]]
+}
+
 # =============================================================================
 # Overlay scope preservation
 # =============================================================================

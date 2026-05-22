@@ -9,7 +9,7 @@ nx_main list
 # nx package-management verbs (search/install/remove/upgrade/list/prune/gc/rollback).
 #
 # Sourced by nx.sh; expects shared helpers (_nx_read_pkgs, _nx_write_pkgs,
-# _nx_apply, _nx_validate_pkg, _nx_clear_pwsh_cache, _nx_scope_pkgs,
+# _nx_apply, _nx_validate_pkg, _nx_clear_stale_caches, _nx_scope_pkgs,
 # _nx_scopes, _nx_is_init, _nx_all_scope_pkgs) and constants (_NX_ENV_DIR,
 # _NX_PKG_FILE) to already be defined.
 
@@ -119,7 +119,7 @@ function _nx_pkg_upgrade() {
     printf "\e[31mnix profile upgrade failed\e[0m\n" >&2
     return 1
   }
-  _nx_clear_pwsh_cache
+  _nx_clear_stale_caches
   printf "\e[32mdone.\e[0m\n"
 }
 
@@ -190,7 +190,7 @@ function _nx_pkg_prune() {
 function _nx_pkg_gc() {
   nix profile wipe-history
   nix store gc
-  _nx_clear_pwsh_cache
+  _nx_clear_stale_caches
 }
 
 function _nx_pkg_rollback() {

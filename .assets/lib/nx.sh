@@ -54,22 +54,42 @@ function _nx_apply() {
   printf "\e[32mdone.\e[0m\n"
 }
 
-# Clear pwsh module-analysis cache + startup profile data. Both are pure
-# caches (regenerate on next pwsh launch) but reference module paths that
-# go stale after `nix store gc` (old pwsh GC'd) or `nix profile upgrade`
-# (bundled module versions/paths shift). Without this, `Install-PSResource`
-# and other PSResourceGet operations crash with "Could not find a part of
-# the path .../Modules/PSReadLine/<ver>/PSReadLine.format.ps1xml".
-function _nx_clear_pwsh_cache() {
-  local _cache_dir="$HOME/.cache/powershell"
-  [ -d "$_cache_dir" ] || return 0
+# Clear caches that embed absolute /nix/store/<hash>-<pkg>/... paths and go
+# stale after `nix profile upgrade` + `nix store gc` GCs the old store path:
+#
+#   ~/.cache/powershell/ModuleAnalysisCache-*    pwsh module analysis cache
+#   ~/.cache/powershell/StartupProfileData-*     pwsh startup profile data
+#   ~/.cache/oh-my-posh/init.<hash>.sh           bash prompt init (embeds binary path)
+#   ~/.cache/oh-my-posh/init.<hash>.ps1          pwsh prompt init (embeds binary path)
+#
+# All are pure caches (regenerate on next shell launch). Without sweeping:
+#   - pwsh `Install-PSResource` and other PSResourceGet operations crash with
+#     "Could not find a part of the path .../Modules/PSReadLine/<ver>/...".
+#   - bash/pwsh prompts error at every command with
+#     "bash: /nix/store/<old-hash>-oh-my-posh-<ver>/bin/oh-my-posh: No such file
+#     or directory" because oh-my-posh's `init <shell>` keys the cache on
+#     (config, shell) only (NOT binary version) and emits a one-liner that
+#     sources the cached file embedding the now-deleted store path.
+#
+# zsh init (init.<hash>.zsh) does not embed the binary path - safe to keep.
+function _nx_clear_stale_caches() {
   local _cleared=0 _f
-  while IFS= read -r _f; do
-    [ -n "$_f" ] || continue
-    rm -f "$_f" && _cleared=$((_cleared + 1))
-  done < <(find "$_cache_dir" -maxdepth 1 -type f \( -name 'ModuleAnalysisCache-*' -o -name 'StartupProfileData-*' \) 2>/dev/null)
+  local _pwsh_dir="$HOME/.cache/powershell"
+  local _omp_dir="$HOME/.cache/oh-my-posh"
+  if [ -d "$_pwsh_dir" ]; then
+    while IFS= read -r _f; do
+      [ -n "$_f" ] || continue
+      rm -f "$_f" && _cleared=$((_cleared + 1))
+    done < <(find "$_pwsh_dir" -maxdepth 1 -type f \( -name 'ModuleAnalysisCache-*' -o -name 'StartupProfileData-*' \) 2>/dev/null)
+  fi
+  if [ -d "$_omp_dir" ]; then
+    while IFS= read -r _f; do
+      [ -n "$_f" ] || continue
+      rm -f "$_f" && _cleared=$((_cleared + 1))
+    done < <(find "$_omp_dir" -maxdepth 1 -type f \( -name 'init.*.sh' -o -name 'init.*.ps1' \) 2>/dev/null)
+  fi
   [ "$_cleared" -gt 0 ] &&
-    printf "\e[90mCleared %d stale PowerShell cache file(s) (regenerates on next pwsh launch).\e[0m\n" "$_cleared"
+    printf "\e[90mCleared %d stale shell cache file(s) (regenerates on next shell launch).\e[0m\n" "$_cleared"
   return 0
 }
 
