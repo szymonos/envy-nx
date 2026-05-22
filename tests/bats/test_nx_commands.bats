@@ -706,19 +706,20 @@ STUB
   : >"$HOME/.cache/powershell/PowerShellGet" # unrelated, must be kept
   run nx gc
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Cleared"*"PowerShell cache"* ]]
+  [[ "$output" == *"Cleared"*"stale shell cache"* ]]
   [ ! -e "$HOME/.cache/powershell/ModuleAnalysisCache-DEAD" ]
   [ ! -e "$HOME/.cache/powershell/StartupProfileData-Interactive" ]
   [ -e "$HOME/.cache/powershell/PowerShellGet" ]
 }
 
-@test "gc is silent when pwsh cache dir is absent" {
+@test "gc is silent when no stale cache dirs exist" {
   cat >"$TEST_DIR/bin/nix" <<'STUB'
 #!/bin/sh
 exit 0
 STUB
   chmod +x "$TEST_DIR/bin/nix"
   [ ! -d "$HOME/.cache/powershell" ]
+  [ ! -d "$HOME/.cache/oh-my-posh" ]
   run nx gc
   [ "$status" -eq 0 ]
   [[ "$output" != *"Cleared"* ]]
@@ -734,8 +735,77 @@ STUB
   : >"$HOME/.cache/powershell/ModuleAnalysisCache-CAFE"
   run nx upgrade
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Cleared"*"PowerShell cache"* ]]
+  [[ "$output" == *"Cleared"*"stale shell cache"* ]]
   [ ! -e "$HOME/.cache/powershell/ModuleAnalysisCache-CAFE" ]
+}
+
+# oh-my-posh init cache: keyed on (config, shell) NOT binary version, so a
+# `nix profile upgrade` + `nix store gc` leaves the cached file pointing at
+# a deleted /nix/store/<old-hash>-oh-my-posh-<ver>/bin/oh-my-posh. The bash
+# and pwsh init files embed that absolute path; the zsh init does not.
+@test "gc clears stale oh-my-posh bash init cache" {
+  cat >"$TEST_DIR/bin/nix" <<'STUB'
+#!/bin/sh
+exit 0
+STUB
+  chmod +x "$TEST_DIR/bin/nix"
+  mkdir -p "$HOME/.cache/oh-my-posh"
+  printf 'eval "$(/nix/store/deadbeef-oh-my-posh-29.13.1/bin/oh-my-posh prompt)"\n' \
+    >"$HOME/.cache/oh-my-posh/init.3817110293992286020.sh"
+  run nx gc
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Cleared"*"stale shell cache"* ]]
+  [ ! -e "$HOME/.cache/oh-my-posh/init.3817110293992286020.sh" ]
+}
+
+@test "gc clears stale oh-my-posh pwsh init cache" {
+  cat >"$TEST_DIR/bin/nix" <<'STUB'
+#!/bin/sh
+exit 0
+STUB
+  chmod +x "$TEST_DIR/bin/nix"
+  mkdir -p "$HOME/.cache/oh-my-posh"
+  : >"$HOME/.cache/oh-my-posh/init.123.ps1"
+  run nx gc
+  [ "$status" -eq 0 ]
+  [ ! -e "$HOME/.cache/oh-my-posh/init.123.ps1" ]
+}
+
+# zsh's init.<hash>.zsh does not embed the binary path - must NOT be swept.
+# Also, segment caches (*.omp.cache) and the readme are unrelated.
+@test "gc preserves zsh init and unrelated oh-my-posh files" {
+  cat >"$TEST_DIR/bin/nix" <<'STUB'
+#!/bin/sh
+exit 0
+STUB
+  chmod +x "$TEST_DIR/bin/nix"
+  mkdir -p "$HOME/.cache/oh-my-posh"
+  : >"$HOME/.cache/oh-my-posh/init.42.zsh"
+  : >"$HOME/.cache/oh-my-posh/segment-1234.omp.cache"
+  : >"$HOME/.cache/oh-my-posh/notes.txt"
+  run nx gc
+  [ "$status" -eq 0 ]
+  [ -e "$HOME/.cache/oh-my-posh/init.42.zsh" ]
+  [ -e "$HOME/.cache/oh-my-posh/segment-1234.omp.cache" ]
+  [ -e "$HOME/.cache/oh-my-posh/notes.txt" ]
+}
+
+@test "upgrade clears stale oh-my-posh init caches" {
+  cat >"$TEST_DIR/bin/nix" <<'STUB'
+#!/bin/sh
+exit 0
+STUB
+  chmod +x "$TEST_DIR/bin/nix"
+  mkdir -p "$HOME/.cache/oh-my-posh"
+  : >"$HOME/.cache/oh-my-posh/init.aaa.sh"
+  : >"$HOME/.cache/oh-my-posh/init.bbb.ps1"
+  : >"$HOME/.cache/oh-my-posh/init.ccc.zsh"
+  run nx upgrade
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Cleared"*"stale shell cache"* ]]
+  [ ! -e "$HOME/.cache/oh-my-posh/init.aaa.sh" ]
+  [ ! -e "$HOME/.cache/oh-my-posh/init.bbb.ps1" ]
+  [ -e "$HOME/.cache/oh-my-posh/init.ccc.zsh" ]
 }
 
 # -- prune --------------------------------------------------------------------
