@@ -5,6 +5,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.10.6] - 2026-05-22
+
+### Changed
+
+- `nix/setup.sh --unattended` now runs `gcloud components update --quiet` when gcloud is already installed, keeping the CLI current in MDM/Ansible/CI flows. Interactive re-runs still skip with the existing hint message.
+- Refreshed test-case counters in `docs/standards.md` and `docs/decisions.md` to match the live count (495 bats + 142 Pester = 637 cases) after the new oh-my-posh init-cache regression tests shipped with the fix below.
+
+### Fixed
+
+- `nx upgrade`, `nx gc`, and `nix/setup.sh`'s post-install GC phase now sweep stale `~/.cache/oh-my-posh/init.*.sh` (bash) and `init.*.ps1` (pwsh) files in addition to the existing `~/.cache/powershell/{ModuleAnalysisCache,StartupProfileData}-*` sweep. Without it, bash and pwsh prompts errored with `bash: /nix/store/<old-hash>-oh-my-posh-<ver>/bin/oh-my-posh: No such file or directory` at every render after `nix store gc` deleted the previously-cached binary's store path. oh-my-posh keys its init cache on `(config, shell)` only - NOT binary version - so the cached one-liner the bash/pwsh prompt sources kept the absolute store path of whatever oh-my-posh existed at first-write time. zsh init does not embed the binary path, so zsh sessions stayed healthy and masked the issue across both upgrade paths. The sweep lives in `_nx_clear_stale_caches` (`.assets/lib/nx.sh`, renamed from `_nx_clear_pwsh_cache`) and is mirrored as `_phase_post_install_clear_stale_caches` in `nix/lib/phases/post_install.sh`; matrix row added to `.claude/rules/cross-shell-parity.md`. Segment caches (`*.omp.cache`) and `init.*.zsh` are left alone - they do not embed store paths.
+
 ## [1.10.5] - 2026-05-20
 
 ### Fixed
