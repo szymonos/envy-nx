@@ -7,7 +7,7 @@ This tool provisions developer environments - if it breaks, developers cannot wo
 | Metric                       | Value                                                                       |
 | ---------------------------- | --------------------------------------------------------------------------- |
 | Unit test files              | 33 (24 bats + 9 Pester)                                                     |
-| Individual test cases        | 631 (489 bats + 142 Pester)                                                 |
+| Individual test cases        | 637 (495 bats + 142 Pester)                                                 |
 | Test code                    | 8,300+ lines                                                                |
 | Custom pre-commit hooks      | 12 Python scripts                                                           |
 | Pre-commit checks per commit | 24 hooks                                                                    |
