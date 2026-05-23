@@ -1,0 +1,85 @@
+name: Codify Learnings
+
+# Scrapes Codified-Learning: trailers from a freshly-merged PR's commits and
+# appends one entry per trailer to design/lessons.md via an auto-merging
+# follow-up PR. See ARCHITECTURE.md §6.9 "How to codify a learning" and
+# CONTRIBUTING.md § "Codifying learnings" for the contributor-facing flow.
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  codify:
+    # Skip unmerged closures and skip self-recursion when this workflow's own
+    # auto-merging PR (codify/PR-N-...) merges and triggers the workflow again.
+    if: >-
+      github.event.pull_request.merged == true &&
+      !startsWith(github.event.pull_request.head.ref, 'codify/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fetch merged PR commits + merge SHA
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh pr view ${{ github.event.pull_request.number }} \
+            --json commits,mergeCommit > pr.json
+          merge_sha=$(jq -r '.mergeCommit.oid' pr.json)
+          echo "merge_sha=${merge_sha}" >> "$GITHUB_OUTPUT"
+
+      - name: Codify trailers into design/lessons.md
+        id: codify
+        run: |
+          set -euo pipefail
+          range=$(python3 -m tests.hooks.codify_learnings \
+            --pr ${{ github.event.pull_request.number }} \
+            --merge-sha ${{ steps.pr.outputs.merge_sha }} \
+            --input pr.json)
+          echo "range=${range}" >> "$GITHUB_OUTPUT"
+          if git diff --quiet design/lessons.md; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open codify PR + queue auto-merge
+        if: steps.codify.outputs.has_changes == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          range="${{ steps.codify.outputs.range }}"
+          pr_num="${{ github.event.pull_request.number }}"
+          branch="codify/PR-${pr_num}-${range}"
+
+          git config user.name "codify-learnings-bot"
+          git config user.email "noreply@github.com"
+          git switch -c "${branch}"
+          git add design/lessons.md
+          git commit -m "docs(lessons): codify ${range} from #${pr_num}"
+          git push -u origin "${branch}"
+
+          gh pr create \
+            --base main \
+            --head "${branch}" \
+            --title "docs(lessons): codify ${range} from #${pr_num}" \
+            --body "Auto-generated codification of \`Codified-Learning:\` trailer(s) from #${pr_num}. Will auto-merge once required checks pass. See \`design/lessons.md\` for the appended entries."
+
+          gh pr merge "${branch}" --auto --squash
