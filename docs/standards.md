@@ -6,11 +6,11 @@ This tool provisions developer environments - if it breaks, developers cannot wo
 
 | Metric                       | Value                                                                       |
 | ---------------------------- | --------------------------------------------------------------------------- |
-| Unit test files              | 33 (24 bats + 9 Pester)                                                     |
-| Individual test cases        | 637 (495 bats + 142 Pester)                                                 |
+| Unit test files              | 35 (26 bats + 9 Pester)                                                     |
+| Individual test cases        | 658 (516 bats + 142 Pester)                                                 |
 | Test code                    | 8,300+ lines                                                                |
-| Custom pre-commit hooks      | 12 Python scripts                                                           |
-| Pre-commit checks per commit | 24 hooks                                                                    |
+| Custom pre-commit hooks      | 13 Python scripts                                                           |
+| Pre-commit checks per commit | 25 hooks                                                                    |
 | CI workflows                 | 7 (preflight, CodeQL, Linux, macOS, upgrade walk, release, docs)            |
 | CI matrix axes               | 5 (Linux daemon, Linux rootless, Linux tarball, macOS Sequoia, macOS Tahoe) |
 | Platforms validated per PR   | macOS (bash 3.2 + BSD), Ubuntu (bash 5 + GNU)                               |
@@ -46,11 +46,11 @@ The checks downstream exist to enforce four invariants. Reading them first makes
 
 ## Pre-commit hooks
 
-Every commit passes through 24 hooks split across two categories: **custom hooks** (Python scripts maintained in this repo, purpose-built for this codebase's invariants) and **vendored hooks** (third-party hooks pulled in via `.pre-commit-config.yaml`, covering general-purpose checks). For exact file scopes, hook IDs, and pinned revisions, read `.pre-commit-config.yaml` directly -- the tables below describe intent.
+Every commit passes through 25 hooks split across two categories: **custom hooks** (Python scripts maintained in this repo, purpose-built for this codebase's invariants) and **vendored hooks** (third-party hooks pulled in via `.pre-commit-config.yaml`, covering general-purpose checks). For exact file scopes, hook IDs, and pinned revisions, read `.pre-commit-config.yaml` directly -- the tables below describe intent.
 
 ### Custom hooks
 
-12 Python scripts under `tests/hooks/`, wired in as `repo: local` entries:
+13 Python scripts under `tests/hooks/`, wired in as `repo: local` entries:
 
 | Hook                          | Why it exists                                                                                                                                                                                                                        |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -63,6 +63,7 @@ Every commit passes through 24 hooks split across two categories: **custom hooks
 | `check-no-tty-read`           | Forbids `read` redirected from `/dev/tty` in setup scripts unless explicitly self-attested. The pattern silently hangs in interactive shells but silently passes in headless CI / agents -- the worst kind of bug to ship.           |
 | `check-md-html-tags`          | Forbids unbalanced tag-like `<...` substrings in `docs/*.md` -- Python-Markdown's HTML preprocessor consumes them as malformed tag openers (even inside backticks), silently dropping subsequent rendered content. Recurrence guard. |
 | `check-changelog`             | Runtime file changes require a CHANGELOG entry under `[Unreleased]`. Can be skipped via a label when the change is genuinely doc-only.                                                                                               |
+| `check-learning-trailer`      | Commit-msg hook nudging for a `Codified-Learning:` trailer when high-leverage paths (`.assets/lib/nx_*.sh`, `nix/lib/phases/*.sh`, `tests/hooks/*.py`) are staged. Skippable via `# no-learning`.                                    |
 | `check-nx-generated`          | The `nx` CLI's bash, zsh, and PowerShell completers are generated from a single JSON surface description. Catches mismatches between the source and the generated artifacts -- usually means somebody hand-edited a generated file.  |
 | `bats-tests` / `pester-tests` | Smart test runners that map changed files to the tests that source them -- only re-runs tests the change could affect, not the full suite.                                                                                           |
 
@@ -83,7 +84,7 @@ Third-party hooks for general-purpose checks. Each is a problem the project woul
 
 ## Unit tests
 
-24 bats files cover bash logic: scope dependency resolution, `nx` CLI commands and tab completers, managed-block injection / removal, profile migration, the overlay system, health checks, certificate handling, manager-scope removal hooks (`conda`, `nodejs`, `python`), and zsh runtime smoke tests.
+26 bats files cover bash logic: scope dependency resolution, `nx` CLI commands and tab completers, managed-block injection / removal, profile migration, the overlay system, health checks, certificate handling, manager-scope removal hooks (`conda`, `nodejs`, `python`), and zsh runtime smoke tests.
 
 9 Pester files mirror this for PowerShell components: WSL orchestration (high-level integration in `WslSetup.Tests.ps1`), the 16 phase functions extracted from `wsl/wsl_setup.ps1` into the `utils-setup` module (`WslSetupPhases.Tests.ps1` - 52 unit tests across the new module surface), scope parsing, certificate conversion, and the `nx` CLI argument completer.
 
@@ -219,3 +220,11 @@ Three subagents with deliberately separated roles and restricted tool sets:
 This is **manual machinery, not automated**. There is no cron, no CI gate, no auto-merge. The framework's value is not "more enforcement" - it's a periodic outside view on the standing state, with bias controls baked into the agent definitions rather than left to convention. Findings drive triage; human judgment decides which to fix.
 
 Just landed as v1; charters were seeded from the existing codebase before any actual review run, so expect the first cycle on each shard to surface things the charter didn't anticipate. Design rationale: [Process decisions](decisions.md#process-decisions).
+
+### Operational lessons - per-PR auto-codification
+
+Where the chunked review framework is *periodic + per-shard + manual*, the operational-lessons ledger ([`design/lessons.md`](https://github.com/procter-gamble/gto-cse-envy-nx/blob/main/design/lessons.md)) is the *per-PR + auto-codified* complement. Contributors add a `Codified-Learning: <generalization>` trailer to commit bodies; the post-merge `codify_learnings.yml` workflow scrapes those trailers and appends numbered entries to `design/lessons.md` via an auto-merging follow-up PR. No hand-editing of the ledger in the normal flow; no per-cycle triage burden.
+
+This lives alongside two other durable ledgers: `docs/decisions.md` (architectural ADRs, hand-maintained) and `design/reviews/accepted.md` (review-triage decisions, updated during `/review act`). Each ledger answers a different question - **why we chose this architecture** (`decisions.md`), **why we deferred this review finding** (`accepted.md`), and **what generalization this fix taught** (`lessons.md`) - so they compound without overlap. The full convention is documented in `CONTRIBUTING.md` § "Codifying learnings".
+
+This layer is tool-agnostic by design: `AGENTS.md` + `design/lessons.md` + the trailer convention + the GitHub Action together form the L4 compounding loop that works for every contributor whether they use Claude Code, Codex, GitHub Copilot, Cursor, Aider, or no AI agent at all.

@@ -551,6 +551,19 @@ For a dynamic value completer (e.g. listing installed packages, scope names):
 4. Regenerate completers: `python3 -m tests.hooks.gen_nx_completions`.
 5. Run `make lint`.
 
+### 6.9. Codify a learning
+
+When a fix or refactor teaches a generalization future contributors should know, route it into `design/lessons.md` via the trailer + workflow path rather than hand-editing the ledger.
+
+1. Add a `Codified-Learning: <one-line generalization>` trailer to the commit body (or `Codified-Learning(<tag>): <text>` for an optional grouping tag - defaults to `general`).
+2. Push, get the PR reviewed and merged.
+3. `.github/workflows/codify_learnings.yml` fires on merge; runs `tests/hooks/codify_learnings.py` against `gh pr view --json commits,mergeCommit` output.
+4. The workflow opens a follow-up PR `codify/PR-<N>-L-NNN` whose single change is the appended entry/entries in `design/lessons.md` with the source PR link + merge SHA pre-filled. The PR is queued for auto-merge (`gh pr merge --auto --squash`).
+5. If lint fails on the follow-up PR (rare - usually a markdown line-length issue from a long trailer), close it and re-issue from a shorter trailer in a follow-up commit, or fix in-place.
+6. **Do not hand-edit `design/lessons.md`** in the normal flow; the workflow owns the file shape and the auto-generated tag index. The L-000 seed entry shows the richer hand-authored format if you want to enrich an auto-generated entry later.
+
+The `check-learning-trailer` pre-commit hook (commit-msg stage) nudges contributors when high-leverage changes (`.assets/lib/nx_*.sh`, `nix/lib/phases/*.sh`, `tests/hooks/*.py`) lack a trailer. Skippable via `# no-learning` anywhere in the commit body for changes that genuinely teach no generalization.
+
 ## 7. Constraints reference
 
 ### 7.1. File scope (which bash version, which set flags)

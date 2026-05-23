@@ -63,6 +63,47 @@ All `lint*` targets accept `HOOK=<id>` to run a single hook (e.g. `make lint-all
 - **Tests pass.** `make test-unit` must pass. The smart test runners (`bats-tests`, `pester-tests`) auto-run relevant tests on changed files.
 - **Constraints respected.** Bash 3.2 / zsh-compat / file-shebang rules are enforced by hooks; if one fires, see `ARCHITECTURE.md` §7 for the rule and the rationale.
 
+## Codifying learnings
+
+When a fix or refactor teaches a generalization future contributors should know - a constraint, a non-obvious pattern, a class-of-bug to watch for - add a `Codified-Learning:` trailer to the commit body. The post-merge [`codify_learnings.yml`](.github/workflows/codify_learnings.yml) workflow scrapes those trailers and auto-appends numbered entries to [`design/lessons.md`](design/lessons.md) via a separate auto-merging PR. No hand-editing of `lessons.md` for the normal flow.
+
+Trailer syntax:
+
+```text
+Codified-Learning: <one-line generalization>                  # tag = "general"
+Codified-Learning(do-not-repeat): <one-line generalization>   # tag = "do-not-repeat"
+```
+
+Two real-world-shaped examples:
+
+```text
+fix(profile): guard prompt() against re-init under OMP
+
+Codified-Learning: In pwsh profile scripts, never define `function Prompt`
+unconditionally - the last function definition wins, so a fallback prompt
+clobbers oh-my-posh's installed prompt.
+```
+
+```text
+fix(pwsh): always invoke pwsh via _io_pwsh_nop, never bare pwsh
+
+Codified-Learning(do-not-repeat): nix-built pwsh leaks LD_LIBRARY_PATH
+into child processes; the wrapper clears it before invoking and falls back
+to system pwsh on Coder/Ubuntu where ~/.nix-profile/bin/pwsh is absent.
+```
+
+**When to opt out.** A pre-commit hook (`check-learning-trailer`) nudges when commits touch high-leverage paths (`.assets/lib/nx_*.sh`, `nix/lib/phases/*.sh`, `tests/hooks/*.py`) without a trailer. If the commit genuinely teaches no generalization (trivial refactor, dependency bump, typo fix), add `# no-learning` anywhere in the commit body to skip the nudge.
+
+**Where lessons live vs other ledgers.** Three durable ledgers divide the space:
+
+| Ledger                       | Records                                          | Maintained by                                  |
+| ---------------------------- | ------------------------------------------------ | ---------------------------------------------- |
+| `docs/decisions.md`          | Architectural decisions (why A over B)           | Manual ADR style; PR-reviewed                  |
+| `design/reviews/accepted.md` | Review-triage decisions (`defer`/`dispute`)      | Updated by `/review act` during chunked review |
+| `design/lessons.md`          | Operational lessons - generalizations from fixes | Auto-populated by `codify_learnings.yml`       |
+
+A lesson is the *rule the fix teaches*, not the fix itself (the fix is the merged code).
+
 ## Where things live
 
 | For                                                  | See                          |
@@ -94,6 +135,7 @@ These are the most common contribution shapes. Each links to the full recipe in 
 | A new flag              | `ARCHITECTURE.md` §6.6 |
 | A new pre-commit hook   | `ARCHITECTURE.md` §6.7 |
 | A new dynamic completer | `ARCHITECTURE.md` §6.8 |
+| A codified learning     | `ARCHITECTURE.md` §6.9 |
 
 ## Tooling notes
 
