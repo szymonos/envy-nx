@@ -17,7 +17,6 @@ repos:
         entry: python3 -m tests.hooks.align_tables
         language: system
         files: \.md$
-        exclude: /copilot-instructions\.md
       - id: validate-scopes
         name: Validate scope definitions consistency
         entry: python3 -m tests.hooks.validate_scopes
@@ -70,6 +69,12 @@ repos:
         language: system
         pass_filenames: true
         files: (CHANGELOG\.md|nix/|\.assets/lib/|\.assets/config/|\.assets/setup/|\.assets/provision/|wsl/)
+      - id: check-learning-trailer
+        name: Nudge for Codified-Learning trailer on high-leverage changes
+        entry: python3 -m tests.hooks.check_learning_trailer
+        language: system
+        stages: [commit-msg]
+        always_run: true
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
@@ -81,22 +86,21 @@ repos:
       - id: trailing-whitespace
         exclude: \.md$
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.13
+    rev: v0.15.14
     hooks:
       - id: ruff-check
         types_or: [python, pyi]
         args: [--fix]
-        files: ^tests/
+        files: ^(tests|\.claude/skills)/
       - id: ruff-format
         types_or: [python, pyi]
-        files: ^tests/
+        files: ^(tests|\.claude/skills)/
   - repo: https://github.com/DavidAnson/markdownlint-cli2
     rev: v0.22.1
     hooks:
       - id: markdownlint-cli2
         args: ["--fix"]
         files: \.md$
-        exclude: /copilot-instructions\.md|^\.claude/skills/
   - repo: https://github.com/streetsidesoftware/cspell-cli
     rev: v10.0.0
     hooks:
