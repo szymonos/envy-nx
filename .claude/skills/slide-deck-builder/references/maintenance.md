@@ -26,18 +26,18 @@ Drop this into the host repo's `Makefile` to surface the pinned-vs-upstream gap 
 .PHONY: slides-update-check
 slides-update-check:  ## Compare pinned reveal.js version against the latest upstream release
 	@local_pin=$$(grep -oE 'reveal\.js@[^/"]+' docs/slides/index.html 2>/dev/null \
-		| head -1 | sed 's/^reveal\.js@//' || echo unknown); \
+	 | head -1 | sed 's/^reveal\.js@//' || echo unknown); \
 	set --; \
 	if command -v gh >/dev/null 2>&1 && token=$$(gh auth token 2>/dev/null) && [ -n "$$token" ]; then \
-		set -- -H "Authorization: Bearer $$token"; \
+	 set -- -H "Authorization: Bearer $$token"; \
 	fi; \
 	upstream_ver=$$(curl -sS "$$@" https://api.github.com/repos/hakimel/reveal.js/releases/latest \
-		| grep -oE '"tag_name"[[:space:]]*:[[:space:]]*"[^"]+"' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'); \
+	 | grep -oE '"tag_name"[[:space:]]*:[[:space:]]*"[^"]+"' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'); \
 	printf '  pinned:   @%s\n  upstream: %s\n' "$$local_pin" "$$upstream_ver"; \
 	if [ "$$local_pin" = "$$upstream_ver" ]; then \
-		echo '  status:   pinned to latest exact version'; \
+	 echo '  status:   pinned to latest exact version'; \
 	else \
-		echo "  release:  https://github.com/hakimel/reveal.js/releases/tag/$$upstream_ver"; \
+	 echo "  release:  https://github.com/hakimel/reveal.js/releases/tag/$$upstream_ver"; \
 	fi
 ```
 
