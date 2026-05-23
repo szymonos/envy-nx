@@ -29,6 +29,7 @@ cutover
 cword
 dedup
 diffable
+direnv
 diskpart
 distrobox
 distros
@@ -99,7 +100,9 @@ nmap
 nodeenv
 nomatch
 noout
+nounset
 oneshot
+openwolf
 otbs
 pacman
 pasteable
