@@ -11,12 +11,13 @@ End-to-end release prep for a feature branch. Optimized for the WIP workflow whe
 ## When to use
 
 - `/prepare-release 1.7.3` - cut 1.7.3 from current branch
+- `/prepare-release 1.7.3 --skip-review` - skip Phase 3.5 (`/second-opinion`) and Phase 5.5 (`/address-pr-review`); use for urgent hotfixes, when Copilot is offline, or when you've already run both skills manually earlier in the session
 - "wrap this branch up as 1.7.4" - same workflow
 - "update the release PR with the new fixes" - re-run; merges new content into existing CHANGELOG entry, force-pushes, updates PR body
 
 ## Workflow
 
-Five numbered phases plus two interstitials (Phase 1.5 cspell sweep, Phase 1.6 test-stats drift sweep). Stop and surface the error if any phase fails - don't paper over.
+Five numbered phases plus four interstitials (Phase 1.5 cspell sweep, Phase 1.6 test-stats drift sweep, Phase 3.5 heterogeneous-model review, Phase 5.5 PR review address). Stop and surface the error if any phase fails - don't paper over.
 
 ### Phase 1: Compose CHANGELOG entry
 
@@ -33,12 +34,28 @@ Five numbered phases plus two interstitials (Phase 1.5 cspell sweep, Phase 1.6 t
 3. Compose bullets per the **Bullet style guidelines** below. Three cases:
    - `[Unreleased]` empty + target version doesn't exist → compose fresh from `COMMITS` + `DIFF_STAT`.
    - `[Unreleased]` has notes + target version doesn't exist → shape and promote those notes; cross-check against COMMITS/DIFF_STAT to fill gaps.
-   - Target version already exists (re-run / merge case) → combine `EXISTING_<X.Y.Z>` + new `[Unreleased]`; deduplicate; preserve any intro paragraph.
+   - Target version already exists (re-run / merge case) → combine `EXISTING_<X.Y.Z>` + new `[Unreleased]`; **reclassify, don't just merge** (see "Section reclassification" below); deduplicate; preserve any intro paragraph.
 
 4. `Edit` `CHANGELOG.md` to splice in the new entry. Targeted `Read` of the first ~15 lines is enough to get the anchor; never `Read` the full file.
 
    - **New version** anchor: `## [Unreleased]\n\n<UNRELEASED-content-from-extract>\n\n## [<last-tag>]`
    - **Merge** case: two `Edit`s - one to replace the existing `## [<X.Y.Z>] - <date>` block with merged content, one to clear `[Unreleased]`.
+
+5. **Bump `pyproject.toml` `version`** to match `X.Y.Z`. One targeted `Edit` replacing the existing `version = "<old>"` line. This is the canonical Python project metadata; if it drifts from the CHANGELOG/git-tag version, `uv sync` and any downstream packaging see the wrong version. Mechanical: no judgment needed, just match `X.Y.Z`. The file rides with the `docs(changelog)` commit in Phase 4 (content-coupled - the version exists *because* of the release).
+
+6. **Refresh `uv.lock` and align pre-commit tool versions:**
+
+   ```bash
+   uv lock --upgrade  # refresh uv.lock with new project version + upgrade transitive deps
+   ```
+
+   This serves two purposes: (a) syncs `uv.lock`'s recorded envy-nx version with the pyproject bump from step 5, and (b) bumps transitive deps (notably `ruff`, `prek`) to their latest compatible versions for the new release. Run it early in Phase 1 so any breakage from a dep bump surfaces in `make lint` *before* Phase 4 cuts commits.
+
+   After running, check `.pre-commit-config.yaml` for `rev:` pins on tools that also live in `uv.lock` - primarily `astral-sh/ruff-pre-commit` - and bump them to match. Example: if `uv.lock` now has `ruff` at `0.15.14`, the `ruff-pre-commit` `rev:` should be `v0.15.14` too. Otherwise contributors see one ruff version locally (via `uv run`) and a different version in pre-commit, with subtle behavior differences.
+
+   **Commit grouping in Phase 4:**
+   - `uv.lock` + `pyproject.toml` ride with the `docs(changelog)` commit (content-coupled to the version bump) **unless** `uv lock --upgrade` produced a substantial dep-bump diff (multiple unrelated deps moved). In that case, put both in `chore` with a message like `chore: bump deps + project version to X.Y.Z` to keep the changelog commit focused.
+   - `.pre-commit-config.yaml` rides with `chore` if it was bumped (it's tooling config, not a release artifact).
 
 ### Phase 1.5: Cspell sweep (run only if release docs touched)
 
@@ -102,6 +119,7 @@ The auditor knows about the entries below; the others are listed for the manual 
 | `docs/standards.md`    | prose   | "N hooks split across two categories"                                                             | no - free-form |
 | `docs/standards.md`    | prose   | per-suite case counts inside paragraph (`WslSetupPhases.Tests.ps1` - 49 unit tests)               | no - free-form |
 | `docs/index.md`        | table   | "across N test files"                                                                             | yes            |
+| `docs/index.md`        | table   | "N (bash 3.2 enforcer ...)" custom pre-commit hooks                                               | yes            |
 | `docs/index.md`        | prose   | "N mocked Pester tests"                                                                           | no - free-form |
 | `ARCHITECTURE.md`      | section | "N Pester files; full suite ..."                                                                  | yes            |
 | `ARCHITECTURE.md`      | prose   | per-file case counts in §9 (e.g. "12 tests verify nx.sh", "9 integration tests", "49 unit tests") | no - free-form |
@@ -168,6 +186,18 @@ Continue with X.Y.Z, change to X.(Y+1).0, or abort?
 
 **Both checks are non-blocking** because sometimes you genuinely want a patch with one `feat:` (security backport, hotfix that incidentally adds a small flag) - the skill surfaces, the user decides.
 
+### Phase 3.5: Heterogeneous-model review (optional)
+
+Invoke `/second-opinion` for an author-time review by a different model family (GitHub Copilot CLI with `gpt-5.3-codex`) before the destructive soft-reset. The point of running here, not after Phase 4: any review-driven fixes get absorbed into the still-WIP commit history and Phase 4's per-prefix consolidation cleans them up for free. Running this after the soft-reset would require a second reset cycle to re-cut the clean commits.
+
+1. **Skip-check.** If the user passed `--skip-review` in the slash-command args, announce the skip and proceed to Phase 4. Skip is also automatic if `copilot` is not on PATH (`command -v copilot >/dev/null` fails) - log a warning and continue. Never block the release on Copilot availability.
+2. **Invoke the skill.** Run the Copilot invocation from `.claude/skills/second-opinion/SKILL.md` Phase 2 with `base="$(git merge-base main HEAD)"` - exactly "what the release adds since the last tag's merge into main."
+3. **Act on findings per the prepare-release rule** in `/second-opinion`'s "Output handling → From `/prepare-release` Phase 3.5" section: auto-fix concrete `bug` findings, surface `warning`/non-obvious `bug` findings via `AskUserQuestion`, skip `nit` findings by default. The user can opt into nits if they want a stylistic pass.
+4. **After fixes (if any).** Re-run `make lint` (same WATCHOUT as Phase 1: lint stages modifications; Phase 4 will redo staging). If a fix changes the user-facing surface of a feature *also* being introduced in this release, fold the change into the existing Added/Changed bullet (see "Section reclassification" below) - do NOT add a new `Fixed` bullet for a bug that never shipped. Don't add bullets for trivial nits.
+5. **Proceed to Phase 4.** The fixes become part of the WIP commits and get categorized into the right Conventional Commits prefix during Phase 4's consolidation.
+
+If `/second-opinion` reports "No findings.", announce it and proceed straight to Phase 4 - most release diffs will land here.
+
 ### Phase 4: Soft-reset and recommit by prefix
 
 Three guardrails *before* destroying history:
@@ -202,8 +232,8 @@ git add <files-for-this-group>
 git commit --no-verify -m "<prefix>(scope): <one-line summary>"
 # repeat for each prefix...
 
-# Final commit is always the CHANGELOG itself (and project-words.txt rides along):
-git add CHANGELOG.md project-words.txt
+# Final commit is always the CHANGELOG itself (project-words.txt and pyproject.toml ride along):
+git add CHANGELOG.md project-words.txt pyproject.toml
 git commit --no-verify -m "docs(changelog): cut <X.Y.Z> release notes"
 ```
 
@@ -263,6 +293,21 @@ git commit --no-verify -m "docs(changelog): cut <X.Y.Z> release notes"
 
    The PR body is the CHANGELOG entry verbatim (DRY - the bullets ARE the release notes). Do **not** append the Claude Code attribution trailer to release PRs - the CHANGELOG is the authoritative release record and shouldn't carry tooling attribution.
 
+### Phase 5.5: Address PR review comments (optional)
+
+After Phase 5 pushes and creates/updates the PR, invoke `/address-pr-review` to drive the review to a clean state. The skill is **state-aware**: it triggers Copilot if no fresh review exists, waits for in-progress reviews, processes unresolved fresh threads, and only exits when the fresh review (matching HEAD SHA) has zero unresolved fresh threads.
+
+1. **Skip-check.** If the user passed `--skip-review`, announce the skip and stop. (Same flag skips Phase 3.5.)
+2. **Iteration loop (cap at 2):**
+   - Invoke `/address-pr-review` (Phase 1-3 only - skip Phase 4 commit; this phase handles commits via the re-cut below). The skill drives the review from any state (A/B/C/D) to either State D (clean - done) or "fixes applied, ready for re-cut."
+   - **If no fixes were applied** (State D reached without code edits, or all unresolved threads were `resolve-only`/`skip`-leave-open) → done. Exit.
+   - **If fixes were applied** → re-run Phase 4 (soft-reset + recommit, NO Phase 3.5) → re-run Phase 5 (force-push + update PR body). The new push triggers a fresh Copilot review automatically.
+3. **After 2 iterations:** if fixes are still being made, surface to user: "2 fix cycles complete. Run `/address-pr-review` manually if more comments arrive." Stop.
+
+Non-blocking: if `/address-pr-review` reports a timeout (Copilot didn't respond within 5 min) or fails non-recoverably, log the warning and continue. The PR is pushed; the user can address comments manually.
+
+The state-aware skill is the brain - Phase 5.5 just orchestrates the iteration cap and the Phase 4 re-cut. All freshness detection, polling, and resolution logic lives in `pr_review.py` where it can be tested independently.
+
 ## Bullet style guidelines
 
 For the CHANGELOG entry composed in Phase 1.
@@ -277,6 +322,32 @@ For the CHANGELOG entry composed in Phase 1.
 ## Section order in the CHANGELOG
 
 `### Added` → `### Changed` → `### Fixed` → `### Removed` → `### Security` → `### Deprecated`. Skip any section with no bullets. The `check_changelog.py` pre-commit hook enforces this order.
+
+## Section reclassification (shipped-version timeline)
+
+The CHANGELOG's perspective is the **shipped-version timeline**, not the development timeline. The audience is a user upgrading from the last tagged release (`<last-tag>`), not a contributor reading commit history. Section classification (`Added` / `Changed` / `Fixed` / `Removed`) must answer the question *"from the perspective of a user on `<last-tag>`, what kind of change is this?"* - not *"what kind of activity did the contributor do during this PR's lifecycle?"*
+
+This rule applies in two specific situations:
+
+1. **Re-run / merge case** (Phase 1 step 3): when `[Unreleased]` has entries that describe iteration on a feature/fix already present in the target version's section, fold them into the **existing** bullet rather than adding a new entry in a different section.
+2. **Phase 3.5 / 5.5 review fixes**: when a Copilot review (`/second-opinion` or `/address-pr-review`) catches a bug in code being introduced in this release, the fix is part of the feature working correctly - fold the corrected behavior into the existing `Added` bullet, do NOT create a new `Fixed` bullet for a bug that never shipped.
+
+**Decision matrix** (when classifying an `[Unreleased]` bullet or a Phase 3.5 / 5.5 fix during a merge):
+
+| Does the feature/fix exist in `<last-tag>`? | What does this bullet describe?                        | Action                                                                                                |
+| ------------------------------------------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| No (introduced in this version)             | Iteration / refinement / fix on the unreleased feature | **Fold** into the existing `Added` bullet - update its description to reflect the final shipped state |
+| No (introduced in this version)             | New, additional feature                                | New `Added` bullet                                                                                    |
+| Yes (already in `<last-tag>`)               | Behavior change to existing feature                    | New `Changed` bullet                                                                                  |
+| Yes (already in `<last-tag>`)               | Bug fix to existing behavior                           | New `Fixed` bullet                                                                                    |
+
+**Examples** (from real cases this skill has hit):
+
+- A `[Unreleased]` `Changed` bullet says *"`/foo` rewritten with state-aware logic"* AND the target version's `Added` section says *"`/foo` skill"* → fold: update the `Added` bullet to *"`/foo` skill with state-aware logic"*. The user reading the release notes never had a non-state-aware `/foo` to compare against.
+- A Phase 3.5 review catches a regex bug in a hook being introduced this release → fold: the corrected regex is part of the hook's `Added` description, not a separate `Fixed` entry. Bug never shipped.
+- A Phase 3.5 review catches a regression in an existing API → new `Fixed` bullet. The bug shipped in a prior release.
+
+The git commit history captures development reality; the CHANGELOG captures user-facing reality. They are intentionally different views.
 
 ## Release intro paragraph
 
@@ -293,8 +364,12 @@ For the CHANGELOG entry composed in Phase 1.
 - **Force-pushing to `main` / `master` / `develop` / `release/*`** - Phase 4 guardrail must refuse.
 - **`git add .` or `git add -A`** in Phase 4 - the active scope is what you want, not whatever happens to be in working tree.
 - **Splitting `project-words.txt`** from its content-source commit. Conceptual coupling - the word exists *because* of the bullet - keeps the commit history honest.
+- **Skipping the `pyproject.toml` version bump (Phase 1 step 5).** The Python project metadata version drifts silently from the CHANGELOG/git-tag version - was `1.1.0` for 10+ releases until v1.11.0 caught the drift via Copilot review. `uv sync` and any downstream packaging see the wrong version. The bump is mechanical (one targeted Edit); always include `pyproject.toml` in the `docs(changelog)` commit alongside `CHANGELOG.md` and `project-words.txt`.
+- **Skipping `uv lock --upgrade` (Phase 1 step 6).** Two distinct breakages: (a) `uv.lock` keeps the old project version, so `uv sync` and any consumer of the lockfile sees the wrong envy-nx version; (b) transitive deps stay pinned to whatever was current at the last release, so security/bug fixes don't ride along and `.pre-commit-config.yaml` `rev:` pins drift from the locally-managed versions. Run it early - *after* the pyproject bump, *before* Phase 1.5 - so any dep-bump breakage surfaces in `make lint` instead of `lint-diff` after Phase 4.
 - **Skipping `make lint-diff` after Phase 4.** Per-commit hooks were bypassed via `--no-verify`; `make lint-diff` is the validation gate. Skipping it means pushing unvalidated state.
 - **Skipping Phase 3 (release verification).** A patch release that's actually feature-shaped is the most common quiet bug - verify before destroying history, when fixing is one Edit.
+- **Adding `Fixed` / `Changed` bullets for changes that never shipped.** A bug introduced and fixed within the same release cycle never reached users - it is not "Fixed" from the CHANGELOG's perspective; the corrected behavior is just part of the feature's `Added` description. Same for `Changed` bullets describing iteration on an unreleased feature - fold into the existing `Added` bullet. See "Section reclassification" for the decision matrix. This is the most common merge-case error; recurred twice in v1.11.0 development.
+- **Running `/second-opinion` after Phase 4 (soft-reset).** The soft-reset is the point of no return for commit topology; review-driven fixes after that need a second reset cycle. Phase 3.5 fires *before* Phase 4 by design - fixes land in WIP commits and Phase 4 absorbs them for free.
 - **Skipping Phase 1.5 (cspell sweep).** Forces an amend cycle in Phase 4 when `lint-diff` flags `Unknown word (...)`. Run `cspell_words.py scan` once before committing - it's cheap and saves a reset.
 - **Auto-adding everything cspell flags without classification.** A typo silently becomes a "valid" word and persists in the dictionary forever. Phase 1.5's classification step is the safeguard.
 - **Shipping a release with stale test/hook/scope counts in the docs.** The numbers in `docs/standards.md`, `docs/index.md`, `ARCHITECTURE.md`'s §9 paragraphs, and the `docs/decisions.md` / `docs/architecture.md` test-cases-across-files prose decay every time a test or hook is added; they were correct at some point and read as authoritative until proven wrong. Phase 1.6 is the safeguard - the trigger (`git diff --name-only <last-tag>..HEAD -- tests/`) is one bash line and the audit is one script invocation.
@@ -308,6 +383,7 @@ For the CHANGELOG entry composed in Phase 1.
 ## Example invocations
 
 - `/prepare-release 1.7.3` - full pipeline end-to-end
+- `/prepare-release 1.7.3 --skip-review` - same pipeline, skip Phase 3.5 (`/second-opinion`) and Phase 5.5 (`/address-pr-review`). Mechanical phases (1-5) still run.
 - "Update the release PR with the new fixes" - re-run; CHANGELOG merges, force-push, PR body updates
 - "Add a `Fixed` bullet for the timeout regression" - append to the active version section via `Edit`; if the branch is already pushed, re-run Phase 4+5 to update the PR
 - "Refresh the test counts in the docs without cutting a release" - call `test_stats.py audit` directly outside the skill; fix the drift; commit as `docs(stats): refresh test counters` (this is the manual escape hatch when you notice drift between releases)

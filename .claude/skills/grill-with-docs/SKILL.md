@@ -1,6 +1,6 @@
 ---
 name: grill-with-docs
-description: Grilling session that challenges your plan against the existing domain model, sharpens terminology, and updates documentation (CONTEXT.md, ADRs) inline as decisions crystallise. Use when user wants to stress-test a plan against their project's language and documented decisions.
+description: Grilling session that challenges your plan against the existing domain model, sharpens terminology, and writes agent-readable decisions to design/decisions/ as they crystallise. Use when user wants to stress-test a plan against their project's language and documented decisions.
 disable-model-invocation: true
 ---
 
@@ -16,41 +16,32 @@ During codebase exploration, also look for existing documentation:
 
 ### File structure
 
-Most repos have a single context:
+Agent-readable decisions live in `design/decisions/`:
 
-```
+```text
 /
-├── CONTEXT.md
-├── docs/
-│   └── adr/
-│       ├── 0001-event-sourced-orders.md
-│       └── 0002-postgres-for-write-model.md
-└── src/
+├── AGENTS.md                      <- agent entry point (auto-loaded)
+├── ARCHITECTURE.md                <- how things connect (lazy-loaded)
+├── design/
+│   ├── decisions/                 <- agent-readable decisions (this skill writes here)
+│   │   ├── INDEX.md               <- auto-generated scope index
+│   │   ├── 0001-slug.md
+│   │   └── 0002-slug.md
+│   └── lessons.md                 <- operational learnings (auto-populated via trailers)
+└── docs/
+    └── decisions.md               <- human-readable decision narratives (manual, separate)
 ```
 
-If a `CONTEXT-MAP.md` exists at the root, the repo has multiple contexts. The map points to where each one lives:
+The `design/decisions/` directory contains short, agent-optimised decision records. The human-readable `docs/decisions.md` is a separate document maintained by the author when a decision is worth the full persuasion narrative. They are related but independent - no sync required.
 
-```
-/
-├── CONTEXT-MAP.md
-├── docs/
-│   └── adr/                          ← system-wide decisions
-├── src/
-│   ├── ordering/
-│   │   ├── CONTEXT.md
-│   │   └── docs/adr/                 ← context-specific decisions
-│   └── billing/
-│       ├── CONTEXT.md
-│       └── docs/adr/
-```
+### Two capture paths for decisions
 
-Create files lazily - only when you have something to write. If no `CONTEXT.md` exists, create one when the first term is resolved. If no `docs/adr/` exists, create it when the first ADR is needed.
+1. **This skill** writes `design/decisions/NNNN-slug.md` directly during the grilling session (primary path for architectural decisions).
+2. **`Codified-Decision:` commit trailer** on a PR triggers a post-merge workflow that creates the file automatically (same pattern as `Codified-Learning:` trailers for `design/lessons.md`).
+
+Both paths produce the same file format in the same directory. Use the trailer when a decision crystallises during a PR rather than a grilling session.
 
 ## During the session
-
-### Challenge against the glossary
-
-When the user uses a term that conflicts with the existing language in `CONTEXT.md`, call it out immediately. "Your glossary defines 'cancellation' as X, but you seem to mean Y - which is it?"
 
 ### Sharpen fuzzy language
 
@@ -64,18 +55,18 @@ When domain relationships are being discussed, stress-test them with specific sc
 
 When the user states how something works, check whether the code agrees. If you find a contradiction, surface it: "Your code cancels entire Orders, but you just said partial cancellation is possible - which is right?"
 
-### Update CONTEXT.md inline
+### Write decisions to design/decisions/
 
-When a term is resolved, update `CONTEXT.md` right there. Don't batch these up - capture them as they happen. Use the format in [CONTEXT-FORMAT.md](./CONTEXT-FORMAT.md).
+When a decision crystallises during the session, write it to `design/decisions/NNNN-slug.md` immediately. Use the format in [ADR-FORMAT.md](./ADR-FORMAT.md).
 
-Don't couple `CONTEXT.md` to implementation details. Only include terms that are meaningful to domain experts.
+After writing or updating decision files, regenerate `design/decisions/INDEX.md` - a scope-indexed table that agents read to decide which decisions to lazy-load.
 
-### Offer ADRs sparingly
+### Offer decisions sparingly
 
-Only offer to create an ADR when all three are true:
+Only offer to create a decision record when all three are true:
 
 1. **Hard to reverse** - the cost of changing your mind later is meaningful
 2. **Surprising without context** - a future reader will wonder "why did they do it this way?"
 3. **The result of a real trade-off** - there were genuine alternatives and you picked one for specific reasons
 
-If any of the three is missing, skip the ADR. Use the format in [ADR-FORMAT.md](./ADR-FORMAT.md).
+If any of the three is missing, skip the decision. Use the format in [ADR-FORMAT.md](./ADR-FORMAT.md).
