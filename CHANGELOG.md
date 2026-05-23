@@ -5,6 +5,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-05-23
+
+Adds a tool-agnostic L4 compounding-engineering layer plus L7 author-time and gate-time review skills. `AGENTS.md` becomes the shared context surface for any AI coding agent, exposing three lazy-loadable layers via a "Compound knowledge" table: `ARCHITECTURE.md` (how things connect), `design/decisions/` (8 seed ADRs), and `design/lessons.md` (auto-populated via commit trailers). New skills: `/second-opinion` invokes Copilot CLI pre-push; `/address-pr-review` drives state-aware response to Copilot's PR-review threads post-push.
+
+### Added
+
+- Promoted `AGENTS.md` to a real file at repo root (was a symlink to `.claude/CLAUDE.md`); `.claude/CLAUDE.md` now symlinks to it. Trimmed from 182 to 76 lines; bash/PowerShell style moved to glob-scoped `.claude/rules/` files.
+- `design/decisions/` with 8 seed ADRs distilled from `docs/decisions.md` (bash 3.2, three tiers, managed blocks, phase orchestration, JSON schema, Nix not Homebrew, bash not Python, unfree opt-in) plus `INDEX.md` scope index for agent lazy-loading.
+- `design/lessons.md` operational-lessons ledger with seed entry (L-000) and two back-promoted learnings: L-001 (render-time heuristics) and L-002 (cache-staleness after Nix GC). Auto-populated by `Codified-Learning:` commit trailers via the post-merge workflow.
+- `.github/workflows/codify_learnings.yml` + `tests/hooks/codify_learnings.py` - post-merge auto-codification. Scrapes trailers from merged PRs, appends `L-NNN` entries to `design/lessons.md`, opens auto-merging follow-up PRs. Self-recursion guard skips the workflow's own PRs.
+- `tests/hooks/check_learning_trailer.py` - commit-msg hook nudging for `Codified-Learning:` trailers on high-leverage paths. Skippable via `# no-learning`.
+- `.claude/rules/bash-style.md` and `.claude/rules/powershell-style.md` - glob-scoped Claude Code rules loaded only when editing matching file types. PowerShell rule covers parameters, error handling, strings, collections, WSL patterns, and module imports extracted from `wsl/` and `modules/` scripts.
+- `.github/PULL_REQUEST_TEMPLATE.md` - Summary / Test plan / Codified learnings / Linked work sections.
+- New `ARCHITECTURE.md` §6.9 recipe ("Codify a learning"), new `CONTRIBUTING.md` § "Codifying learnings", and `docs/standards.md` subsection cross-linking `design/lessons.md`.
+- `/second-opinion` skill invokes GitHub Copilot CLI (`gpt-5.3-codex` by default) for a heterogeneous-model author-time review of the current branch's changes since `git merge-base main HEAD`; reads a curated `.claude/skills/second-opinion/REVIEW-BRIEF.md` for focused project context (cross-shell parity, bash 3.2 compat, do-not-flag list).
+- `/prepare-release` Phase 3.5 invokes `/second-opinion` before the destructive soft-reset so review-driven fixes get absorbed into the WIP commit history and Phase 4's per-prefix consolidation cleans them up for free. Skippable via `--skip-review`; non-blocking if `copilot` is unavailable.
+- `/address-pr-review` skill - state-aware Copilot PR-review handler. Detects fresh vs stale reviews by SHA comparison, triggers Copilot via `gh pr edit --add-reviewer` when needed, polls until completion, classifies fresh unresolved threads (fix/resolve-only/skip), and resolves silently via GraphQL. State + freshness logic lives in `pr_review.py` for independent testing.
+- `/prepare-release` Phase 5.5 invokes `/address-pr-review` after push to drive the review to a clean state; 2-iteration cap; `--skip-review` now covers both Phase 3.5 and Phase 5.5.
+
+### Changed
+
+- `AGENTS.md` now opens with a "Compound knowledge" table exposing all three lazy-loadable layers equally. Style sections replaced by `.claude/rules/` files; OpenWolf section removed (redundant with root `CLAUDE.md`).
+- `grill-with-docs` skill rewritten: targets `design/decisions/` instead of `docs/adr/`; ADR format adds `**Constraint:**` and `**Scope:**` fields; CONTEXT-FORMAT.md removed (DDD concept, not applicable). Documents both capture paths (direct write during grilling, `Codified-Decision:` trailer on merge).
+- Refreshed test-case and hook counters in `docs/standards.md`, `docs/index.md`, `docs/decisions.md`, and `docs/architecture.md` to match live totals (658 cases / 25 hooks / 13 custom).
+
 ## [1.10.6] - 2026-05-22
 
 ### Changed
