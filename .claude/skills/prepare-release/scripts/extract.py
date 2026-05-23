@@ -52,7 +52,7 @@ def run_git(args: list[str]) -> str:
             ["git", *args], capture_output=True, text=True, check=True
         )
         return result.stdout.strip()
-    except subprocess.CalledProcessError, FileNotFoundError:
+    except (subprocess.CalledProcessError, FileNotFoundError):
         return ""
 
 

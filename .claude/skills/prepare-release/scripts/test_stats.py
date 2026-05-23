@@ -15,7 +15,8 @@ scan
     {
       "bats":   {"files": <int>, "cases": <int>},
       "pester": {"files": <int>, "tests": <int>},
-      "total":  {"files": <int>, "cases": <int>}
+      "total":  {"files": <int>, "cases": <int>},
+      "hooks":  {"custom": <int>}
     }
 
 audit
@@ -70,13 +71,18 @@ def count_lines(path: Path, pattern: re.Pattern) -> int:
         return 0
 
 
+CUSTOM_HOOK_RE = re.compile(r"^\s+entry:\s+python3\s+-m\s+tests\.hooks\.")
+
+
 def gather_counts(root: Path) -> dict[str, dict[str, int]]:
-    """Scan tests/bats and tests/pester; return current counts."""
+    """Scan tests/bats, tests/pester, and .pre-commit-config.yaml."""
     bats_files = sorted((root / "tests" / "bats").glob("*.bats"))
     pester_files = sorted((root / "tests" / "pester").glob("*.Tests.ps1"))
 
     bats_cases = sum(count_lines(p, BATS_TEST_RE) for p in bats_files)
     pester_tests = sum(count_lines(p, PESTER_IT_RE) for p in pester_files)
+
+    custom_hooks = count_lines(root / ".pre-commit-config.yaml", CUSTOM_HOOK_RE)
 
     return {
         "bats": {"files": len(bats_files), "cases": bats_cases},
@@ -85,6 +91,7 @@ def gather_counts(root: Path) -> dict[str, dict[str, int]]:
             "files": len(bats_files) + len(pester_files),
             "cases": bats_cases + pester_tests,
         },
+        "hooks": {"custom": custom_hooks},
     }
 
 
@@ -134,6 +141,11 @@ STAT_LOCATIONS: list[tuple[str, str, str]] = [
         "docs/index.md",
         r"Bats \(bash\) and Pester \(PowerShell\) suites across (\d+) test files",
         "total.files",
+    ),
+    (
+        "docs/index.md",
+        r"\|\s*Custom pre-commit hooks\s*\|\s*(\d+)",
+        "hooks.custom",
     ),
     # ARCHITECTURE.md - test-infra section header counts.
     ("ARCHITECTURE.md", r"^(\d+)\s+Pester files;", "pester.files"),
