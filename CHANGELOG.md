@@ -5,6 +5,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.11.2] - 2026-05-24
+
+### Added
+
+- `/review` helper scripts (`review_status.py`, `review_prepare.py`, `review_next.py`, `review_triage.py`) replacing manual JSON parsing with deterministic Python; `review_status.py` outputs a box-drawn table with bold ANSI header.
+- Automatic worktree merge and cleanup after `/review act` and `/review fix` cycles; the user no longer manages worktree artifacts.
+
+### Changed
+
+- `/prepare-release` Phase 3.5 now runs `command -v copilot` explicitly instead of assuming unavailability; Phase 5.5 clarified as independent of Copilot CLI (uses server-side GitHub Copilot reviewer via `gh`).
+- Review subagents (reviewer, fixer, verifier) now avoid `cd &&` compound commands and `find -exec` to reduce permission prompts under `acceptEdits` mode.
+
 ## [1.11.1] - 2026-05-24
 
 ### Changed
