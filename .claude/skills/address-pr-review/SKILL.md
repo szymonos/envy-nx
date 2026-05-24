@@ -1,6 +1,6 @@
 ---
 name: address-pr-review
-description: State-aware GitHub Copilot PR review handler. Detects review state (not triggered / in progress / has unresolved threads / clean), triggers Copilot via `gh pr edit --add-reviewer` when needed, polls until completion, classifies fresh unresolved comments as fix/resolve-only/skip, applies fixes, resolves threads via GraphQL, and pushes. Only exits when the fresh review (matching HEAD SHA) has no unresolved fresh threads. Use when the user types `/address-pr-review`, asks to address PR comments, wants to clear review findings, or says "check the PR review." Also called from /prepare-release Phase 5.5. Disabled for auto-invocation.
+description: State-aware GitHub Copilot PR review handler. Detects review state (not triggered / in progress / has unresolved threads / clean), triggers Copilot via `gh pr edit --add-reviewer` when needed, polls until completion, classifies fresh unresolved comments as fix/resolve-only/skip, applies fixes, resolves threads via GraphQL, and pushes. Only exits when the fresh review (matching HEAD SHA) has no unresolved fresh threads. Use when the user types `/address-pr-review`, asks to address PR comments, wants to clear review findings, or says "check the PR review." Disabled for auto-invocation.
 disable-model-invocation: true
 ---
 
@@ -13,11 +13,10 @@ State-aware Copilot PR review handler. Detects the current review state, drives 
 - `/address-pr-review` - drive current branch's PR review to a clean state
 - `/address-pr-review 37` - same, for a specific PR number
 - "address the PR review comments" / "check the PR review" / "clear the review" - same as `/address-pr-review`
-- Called automatically from **`/prepare-release` Phase 5.5** (with adjusted commit handling - see below)
 
 ## Prerequisites
 
-- `gh` CLI installed and authenticated (already a project requirement per `AGENTS.md`).
+- `gh` CLI installed and authenticated.
 - Copilot enabled on the repository. If `gh pr edit --add-reviewer copilot-pull-request-reviewer` fails with a permissions error, surface to the user - Copilot may need to be enabled in repo settings.
 
 ## Review states
@@ -69,8 +68,8 @@ The `state` JSON already contains `unresolvedFreshThreads` with `{id, path, line
 
 | # | File:Line | Author | Summary |
 |---|-----------|--------|---------|
-| 1 | .claude/rules/bash-style.md:9 | copilot | `set -euo pipefail` doesn't match nix-path constraint |
-| 2 | docs/index.md:109 | copilot | Custom hooks count says 12 |
+| 1 | src/main.py:9 | copilot | Missing error handling on API call |
+| 2 | docs/index.md:109 | copilot | Stale reference count |
 ```
 
 For each thread, read the comment body + the referenced file at the specified line. Classify:
@@ -90,9 +89,11 @@ After processing all `fix` and `resolve-only` items:
 - If any `skip` items remain: present them to the user via `AskUserQuestion`. For each, offer three options: "Fix it" (Claude fixes now), "Resolve without fix" (intentional choice), "Leave open" (for later / human reviewer to decide). Act on user's choices.
 - Report: "N fixed, M resolved (stale/intentional), K surfaced to user."
 
-### Phase 4 - commit and push (standalone only)
+### Phase 4 - commit and push
 
-**Only runs when `/address-pr-review` is invoked standalone** (not from `/prepare-release` Phase 5.5 - the caller handles commit topology via Phase 4 re-run).
+**Only runs in standalone mode** - when the skill is invoked directly, not as part of a larger workflow. The caller decides commit topology; the skill's job is to surface fixes and resolve threads.
+
+When invoked by a caller that manages its own commit flow (e.g., a consolidation skill that re-cuts commits), the caller should pass context indicating Phase 4 should be skipped. Without that context, Phase 4 runs by default.
 
 If any files were edited in Phase 3:
 
@@ -101,16 +102,9 @@ If any files were edited in Phase 3:
 3. Commit: `git commit -m "fix: address PR review comments"`
 4. Push: `git push`
 
-The push will trigger a new Copilot review automatically. The skill is **one-shot in v2** - it does not re-invoke itself after pushing. The user (or `/prepare-release` Phase 5.5 with its 2-iteration cap) decides whether to re-run.
+The push will trigger a new Copilot review automatically. The skill is **one-shot** - it does not re-invoke itself after pushing. The user decides whether to re-run.
 
 If no files were edited (all threads were `resolve-only` or `skip` → leave-open), skip the commit - just report the resolution results.
-
-## Output handling by invocation context
-
-| Context                               | Phase 4 runs?                                                        | How fixes land                                               |
-| ------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------ |
-| **Standalone** (`/address-pr-review`) | Yes - single `fix:` commit + push                                    | Simple; topology cleanup deferred to next `/prepare-release` |
-| **From `/prepare-release` Phase 5.5** | No - caller re-runs Phase 4 (soft-reset + recommit) + Phase 5 (push) | Clean topology preserved                                     |
 
 ## Anti-patterns
 
@@ -119,7 +113,7 @@ If no files were edited (all threads were `resolve-only` or `skip` → leave-ope
 - **Resolving `skip` items silently.** The human might want to act on them - a "consider X" suggestion might actually be a good idea. Surface, don't suppress.
 - **Posting reply comments before resolving.** Silent resolve is the design choice - keeps the PR history clean. The fix is visible in the diff; the resolution is visible in the thread state.
 - **Looping `wait` on timeout.** If `wait` exits 4 (timeout), don't immediately re-call it. Surface to the user; Copilot may be queued or rate-limited.
-- **Copying the reviewer's suggested fix verbatim.** The reviewer (Copilot or human) suggests direction; Claude writes the actual fix using its knowledge of the codebase's patterns, cross-shell parity rules, and accepted decisions.
+- **Copying the reviewer's suggested fix verbatim.** The reviewer (Copilot or human) suggests direction; Claude writes the actual fix using its knowledge of the codebase's patterns and accepted decisions.
 - **Resolving threads for human reviewers' comments without checking.** The skill processes ALL unresolved fresh threads regardless of author. If a human reviewer left a comment expecting a human reply, resolving silently would be rude. Classify these as `skip` unless the fix is unambiguous.
 
 ## Example invocations
@@ -127,4 +121,3 @@ If no files were edited (all threads were `resolve-only` or `skip` → leave-ope
 - `/address-pr-review` - address comments on current branch's PR
 - `/address-pr-review 37` - address comments on PR #37
 - "Check the PR review and fix what you can" - same as `/address-pr-review`
-- From inside `/prepare-release`: invoked automatically at Phase 5.5 (skill drives review to clean state internally)
