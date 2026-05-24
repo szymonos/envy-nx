@@ -10,6 +10,7 @@
 settings.local.json
 /.claude/rules/openwolf.md
 /.claude/settings.json
+/.claude/worktrees/
 /.wolf
 /CLAUDE.md
 
