@@ -2,8 +2,8 @@
 # Flake update, nix profile upgrade, MITM proxy certificate detection.
 # shellcheck disable=SC2154  # ENV_DIR, upgrade_packages, SCRIPT_ROOT - set by bootstrap phase
 #
-# Reads:  ENV_DIR, upgrade_packages, SCRIPT_ROOT
-# Writes: PINNED_REV, _ir_error
+# Reads:  ENV_DIR, DEV_ENV_DIR, upgrade_packages, SCRIPT_ROOT, NIX_ENV_TLS_PROBE_URL
+# Writes: PINNED_REV, _ir_error, NIX_SSL_CERT_FILE, SSL_CERT_FILE
 
 should_update_flake() {
   local upgrade_flag="${1:-false}"
@@ -33,7 +33,6 @@ phase_nix_profile_print_mode() {
 }
 
 phase_nix_profile_update_flake() {
-  SECONDS=0
   if should_update_flake "$upgrade_packages"; then
     # nix writes progress (the live progress bar and per-path "copying path"
     # lines) to stderr; let it through so the user sees what's happening
@@ -49,6 +48,7 @@ phase_nix_profile_update_flake() {
 }
 
 phase_nix_profile_apply() {
+  SECONDS=0
   # narHash is the flake's content hash (stable across mtime bumps). Stored
   # OUTSIDE ENV_DIR (~/.config/dev-env/, alongside install.json) so writing
   # it doesn't itself advance the path:flake's lastModified.

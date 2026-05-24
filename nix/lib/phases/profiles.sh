@@ -2,6 +2,7 @@
 # Bash, zsh, and PowerShell shell profile setup.
 #
 # Reads:  CONFIGURE_DIR
+# Writes: (none)
 
 phase_profiles_bash() {
   info "setting up bash profile..."

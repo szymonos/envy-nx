@@ -6,7 +6,7 @@
 # Writes: SCRIPT_ROOT, NIX_ENV_VERSION, NIX_SRC, CONFIGURE_DIR, ENV_DIR,
 #         CONFIG_NIX, omp_theme, starship_theme, unattended, update_modules,
 #         upgrade_packages, quiet_summary, allow_unfree, remove_scopes,
-#         any_scope, _scope_set, _ir_skip
+#         any_scope, _scope_set, _ir_skip, _ir_error, NX_REEXECED
 
 # Refresh the repo from upstream when behind. Skips silently when:
 #   - NX_REEXECED is already set (we are the post-exec invocation; refresh
@@ -320,8 +320,7 @@ _install_nix_darwin() {
     info "using custom GID $id_base and UID base $id_base"
   fi
 
-  _io_run curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix |
-    sh -s -- "${install_args[@]}"
+  _io_install_nix "${install_args[@]}"
 
   _source_nix_profile
   if ! command -v nix &>/dev/null && [ -x "$HOME/.nix-profile/bin/nix" ]; then

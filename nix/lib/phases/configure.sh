@@ -3,8 +3,12 @@
 # shellcheck disable=SC2154  # CONFIGURE_DIR, _scope_sorted, omp_theme,
 #   starship_theme - set by bootstrap phase
 #
-# Reads:  CONFIGURE_DIR, _scope_sorted, omp_theme, starship_theme
+# Reads:  CONFIGURE_DIR, _scope_sorted, omp_theme, starship_theme, unattended
 # Writes: GITHUB_TOKEN
+#
+# Known _io_run exception: gh.sh and git.sh are invoked directly (not via
+# _io_run) because their interactive prompts require live stderr. Tests
+# for these scripts must run them directly rather than via _io_* overrides.
 
 # gh.sh and git.sh are invoked directly (NOT through _io_run): both emit
 # user prompts on stderr (`gh auth login`'s device code line; bash's
@@ -69,8 +73,8 @@ phase_configure_per_scope() {
       _io_run "$CONFIGURE_DIR/terraform.sh" || warn "terraform configuration failed"
       ;;
     pwsh)
-      mkdir -p "$HOME/.local/bin"
-      ln -sf "$HOME/.nix-profile/bin/pwsh" "$HOME/.local/bin/pwsh"
+      _io_run mkdir -p "$HOME/.local/bin"
+      _io_run ln -sf "$HOME/.nix-profile/bin/pwsh" "$HOME/.local/bin/pwsh"
       ;;
     esac
   done

@@ -67,6 +67,13 @@ _io_curl_probe_pinned() {
   _cert_probe_pinned "$1" "$2"
 }
 
+# Install nix via the Determinate Systems installer. Wraps the full
+# curl|sh pipeline so tests can override the entire invocation.
+_io_install_nix() {
+  _io_run curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix |
+    sh -s -- "$@"
+}
+
 # _io_pwsh_nop lives in .assets/lib/helpers.sh -- shared with setup_common.sh,
 # which runs out-of-process from nix/setup.sh and so cannot see io.sh's symbols.
 # helpers.sh is sourced right after io.sh in nix/setup.sh, so the function is
