@@ -5,6 +5,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.11.1] - 2026-05-24
+
+### Changed
+
+- Completed Reads:/Writes: phase-boundary headers across all orchestration files (`nix_profile.sh`, `bootstrap.sh`, `scopes.sh`, `configure.sh`, `profiles.sh`, `post_install.sh`, `platform.sh`); added explicit `# Writes: (none)` where phases have no variable outputs.
+- Extracted `_io_install_nix()` shim in `io.sh` wrapping the full `curl | sh` nix installer pipeline so tests can override the entire invocation.
+- Wrapped bare `mkdir`/`ln` calls in `configure.sh` pwsh symlink setup with `_io_run` for test interception.
+- Moved `SECONDS=0` from `phase_nix_profile_update_flake` into `phase_nix_profile_apply` so elapsed-time reporting is self-contained.
+- Replaced silent `|| true` on nix GC commands in `post_install.sh` with visible `warn` messages so failures are reported without aborting setup.
+- Documented `_io_run` exception for interactive scripts (`gh.sh`/`git.sh`) and hook sourcing contract in phase headers.
+
 ## [1.11.0] - 2026-05-23
 
 Adds a tool-agnostic L4 compounding-engineering layer plus L7 author-time and gate-time review skills. `AGENTS.md` becomes the shared context surface for any AI coding agent, exposing three lazy-loadable layers via a "Compound knowledge" table: `ARCHITECTURE.md` (how things connect), `design/decisions/` (8 seed ADRs), and `design/lessons.md` (auto-populated via commit trailers). New skills: `/second-opinion` invokes Copilot CLI pre-push; `/address-pr-review` drives state-aware response to Copilot's PR-review threads post-push.
