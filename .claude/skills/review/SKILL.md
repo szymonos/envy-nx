@@ -29,12 +29,8 @@ Reserved verbs (`act`, `fix`, `next`, `status`) take precedence over shard-name 
 
 ### `/review <shard>` - review one shard
 
-1. Read `design/reviews/shards.json`. Look up the entry where `name == <shard>`. If not found, list available shard names and stop.
-2. Verify the charter file at `<entry>.charter` exists. If missing, instruct the user to write the charter first (see `design/reviews/README.md` → "Adding a new shard") and stop.
-3. Compute today's date in `YYYY-MM-DD` form and the current `git rev-parse HEAD` for the findings header.
-4. Compute `sha256` of the charter file - pass it to the reviewer so it lands in the findings JSON (lets a stale findings file be detected when the charter has since changed).
-5. **Load open followups for this shard.** If `.wolf/follow-ups/<shard>.json` exists, read entries with `status: open`. These are candidate findings from prior cycles. Pass the list (with `id`, `description`, `source_cycle`, `source_shard`) to the reviewer in the spawn prompt.
-6. Spawn the **reviewer** subagent (`.claude/agents/reviewer.md`) with this prompt:
+1. Run `python3 .claude/skills/review/scripts/review_prepare.py <shard>`. The script validates the shard name, verifies the charter exists, computes today's date, git HEAD sha, charter sha256, and loads open followups. On non-zero exit, relay the stderr message and stop. On success, parse the JSON output - it contains all fields needed for the reviewer prompt.
+2. Spawn the **reviewer** subagent (`.claude/agents/reviewer.md`) with this prompt:
 
    ```text
    Review shard: <shard>
@@ -49,14 +45,13 @@ Reserved verbs (`act`, `fix`, `next`, `status`) take precedence over shard-name 
    Load the charter, the accepted-decisions ledger (design/reviews/accepted.md), and the followups list above. Walk the files matched by the globs. Emit findings as specified in the charter's severity rubric. For each open followup, decide whether to re-emit as a finding (prefix `[FU-NNN]` in the finding field) or skip it for this cycle (it stays open). Append today's date to each considered FU's `considered_in_cycles` in `.wolf/follow-ups/<shard>.json`. Write findings to the output path. Report back: total finding count, severity breakdown, output path, and which FU-NNNs were re-emitted vs skipped.
    ```
 
-7. After the reviewer returns: update `.wolf/reviews/state.json` (create if missing) with the new last-run timestamp for this shard.
-8. Print a one-line summary to the user: `Reviewed <shard>: <N> findings (<critical>/<high>/<medium>/<low>). See <output-path>. Run /review act <output-path> to triage.`
+3. After the reviewer returns: update `.wolf/reviews/state.json` (create if missing) with the new last-run timestamp for this shard.
+4. Print a one-line summary to the user: `Reviewed <shard>: <N> findings (<critical>/<high>/<medium>/<low>). See <output-path>. Run /review act <output-path> to triage.`
 
 ### `/review next` - rotate to oldest shard
 
-1. Read `.wolf/reviews/state.json` (treat missing or unlisted shards as "never reviewed" → infinite age).
-2. From `shards.json`, pick the shard with the oldest `last_run` (or never-run, breaking ties by `blast_radius` desc).
-3. Run `/review <picked-shard>`.
+1. Run `python3 .claude/skills/review/scripts/review_next.py`. It prints the shard name with the oldest `last_run` (never-run first, ties broken by `blast_radius` desc).
+2. Run `/review <picked-shard>`.
 
 ### `/review act <findings-path>` - triage and act
 
@@ -75,15 +70,17 @@ Reserved verbs (`act`, `fix`, `next`, `status`) take precedence over shard-name 
    - On **dispute**: prompt for a one-line rationale (why this isn't actually a problem). Append to `accepted.md` as `Decision: dispute` (no `Re-evaluate when:`).
    - On **apply**: keep in the apply-set for the fixer.
 
-   For each decision, write `triage_decision` (and `triage_rationale` for defer/dispute) back to the corresponding finding in the findings JSON via `jq` and atomic temp-file + rename. See "Append-only invariant" under the Findings JSON schema below.
-
-   **If the finding's text starts with `[FU-NNN]`** (i.e., the reviewer re-emitted a followup as this finding): in addition to the findings JSON write, also update `.wolf/follow-ups/<shard>.json` to close the corresponding FU. Set `status: closed`, `closed_at: <iso-date>`, `closed_via: triage-applied` (or `triage-deferred` / `triage-disputed`).
+   After each decision, run `python3 .claude/skills/review/scripts/review_triage.py <findings-path> <finding-id> <decision> [rationale]`. The script atomically writes `triage_decision` (and `triage_rationale` for defer/dispute) to the findings JSON. If the finding text starts with `[FU-NNN]`, the script also closes the corresponding followup in `.wolf/follow-ups/<shard>.json`.
 3. After triage:
    - If apply-set is empty: report "no findings marked for fix; defers/disputes recorded in accepted.md" and stop.
-   - Otherwise: spawn the **fixer** subagent (`.claude/agents/fixer.md`) with the apply-set and findings path. The fixer writes `fixer_outcome` and `fixer_commit` per finding back to the JSON. Wait for it to return.
+   - Otherwise: record `base_sha=$(git rev-parse HEAD)` and `base_branch` (the currently checked-out branch). Then spawn the **fixer** subagent (`.claude/agents/fixer.md`) with the apply-set and findings path. The fixer writes `fixer_outcome` and `fixer_commit` per finding back to the JSON. Wait for it to return. Capture the fixer's `worktree_path` and `fixer_branch` from the agent result.
 4. **Persist the fixer's followups output.** The fixer's report includes a structured `followups` array - things it noticed but didn't act on (per the minimum-scope rule). For each entry, append to `.wolf/follow-ups/<suggested_home_shard>.json` (creating the file if absent). Each new entry gets the next shard-local `FU-NNN` id, plus initial fields: `status: open`, `source_cycle: <today>`, `source_shard: <current shard>`, `source_findings_path: <findings path>`, `considered_in_cycles: []`. Multiple entries with different home shards land in different files.
 5. Spawn the **verifier** subagent (`.claude/agents/verifier.md`) with the findings path and the diff range (`git diff <base>...HEAD`). The verifier writes `verifier_verdict` and `verifier_note` per finding back to the findings JSON, AND checks open followups for this shard against the diff (auto-closing any that the diff incidentally resolves). Report the verifier's per-finding verdicts and any followup auto-closures to the user.
-6. The user is responsible for opening the PR (the fixer prepares the branch and commit; the human pushes and opens the PR after reviewing the verifier's verdicts).
+6. **Merge the fixer's branch and clean up the worktree.** After the verifier returns:
+   - Verify fast-forward is possible: check that `base_sha` still equals `git rev-parse <base_branch>` (i.e., the base branch has not moved since the fixer started).
+   - **If fast-forward is possible:** run `git merge --ff-only <fixer_branch>` on `<base_branch>`, then `git worktree remove <worktree_path>` (retry with `--force` if locked), then `git branch -d <fixer_branch>`.
+   - **If fast-forward is NOT possible** (base branch moved during the cycle): do NOT merge. Warn the user: `"Merge conflict: <base_branch> has moved since the review started. The fixer's branch <fixer_branch> is intact in <worktree_path>. To merge manually: git merge <fixer_branch>. To clean up after: git worktree remove <worktree_path> && git branch -d <fixer_branch>."` Stop here.
+7. **Report to the user.** Print the number of commits ahead of origin and the verifier summary. If any verifier verdicts are non-confirmed, list the flagged findings with their verdicts and remind the user about `/review fix F-NNN`. The user may push when ready.
 
 ### `/review fix <finding-id>` - re-run the fixer on one finding with revised guidance
 
@@ -98,22 +95,17 @@ For when the verifier flagged a fix as `symptom-only`, `regression-risk`, `over-
    - The `fixer_commit` SHA (if present) so the user can `git show <sha>` to inspect the prior fix
    - The current `retry_count` (0 means this is the first retry)
 5. **Prompt for revised guidance** via `AskUserQuestion`: free-text, one paragraph describing what the previous fix missed and what the new fix should address. Empty guidance means "try again with the same finding text"; usually you'll want concrete direction informed by the verifier's prior note.
-6. **Spawn the fixer subagent** with: the finding's full payload, the verifier's prior verdict + note, and the user's revised guidance. The fixer follows its usual protocol: minimum-scope edit, gate on `make lint && make test-unit`, one commit. Commit message suffixed `[F-NNN, retry-N]` (where N is the new `retry_count`) so the original commit stays distinguishable in `git log`.
+6. **Record base state and spawn the fixer subagent.** Record `base_sha=$(git rev-parse HEAD)` and `base_branch`. Spawn the fixer with the finding's full payload, the verifier's prior verdict + note, and the user's revised guidance. The fixer follows its usual protocol: minimum-scope edit, gate on `make lint && make test-unit`, one commit. Commit message suffixed `[F-NNN, retry-N]` (where N is the new `retry_count`) so the original commit stays distinguishable in `git log`. Capture `worktree_path` and `fixer_branch` from the agent result.
 7. **Fixer writes back** the new `fixer_outcome`, `fixer_commit`, and incremented `retry_count` to the findings JSON for this finding.
 8. **Spawn the verifier subagent** on the new diff range. The verifier overwrites the prior `verifier_verdict` and `verifier_note` for this finding with the new ones (this is the one author-may-overwrite-own-field exception to the append-only invariant).
-9. **Report the new verdict** to the user. If still flagged, the user can `/review fix F-NNN` again with further-revised guidance, push the branch as-is and address the remainder manually, or demote the finding to `accepted.md`.
+9. **Merge and clean up the worktree.** Same protocol as `/review act` step 6: fast-forward check on `base_sha`, `git merge --ff-only`, remove worktree, delete branch. If fast-forward fails, warn and leave intact.
+10. **Report the new verdict** to the user. Fixes are already on `<base_branch>`. If still flagged, the user can `/review fix F-NNN` again (a fresh worktree will be created each time), push as-is and address the remainder manually, or demote the finding to `accepted.md`.
 
 `/review fix` is **targeted** (single finding, no batch) and **context-discovering** (no path arg). It is NOT a redo of `/review act` - the original triage decisions stand; only the fixer phase re-runs for the one finding you named. To retry multiple findings, run `/review fix F-NNN` once per finding.
 
 ### `/review status` - show review cadence
 
-1. Read `.wolf/reviews/state.json`. For each shard in `shards.json`, print a row:
-
-   ```text
-   <shard>  <last-run-date or "never">  <days-since>  <finding-count-last-run>
-   ```
-
-2. Sort by `days-since` descending - oldest first. Highlight shards that have never been reviewed.
+Run `python3 .claude/skills/review/scripts/review_status.py` and print its stdout verbatim - do NOT reformat, summarize, or duplicate the table. The script outputs a fixed-width aligned plaintext table. The only addition allowed is a one-line hint after the table (e.g., which shard `/review next` would pick).
 
 ## Findings JSON schema
 
@@ -229,8 +221,27 @@ Updated at the end of every `/review <shard>` run. Read by `/review next` and `/
 - **Fixer cannot ignore the human.** The fixer only acts on findings the user marked `apply` during `/review act`. If a fix turns out to be wrong (test fails, unintended scope), it marks the finding `disputed (fix-broke-tests)` with the failing output captured, rather than silently dropping it.
 - **Fixer hard DONE marker.** `make lint && make test-unit` must pass before the fixer reports completion. This is the deterministic verification per Anthropic's "give Claude a way to verify its work" guidance - not the agent's own judgment.
 
+## Worktree lifecycle
+
+The fixer subagent is always spawned with `isolation: "worktree"` to prevent `make lint && make test-unit` from affecting the user's working tree. The lifecycle is fully managed by the skill - the user never interacts with worktree artifacts directly.
+
+1. **Create.** The skill spawns the fixer with worktree isolation. Claude Code creates a worktree under `.claude/worktrees/agent-<id>` and the fixer creates a branch `review/<shard>-<date>`.
+2. **Use.** The fixer commits fixes on this branch. The verifier validates the diff and runs `make lint && make test-unit` at the branch HEAD.
+3. **Merge.** After the verifier returns, the skill fast-forward merges the fixer's branch into the base branch. This is safe because the fixer branched from the base branch's HEAD at cycle start.
+4. **Clean up.** The skill removes the worktree (`git worktree remove`) and deletes the local branch (`git branch -d`).
+5. **Failure mode.** If the base branch moved during the cycle (another commit landed), fast-forward is not possible. The skill leaves the worktree and branch intact and prints manual merge instructions.
+
+`/review fix` follows the same lifecycle: fresh worktree per retry, merge and cleanup after the verifier returns.
+
+**Manual cleanup.** If a session crashes mid-cycle, a dangling worktree may remain. Clean up with:
+
+```bash
+git worktree remove .claude/worktrees/<dir>
+git branch -d review/<shard>-<date>
+```
+
 ## Out of scope (intentionally not implemented)
 
 - **Fan-out across all shards in one command.** Reviewing all 8 in parallel would consume context and produce a noisy combined inbox. Manual rotation via `/review next` is intentional.
 - **Auto-trigger on cron.** WSL distros idle-shutdown after ~8s; cron is unreliable. Manual trigger also keeps the human in the loop on every cycle.
-- **Persistent committed findings archive.** The fixer's PR description and `design/reviews/accepted.md` are the historical record. Raw findings JSON in `.wolf/reviews/` is forensic and ephemeral by design.
+- **Persistent committed findings archive.** The fixer's commit history (on the base branch after merge) and `design/reviews/accepted.md` are the historical record. Raw findings JSON in `.wolf/reviews/` is forensic and ephemeral by design. The user may still open a PR for team review before pushing.
