@@ -3,6 +3,10 @@
 #
 # Reads:  ENV_DIR, NIX_ENV_OVERLAY_DIR (env)
 # Writes: platform, NIX_ENV_PLATFORM, OVERLAY_DIR
+#
+# Note: phase_platform_run_hooks sources hook scripts in the current shell
+# context. Hooks may read or modify any phase variable (intentional
+# extension point). Hook behavior is not testable via _io_* overrides.
 
 phase_platform_detect() {
   local os

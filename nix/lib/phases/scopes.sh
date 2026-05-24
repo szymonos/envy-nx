@@ -5,9 +5,9 @@
 #   starship_theme, allow_unfree, platform - set by bootstrap/platform phases
 #
 # Reads:  CONFIG_NIX, any_scope, remove_scopes, omp_theme, starship_theme,
-#         allow_unfree
+#         allow_unfree, SCRIPT_ROOT, unattended, platform
 # Writes: _scope_set, _scope_sorted, NIX_ENV_SCOPES, allow_unfree,
-#         _ir_phase, _ir_error
+#         is_init, _ir_error
 
 phase_scopes_load_existing() {
   if [[ -f "$CONFIG_NIX" ]]; then

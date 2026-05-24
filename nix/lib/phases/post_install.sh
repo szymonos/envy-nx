@@ -2,6 +2,7 @@
 # Common post-install setup and nix garbage collection.
 #
 # Reads:  SCRIPT_ROOT, _scope_sorted
+# Writes: (none)
 
 phase_post_install_common() {
   local do_update_modules="$1"
@@ -20,8 +21,8 @@ phase_post_install_common() {
 
 phase_post_install_gc() {
   info "cleaning up old nix profile generations..."
-  _io_nix profile wipe-history 2>/dev/null || true
-  _io_nix store gc 2>/dev/null || true
+  _io_nix profile wipe-history 2>/dev/null || warn "nix profile wipe-history failed (old generations retained)"
+  _io_nix store gc 2>/dev/null || warn "nix store gc failed (stale paths retained)"
   _phase_post_install_clear_stale_caches
 }
 
