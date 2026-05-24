@@ -60,3 +60,11 @@ Two decision types live here:
 - **Decision:** dispute
 - **Original finding:** F-011 (low/correctness, `.assets/fix/fix_azcli_certs.sh:27`) - `source "$AZ_VENV"` activates the user's azure-cli venv inside the running script and never deactivates, leaking `VIRTUAL_ENV`/PATH/`pip` into the caller's shell if the script is sourced rather than executed.
 - **Rationale:** `.assets/fix/*.sh` are designed and documented for direct execution only (shebang + `set -euo pipefail`); `make fix-certs` and other callers always invoke them as subprocesses, never `source`. Source-safety is not part of the script's contract, and adding subshell wrappers for a non-supported invocation pattern adds friction for the supported one.
+
+## A-005: Dispute duplicate orchestration header findings (cycle 2)
+
+- **Date:** 2026-05-24
+- **Shard:** orchestration
+- **Decision:** dispute
+- **Original finding:** F-002, F-003, F-004, F-005 from orchestration cycle 2 - Reads/Writes header gaps in nix_profile.sh, configure.sh, scopes.sh
+- **Rationale:** All four were already fixed in cycle 1 (commit e7a1edf on branch review/orchestration-2026-05-24). Cycle 2 re-discovered them because the fixer's worktree branch had not been merged to main before the re-review.
