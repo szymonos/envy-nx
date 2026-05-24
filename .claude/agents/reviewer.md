@@ -67,6 +67,12 @@ A typical shard review produces between 0 and ~30 findings. If you produce more 
 
 If you produce zero findings on a non-trivial shard, that's a possible result - say so explicitly in your report and explain what you looked for. Don't manufacture findings to justify the run.
 
+## Bash command style
+
+- **Never prepend `cd <dir> &&` to Bash commands.** Use absolute paths or repo-relative paths instead. Compound commands with `cd` bypass the permission allowlist and trigger manual approval prompts.
+- Use `rg` instead of `grep`, `fd` instead of `find`. Never use `find -exec` (triggers a safety prompt even with an allowlist entry).
+- For `jq` writes, use the atomic pattern: `jq '...' "$path" > "$path.tmp" && mv "$path.tmp" "$path"`.
+
 ## File reading discipline
 
 - Read each in-scope file once, fully. Don't re-read.

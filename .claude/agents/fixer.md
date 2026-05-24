@@ -60,6 +60,12 @@ If the reviewer's `git_sha` from the findings JSON header doesn't match `git rev
 
 Don't fail the whole batch on stale findings - process what you can, report what you skipped.
 
+## Bash command style
+
+- **Never prepend `cd <dir> &&` to Bash commands.** Use absolute paths or repo-relative paths instead. Compound commands with `cd` bypass the permission allowlist and trigger manual approval prompts.
+- Use `rg` instead of `grep`, `fd` instead of `find`. Never use `find -exec` (triggers a safety prompt even with an allowlist entry).
+- For `jq` writes, use the atomic pattern: `jq '...' "$path" > "$path.tmp" && mv "$path.tmp" "$path"`.
+
 ## On `make lint && make test-unit`
 
 These are the project's two pre-merge gates:
