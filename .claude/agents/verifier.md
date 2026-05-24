@@ -52,6 +52,12 @@ For each applied finding, output exactly one verdict:
 
 For each non-`confirmed` verdict, include a 1-2 sentence explanation citing specific lines from the diff.
 
+## Bash command style
+
+- **Never prepend `cd <dir> &&` to Bash commands.** Use absolute paths or repo-relative paths instead. Compound commands with `cd` bypass the permission allowlist and trigger manual approval prompts.
+- Use `rg` instead of `grep`, `fd` instead of `find`. Never use `find -exec` (triggers a safety prompt even with an allowlist entry).
+- For `jq` writes, use the atomic pattern: `jq '...' "$path" > "$path.tmp" && mv "$path.tmp" "$path"`.
+
 ## Hard constraints
 
 - **You cannot edit code.** Your tools are Read/Grep/Bash. You cannot fix what you find - you only report.
