@@ -5,6 +5,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.11.3] - 2026-05-24
+
+### Changed
+
+- `/address-pr-review` and `/second-opinion` skills generalized into standalone, repo-agnostic skills; removed `/prepare-release`-specific coupling so they work from any caller or standalone invocation.
+- `/second-opinion` now includes Phase 0 (`review_brief.py check`/`discover`) to auto-detect repo mismatch in `REVIEW-BRIEF.md` and offer a one-time rewrite when ported to a new project.
+- `/prepare-release` Phase 3.5 now uses a challenge-first protocol for `/second-opinion` findings: each finding is validated against the author's intent before acting, with a transparent summary of verdicts (`fixed`/`dismissed`/`needs-user-judgment`).
+
 ## [1.11.2] - 2026-05-24
 
 ### Added
