@@ -1,3 +1,7 @@
+---
+repo: szymonos/envy-nx
+---
+
 # Review brief - envy-nx
 
 Curated context for a heterogeneous-model reviewer (`/second-opinion`).
