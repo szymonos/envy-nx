@@ -22,11 +22,10 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v7
         with:
-          version: "0.11.13"
           enable-cache: "true"
           cache-dependency-glob: "uv.lock"
-          cache-suffix: "extra-docs"
+          cache-suffix: "group-docs"
 
       - name: Deploy docs to GitHub Pages
         run:
-          uv run --extra docs mkdocs gh-deploy --force
+          uv run --frozen --group docs --no-dev mkdocs gh-deploy --force

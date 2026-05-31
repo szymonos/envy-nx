@@ -34,10 +34,10 @@ help: ## Show this help message
 .PHONY: install upgrade
 install: ## Install pre-commit hooks
 	@printf "📦 Installing all dependencies...\n\n"
-	uv sync --all-extras --frozen
+	uv sync --all-groups --frozen
 upgrade: ## Upgrade prek and hooks versions
 	@printf "\n✅ All dependencies upgraded\n\n"
-	uv sync --all-extras --upgrade --compile-bytecode
+	uv sync --all-groups --upgrade --compile-bytecode
 	uv run prek autoupdate
 
 .PHONY: test test-unit test-nix test-upgrade-walk
@@ -89,7 +89,7 @@ test-upgrade-walk: ## Cross-version upgrade walk in Docker (slow, ~20+ min). WAL
 
 .PHONY: mkdocs-serve slides-update-check
 mkdocs-serve: ## Serve mkdocs documentation with live reload
-	uv run --extra docs mkdocs serve --livereload
+	uv run --group docs --frozen mkdocs serve --livereload
 slides-update-check:  ## Compare pinned reveal.js version against the latest upstream release
 	@local_pin=$$(grep -oE 'reveal\.js@[^/"]+' docs/slides/index.html 2>/dev/null \
 		| head -1 | sed 's/^reveal\.js@//' || echo unknown); \
@@ -110,24 +110,34 @@ slides-update-check:  ## Compare pinned reveal.js version against the latest ups
 hooks: ## List available pre-commit hook IDs
 	@awk '/- id:/ {print "  " $$3}' .pre-commit-config.yaml | sort -u
 hooks-install: ## Install pre-commit hooks
-	uv run prek install --overwrite
+	uv run --frozen prek install --overwrite
 hooks-remove: ## Remove pre-commit hooks
-	uv run prek uninstall
+	uv run --frozen prek uninstall
+
+# Stage all changes, run prek, then restore previously staged file paths.
+# Auto-fixes from hooks land in the working tree; the prior staging survives.
+define PREK_RUN
+sf=$$(mktemp); git diff --cached --name-only -z >$$sf; \
+git add --all && uv run --frozen prek run $(HOOK) $(1); rc=$$?; \
+git reset -q HEAD; \
+if [ -s $$sf ]; then xargs -0 git add -- <$$sf 2>/dev/null; fi; \
+rm -f $$sf; exit $$rc
+endef
 
 .PHONY: hooks lint lint-diff lint-all
 lint: ## Run pre-commit hooks for changed files (HOOK=id to run one hook)
 	@printf "🧭 Running pre-commit hooks for changed files...\n\n"
-	git add --all && uv run prek run $(HOOK)
+	@$(call PREK_RUN)
 lint-diff: ## Run pre-commit hooks for files changed in this diff (HOOK=id to run one hook)
 	@printf "🧭 Running pre-commit hooks for files changed in this diff...\n\n"
 	@if [ "$$(git branch --show-current)" = "main" ]; then \
 		printf "⚠️  You are on the main branch. Skipping lint-diff.\n"; \
 	else \
-		git add --all && uv run prek run $(HOOK) --from-ref main --to-ref HEAD; \
+		$(call PREK_RUN,--from-ref main --to-ref HEAD); \
 	fi
 lint-all: ## Run pre-commit hooks for all files (HOOK=id to run one hook)
 	@printf "🧭 Running pre-commit hooks for all files...\n\n"
-	uv run prek run $(HOOK) --all-files
+	@$(call PREK_RUN,--all-files)
 
 .PHONY: egsave
 egsave: ## Regenerate runnable-example scripts (requires pwsh)

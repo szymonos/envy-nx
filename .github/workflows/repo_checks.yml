@@ -25,13 +25,13 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v7
         with:
-          version: "0.11.13"
           enable-cache: "true"
           cache-dependency-glob: "uv.lock"
+          cache-suffix: "group-docs"
 
       - name: Sync uv virtual environment
         run: |
-          uv sync --frozen --extra docs --compile-bytecode
+          uv sync --frozen --group docs --no-dev --compile-bytecode
 
       - name: Install Pester module
         shell: pwsh
@@ -45,7 +45,7 @@ jobs:
 
       - name: Build mkdocs documentation
         run: |
-          uv run --frozen --extra docs mkdocs build --strict
+          uv run mkdocs build --strict
 
       - name: Run pre-commit hooks
         uses: j178/prek-action@v2
