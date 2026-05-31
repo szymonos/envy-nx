@@ -17,7 +17,7 @@ End-to-end release prep for a feature branch. Optimized for the WIP workflow whe
 
 ## Workflow
 
-Five numbered phases plus four interstitials (Phase 1.5 cspell sweep, Phase 1.6 test-stats drift sweep, Phase 3.5 heterogeneous-model review, Phase 5.5 PR review address). Stop and surface the error if any phase fails - don't paper over.
+Five numbered phases plus six interstitials (Phase 1.5 cspell sweep, Phase 1.6 test-stats drift sweep, Phase 3.5 heterogeneous-model review, Phase 3.6 extract learnings, Phase 3.7 ARCHITECTURE.md staleness check, Phase 5.5 PR review address). Stop and surface the error if any phase fails - don't paper over.
 
 ### Phase 1: Compose CHANGELOG entry
 
@@ -153,7 +153,9 @@ For Phase 4's per-prefix consolidation, classify every changed file (since `<las
 
 4. **Watch for content-coupled files.** `project-words.txt` (cspell dictionary) is content-coupled to the docs/code that uses its words - roll it into the commit that introduces those words (usually `docs(changelog)`), not into a generic `chore` commit. Conceptual coupling (the word exists *because* of the bullet) makes the commit history easier to read; with `--no-verify` in Phase 4 there's no auto-fix-loop hazard, so this is good practice rather than load-bearing.
 
-5. Produce a categorization plan: which files go in which commit, with the commit message. **Don't execute yet** - Phase 3 verifies the release first, then Phase 4 has guardrails.
+5. **Decide whether consolidation is worth doing.** If the existing commits on the branch are already clean (small N, conventional-commit titles, one logical change per commit), skip Phase 4 consolidation entirely and jump to Phase 5. Heuristic: if `git log --oneline <last-tag>..HEAD` shows <= 3 commits AND each title starts with a conventional prefix AND the working tree + index are clean, consolidation adds noise rather than removing it. Otherwise propose the consolidation plan.
+
+6. Produce a categorization plan: which files go in which commit, with the commit message. **Don't execute yet** - Phase 3 verifies the release first, then Phase 4 has guardrails. **Present the plan to the user via `AskUserQuestion`** (approve, modify, or abort) before any history rewrite. The user knows things about their work that file diffs don't capture.
 
 ### Phase 3: Release verification
 
@@ -199,9 +201,77 @@ Invoke `/second-opinion` for an author-time review by a different model family (
    - If you cannot determine whether the finding is valid - **surface it to the user** via `AskUserQuestion` with the finding detail and your assessment of why it might or might not apply. Never auto-fix when uncertain.
 4. **Present a summary** of all findings with your verdict for each: `fixed`, `dismissed (reason)`, or `needs-user-judgment`. The user should see what the reviewer flagged AND what you decided, not just the fixes.
 5. **After fixes (if any).** Re-run `make lint` (same WATCHOUT as Phase 1: lint stages modifications; Phase 4 will redo staging). If a fix changes the user-facing surface of a feature *also* being introduced in this release, fold the change into the existing Added/Changed bullet (see "Section reclassification" below) - do NOT add a new `Fixed` bullet for a bug that never shipped. Don't add bullets for trivial nits.
-6. **Proceed to Phase 4.** The fixes become part of the WIP commits and get categorized into the right Conventional Commits prefix during Phase 4's consolidation.
+6. **Verification rerun (if any fixes were applied).** Rerun `/second-opinion` scoped to only the files that were fixed - not the full branch diff. The fixed file list comes from your own context: you applied fixes via Edit in step 3, so you know exactly which files changed. Pass them as path arguments to `git diff`:
 
-If `/second-opinion` reports "No findings.", announce it and proceed straight to Phase 4 - most release diffs will land here.
+   ```bash
+   copilot -p "Review ONLY these files for remaining issues: <fixed-file-list>. Run: git diff <base>..HEAD -- path/to/fixed1.sh path/to/fixed2.sh to see the changes. Flag bugs and correctness issues only. Output as: F-NNN - severity - file:line + description, or 'No findings.' if clean." \
+     -s --model gpt-5.3-codex --no-custom-instructions --allow-all-tools
+   ```
+
+   This catches regressions from the fixes without re-reviewing the entire branch (which would repeat dismissed findings). Cap at 1 verification rerun. If the rerun finds new issues, fix them and proceed without a third pass.
+7. **Proceed to Phase 3.6.** The fixes become part of the WIP commits and get categorized into the right Conventional Commits prefix during Phase 4's consolidation.
+
+If `/second-opinion` reports "No findings.", announce it and proceed straight to Phase 3.6 - most release diffs will land here.
+
+### Phase 3.6: Extract learnings (run before soft-reset)
+
+Mine the WIP commit history for operational lessons before Phase 4 destroys it. The bundled script does the deterministic signal detection; the agent generalizes and writes the prose.
+
+1. **Run the signal detector:**
+
+   ```bash
+   .claude/skills/prepare-release/scripts/extract_signals.py signals --base <last-tag>
+   ```
+
+   Returns JSON with `signals` (array of `{type, items}`), `next_lesson_id`, `existing_entries`, and `lessons_exists`. Signal types: `repeated_edits` (files in 3+ WIP commits), `lint_fixes` (commit messages matching lint-fix patterns), `corrections` (commits starting with "fix:", "revert:", etc.).
+
+2. **Add review findings.** If Phase 3.5 fixed any `/second-opinion` findings (not dismissed), treat each as an additional signal. The script does not detect these - the agent knows them from Phase 3.5 context.
+
+3. **No signals? Skip silently.** If the JSON `signals` array is empty and no review findings were fixed, proceed to Phase 3.7. Do not create `design/lessons.md` or announce anything.
+
+4. **Filter: only keep signals that could recur.** For each signal, ask: "Could this same mistake happen again in a different file, a different skill, or a different PR?" Drop signals where the fix is **self-enforcing** - infrastructure changes (Makefile targets, CI config, hook config, linter rules) that mechanically prevent the mistake from recurring. Keep signals where the pattern could repeat in new code the agent writes in the future.
+
+5. **Draft candidate entries.** For each surviving signal, draft a generalized rule:
+
+   ```markdown
+   ## L-NNN - YYYY-MM-DD - short-tag
+
+   **Source:** PR #TBD, branch `<branch-name>`
+
+   <One-paragraph generalized rule. Not "I did X wrong" but "When doing Y, always Z because W.">
+
+   ---
+   ```
+
+   - **Generalize.** The entry teaches a forward-looking rule, not a war story.
+   - **Cap at 3 entries per release.** If more signals fire, pick the 3 with broadest applicability.
+   - **L-NNN numbering.** Use `next_lesson_id` from the script output.
+   - **Deduplicate.** Compare against `existing_entries` from the script. Drop duplicates.
+
+6. **Append to `design/lessons.md`.** If the file exists, append after the last entry. The changes are uncommitted working-tree state; Phase 4 classifies them under `docs`.
+
+### Phase 3.7: Review ARCHITECTURE.md for staleness
+
+The bundled script detects which ARCHITECTURE.md sections may be stale based on the branch diff.
+
+1. **Run the staleness checker:**
+
+   ```bash
+   .claude/skills/prepare-release/scripts/extract_signals.py architecture --base <last-tag>
+   ```
+
+   Returns JSON with `stale_sections` (array of section names: `scope_system`, `nx_cli`, `phase_orchestration`, `hook_inventory`, `config_templates`) and `architecture_exists`.
+
+2. **No stale sections? Skip silently.** If `stale_sections` is empty, proceed to Phase 4.
+
+3. **Update stale sections.** Read `ARCHITECTURE.md` and update only the flagged sections:
+   - `scope_system` - update scope-related tables, dependency resolution descriptions.
+   - `nx_cli` - update verb dispatch tables, completer file lists, family file inventory.
+   - `phase_orchestration` - update phase call trees, phase-boundary documentation.
+   - `hook_inventory` - update hook tables, hook count references.
+   - `config_templates` - update config file inventories, shell-init rendering descriptions.
+
+4. **The changes join the `docs` commit in Phase 4.**
 
 ### Phase 4: Soft-reset and recommit by prefix
 
@@ -382,6 +452,11 @@ The git commit history captures development reality; the CHANGELOG captures user
 - **Auto-adding everything cspell flags without classification.** A typo silently becomes a "valid" word and persists in the dictionary forever. Phase 1.5's classification step is the safeguard.
 - **Shipping a release with stale test/hook/scope counts in the docs.** The numbers in `docs/standards.md`, `docs/index.md`, `ARCHITECTURE.md`'s §9 paragraphs, and the `docs/decisions.md` / `docs/architecture.md` test-cases-across-files prose decay every time a test or hook is added; they were correct at some point and read as authoritative until proven wrong. Phase 1.6 is the safeguard - the trigger (`git diff --name-only <last-tag>..HEAD -- tests/`) is one bash line and the audit is one script invocation.
 - **Trusting the test_stats.py auditor as exhaustive.** It only catches the regexes in `STAT_LOCATIONS` - free-form prose like "412 test cases across 22 test files" in `docs/decisions.md` slips past. Manually skim the **Canonical statistics callouts** table during Phase 1.6.
+- **Skipping Phase 3.5 or 5.5 based on your own judgment** ("it's just a small fix", "no existing code modified", "only docs changed"). The ONLY skip condition is `--skip-review`. New features are the MOST important case for review - fresh code has no prior review coverage and no test history. Never invent skip reasons that aren't in the skill.
+- **Writing session-specific notes in `design/lessons.md` instead of generalized rules.** Each entry is a forward-looking rule, not a journal entry. "When adding a new scope, update scopes.json before testing" is a rule. "I forgot to update scopes.json for the gcloud scope" is a journal entry.
+- **Extracting more than 3 learnings per release.** A noisy ledger gets ignored. Pick the 3 with broadest applicability.
+- **Skipping Phase 3.7 (ARCHITECTURE.md review).** New scopes, hooks, nx verbs, and phase changes are the most common sources of staleness. The check takes seconds; the staleness costs hours when a future agent acts on outdated information.
+- **Auto-running consolidation on a clean branch.** Adds noise (force-push for no benefit, lost commit timestamps) when the branch was already in PR shape. Phase 2 step 5 is the gate - trust it.
 - **Reading the full CHANGELOG.** Run `extract.py` first; agent context is what we're trying to save.
 - **Multi-paragraph bullets, SHAs / finding IDs / PR numbers in the body.** Searchable elsewhere; clutters the changelog.
 - **Tagging the release here** - real tags trigger release workflows; `make release` handles tagging post-merge.

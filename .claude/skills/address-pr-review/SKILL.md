@@ -57,7 +57,7 @@ Branch on the state from Phase 1:
 - **State C** (unresolved fresh threads): proceed to Phase 3.
 - **State D**: announce "PR review clean - no unresolved fresh threads. Exit." Done.
 
-`wait` polls every 30 seconds, up to 5 min total. On timeout (exit 4), surface to the user - Copilot may be queued or the service may be slow. Don't loop the wait; let the user decide whether to retry.
+`wait` polls every 30 seconds, up to 8 min total. On timeout (exit 4), surface to the user - Copilot may be queued or the service may be slow. Don't loop the wait; let the user decide whether to retry.
 
 ### Phase 3 - process unresolved fresh threads (State C only)
 
