@@ -5,6 +5,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.11.4] - 2026-05-31
+
+### Added
+
+- `extract_signals.py` in `/prepare-release` scripts for learning-signal extraction and ARCHITECTURE.md staleness detection.
+
+### Changed
+
+- `nx install` and `nx scope add` now batch-validate all package names in a single `nix eval` against the locked nixpkgs rev from `flake.lock`, cutting cold-cache validation from minutes to seconds.
+- Extracted `_nx_all_scopes` and `_nx_write_config` helpers from `_nx_scope_dispatch`, removing duplicated orphan-scope discovery and `config.nix` rewrite logic.
+- `check-bash32` pre-commit hook now covers all `nx` family files (`nx.sh`, `nx_pkg.sh`, `nx_scope.sh`, `nx_profile.sh`, `nx_lifecycle.sh`) since they run under macOS bash 3.2 via lazy-load from `aliases_nix.sh`.
+- `/prepare-release` skill gains Phase 3.6 (extract learnings from WIP history), Phase 3.7 (ARCHITECTURE.md staleness check), verification rerun in Phase 3.5, clean-branch skip heuristic, and user-approval gate before history rewrite.
+- Migrated `pyproject.toml` from `[project.optional-dependencies]` extras to `[dependency-groups]`; `Makefile` lint targets now use the `PREK_RUN` macro that preserves prior staging across hook runs.
+- Unpinned `uv` version in CI workflows (`docs-gh-pages.yml`, `repo_checks.yml`) to track latest stable.
+- Bumped `prek` 0.4.1 to 0.4.3, `ruff` 0.15.14 to 0.15.15, and transitive deps.
+
 ## [1.11.3] - 2026-05-24
 
 ### Changed
