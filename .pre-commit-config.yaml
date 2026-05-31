@@ -27,7 +27,7 @@ repos:
         name: Check nix-path scripts for bash 3.2 / BSD compatibility
         entry: python3 -m tests.hooks.check_bash32
         language: system
-        files: (nix/.*\.sh$|\.assets/lib/(scopes|profile_block|nx_doctor|helpers)\.sh$|\.assets/config/shell_cfg/(aliases_nix|aliases_git|aliases_kubectl|functions)\.sh$|\.assets/setup/setup_common\.sh$|\.assets/provision/install_copilot\.sh$)
+        files: (nix/.*\.sh$|\.assets/lib/(scopes|profile_block|nx|nx_pkg|nx_scope|nx_profile|nx_lifecycle|nx_doctor|helpers)\.sh$|\.assets/config/shell_cfg/(aliases_nix|aliases_git|aliases_kubectl|functions)\.sh$|\.assets/setup/setup_common\.sh$|\.assets/provision/install_copilot\.sh$)
         types: [file]
       - id: check-zsh-compat
         name: Check shell-sourced scripts for zsh compatibility
@@ -86,7 +86,7 @@ repos:
       - id: trailing-whitespace
         exclude: \.md$
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.14
+    rev: v0.15.15
     hooks:
       - id: ruff-check
         types_or: [python, pyi]
