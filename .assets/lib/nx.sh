@@ -97,6 +97,31 @@ function _nx_validate_pkg() {
   nix eval "nixpkgs#${1}.name" &>/dev/null
 }
 
+# Batch-validate package names against the locked nixpkgs rev from flake.lock.
+# Uses a single `nix eval` invocation instead of one per package, and evaluates
+# the same nixpkgs rev that `nix profile upgrade nix-env` will use (so the Nix
+# store cache is shared and cold-cache validation drops from minutes to seconds).
+# stdout: one valid package name per line.
+function _nx_validate_pkgs() {
+  [ $# -eq 0 ] && return 0
+  local locked_rev nix_system nix_list="" p
+  locked_rev="$(jq -r '.nodes.nixpkgs.locked.rev' "$_NX_ENV_DIR/flake.lock" 2>/dev/null)" || locked_rev=""
+  if [ -z "$locked_rev" ] || [ "$locked_rev" = "null" ]; then
+    for p in "$@"; do _nx_validate_pkg "$p" && printf '%s\n' "$p"; done
+    return
+  fi
+  local uname_m uname_s arch os
+  uname_m="$(uname -m)"
+  uname_s="$(uname -s)"
+  case "$uname_m" in x86_64) arch="x86_64" ;; aarch64 | arm64) arch="aarch64" ;; *) arch="$uname_m" ;; esac
+  case "$uname_s" in Linux) os="linux" ;; Darwin) os="darwin" ;; *) os="$uname_s" ;; esac
+  nix_system="${arch}-${os}"
+  for p in "$@"; do nix_list="$nix_list \"$p\""; done
+  nix eval --json "github:nixos/nixpkgs/$locked_rev#legacyPackages.$nix_system" \
+    --apply "pkgs: builtins.filter (n: builtins.hasAttr n pkgs) [$nix_list ]" 2>/dev/null |
+    jq -r '.[]'
+}
+
 function _nx_scope_pkgs() {
   local file="$1"
   [ -f "$file" ] || return 0

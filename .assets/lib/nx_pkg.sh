@@ -28,10 +28,11 @@ function _nx_pkg_install() {
     echo "Usage: nx install <pkg> [pkg...]" >&2
     return 1
   }
-  local validated=() p
+  printf "\e[90mvalidating %s...\e[0m\r" "$*"
+  local validated=() valid_set p
+  valid_set="$(_nx_validate_pkgs "$@")"
   for p in "$@"; do
-    printf "\e[90mvalidating %s...\e[0m\r" "$p"
-    if _nx_validate_pkg "$p"; then
+    if printf '%s\n' "$valid_set" | grep -Fqx "$p" 2>/dev/null; then
       validated+=("$p")
     else
       printf "\e[31m%s not found in nixpkgs\e[0m\n" "$p" >&2
