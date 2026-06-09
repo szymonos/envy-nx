@@ -5,6 +5,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.11.5] - 2026-06-09
+
+### Added
+
+- `fix_wsl_dns.sh` script for Debian/Ubuntu WSL2 distros that fixes flaky DNS resolution caused by a boot-order race between `systemd-resolved` and the WSL2 kernel DNS proxy on port 53.
+
+### Changed
+
+- `/prepare-release` Phase 1 step 6 now runs `make upgrade` instead of `uv lock --upgrade`, which also aligns `.pre-commit-config.yaml` `rev:` pins via `prek autoupdate` automatically.
+
+### Fixed
+
+- `Resolve-WslGtkThemePreference` now uses parameter splatting and a proper try/catch instead of backtick line continuation with `-ErrorAction SilentlyContinue`; defaults to light theme when the registry key is missing.
+- `Sync-WslSshKeys` derives the WSL `/mnt` path from `$HOME` instead of `$env:HOMEDRIVE`/`$env:HOMEPATH`, which can be unset by Group Policy.
+
 ## [1.11.4] - 2026-05-31
 
 ### Added
