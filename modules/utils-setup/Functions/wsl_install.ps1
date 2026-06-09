@@ -252,18 +252,22 @@ function Invoke-WslDistroMigration {
 .SYNOPSIS
 Read the Windows system theme preference for WSLg apps.
 .DESCRIPTION
-Returns 'light' if HKCU SystemUsesLightTheme = 1, 'dark' otherwise (also
-when the registry value is missing - matches the pre-refactor ternary
-behavior).
+Returns 'light' if HKCU SystemUsesLightTheme = 1 or when the registry
+value is missing (Windows default is light theme), 'dark' otherwise.
 #>
 function Resolve-WslGtkThemePreference {
     [CmdletBinding()]
     param ()
 
-    $regPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
-    $usesLight = Get-ItemPropertyValue `
-        -Path $regPath `
-        -Name 'SystemUsesLightTheme' `
-        -ErrorAction SilentlyContinue
+    $param = @{
+        Path = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
+        Name = 'SystemUsesLightTheme'
+    }
+    try {
+        $usesLight = Get-ItemPropertyValue @param -ErrorAction 'Stop'
+    } catch {
+        $usesLight = 1
+    }
+
     return $usesLight ? 'light' : 'dark'
 }
