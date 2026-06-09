@@ -43,18 +43,16 @@ Five numbered phases plus six interstitials (Phase 1.5 cspell sweep, Phase 1.6 t
 
 5. **Bump `pyproject.toml` `version`** to match `X.Y.Z`. One targeted `Edit` replacing the existing `version = "<old>"` line. This is the canonical Python project metadata; if it drifts from the CHANGELOG/git-tag version, `uv sync` and any downstream packaging see the wrong version. Mechanical: no judgment needed, just match `X.Y.Z`. The file rides with the `docs(changelog)` commit in Phase 4 (content-coupled - the version exists *because* of the release).
 
-6. **Refresh `uv.lock` and align pre-commit tool versions:**
+6. **Refresh dependencies and pre-commit hook versions:**
 
    ```bash
-   uv lock --upgrade  # refresh uv.lock with new project version + upgrade transitive deps
+   make upgrade  # uv sync --upgrade + prek autoupdate
    ```
 
-   This serves two purposes: (a) syncs `uv.lock`'s recorded envy-nx version with the pyproject bump from step 5, and (b) bumps transitive deps (notably `ruff`, `prek`) to their latest compatible versions for the new release. Run it early in Phase 1 so any breakage from a dep bump surfaces in `make lint` *before* Phase 4 cuts commits.
-
-   After running, check `.pre-commit-config.yaml` for `rev:` pins on tools that also live in `uv.lock` - primarily `astral-sh/ruff-pre-commit` - and bump them to match. Example: if `uv.lock` now has `ruff` at `0.15.14`, the `ruff-pre-commit` `rev:` should be `v0.15.14` too. Otherwise contributors see one ruff version locally (via `uv run`) and a different version in pre-commit, with subtle behavior differences.
+   This does three things in one pass: (a) syncs `uv.lock` with the pyproject bump from step 5, (b) upgrades transitive deps (`ruff`, `prek`, etc.) to latest compatible versions, and (c) runs `prek autoupdate` to align `.pre-commit-config.yaml` `rev:` pins with the upgraded versions automatically. Run it early in Phase 1 so any breakage from a dep bump surfaces in `make lint` *before* Phase 4 cuts commits.
 
    **Commit grouping in Phase 4:**
-   - `uv.lock` + `pyproject.toml` ride with the `docs(changelog)` commit (content-coupled to the version bump) **unless** `uv lock --upgrade` produced a substantial dep-bump diff (multiple unrelated deps moved). In that case, put both in `chore` with a message like `chore: bump deps + project version to X.Y.Z` to keep the changelog commit focused.
+   - `uv.lock` + `pyproject.toml` ride with the `docs(changelog)` commit (content-coupled to the version bump) **unless** `make upgrade` produced a substantial dep-bump diff (multiple unrelated deps moved). In that case, put both in `chore` with a message like `chore: bump deps + project version to X.Y.Z` to keep the changelog commit focused.
    - `.pre-commit-config.yaml` rides with `chore` if it was bumped (it's tooling config, not a release artifact).
 
 ### Phase 1.5: Cspell sweep (run only if release docs touched)
@@ -440,7 +438,8 @@ The git commit history captures development reality; the CHANGELOG captures user
 - **`git add .` or `git add -A`** in Phase 4 - the active scope is what you want, not whatever happens to be in working tree.
 - **Splitting `project-words.txt`** from its content-source commit. Conceptual coupling - the word exists *because* of the bullet - keeps the commit history honest.
 - **Skipping the `pyproject.toml` version bump (Phase 1 step 5).** The Python project metadata version drifts silently from the CHANGELOG/git-tag version - was `1.1.0` for 10+ releases until v1.11.0 caught the drift via Copilot review. `uv sync` and any downstream packaging see the wrong version. The bump is mechanical (one targeted Edit); always include `pyproject.toml` in the `docs(changelog)` commit alongside `CHANGELOG.md` and `project-words.txt`.
-- **Skipping `uv lock --upgrade` (Phase 1 step 6).** Two distinct breakages: (a) `uv.lock` keeps the old project version, so `uv sync` and any consumer of the lockfile sees the wrong envy-nx version; (b) transitive deps stay pinned to whatever was current at the last release, so security/bug fixes don't ride along and `.pre-commit-config.yaml` `rev:` pins drift from the locally-managed versions. Run it early - *after* the pyproject bump, *before* Phase 1.5 - so any dep-bump breakage surfaces in `make lint` instead of `lint-diff` after Phase 4.
+- **Skipping `make upgrade` (Phase 1 step 6).** Two distinct breakages: (a) `uv.lock` keeps the old project version, so `uv sync` and any consumer of the lockfile sees the wrong envy-nx version; (b) transitive deps and `.pre-commit-config.yaml` `rev:` pins stay stale, so security/bug fixes don't ride along. Run it early - *after* the pyproject bump, *before* Phase 1.5 - so any dep-bump breakage surfaces in `make lint` instead of `lint-diff` after Phase 4.
+- **Running `uv lock --upgrade` instead of `make upgrade`.** The Makefile target also runs `prek autoupdate` which aligns `.pre-commit-config.yaml` `rev:` pins automatically. Running `uv lock` alone leaves the pre-commit hooks out of sync, wasting tokens on manual alignment.
 - **Skipping `make lint-diff` after Phase 4.** Per-commit hooks were bypassed via `--no-verify`; `make lint-diff` is the validation gate. Skipping it means pushing unvalidated state.
 - **Skipping Phase 3 (release verification).** A patch release that's actually feature-shaped is the most common quiet bug - verify before destroying history, when fixing is one Edit.
 - **Adding `Fixed` / `Changed` bullets for changes that never shipped.** A bug introduced and fixed within the same release cycle never reached users - it is not "Fixed" from the CHANGELOG's perspective; the corrected behavior is just part of the feature's `Added` description. Same for `Changed` bullets describing iteration on an unreleased feature - fold into the existing `Added` bullet. See "Section reclassification" for the decision matrix. This is the most common merge-case error; recurred twice in v1.11.0 development.
