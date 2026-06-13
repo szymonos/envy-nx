@@ -17,7 +17,9 @@ State-aware Copilot PR review handler. Detects the current review state, drives 
 ## Prerequisites
 
 - `gh` CLI installed and authenticated.
-- Copilot enabled on the repository. If `gh pr edit --add-reviewer copilot-pull-request-reviewer` fails with a permissions error, surface to the user - Copilot may need to be enabled in repo settings.
+- Copilot enabled on the repository.
+
+**Important:** never call `gh pr edit --add-reviewer copilot-pull-request-reviewer` directly - it fails with a GraphQL permissions error on most repo configurations. Always use `pr_review.py trigger` which handles the API call correctly. If `trigger` fails, surface the error to the user - Copilot may need to be enabled in repo settings.
 
 ## Review states
 
