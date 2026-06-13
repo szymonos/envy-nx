@@ -74,6 +74,16 @@ if ($errors.Count -gt 0) {
 }
 if ($failed -gt 0) {
     Write-Host "`e[31mPester: $failed failed out of $total tests`e[0m"
+    foreach ($r in $results) {
+        foreach ($t in $r.Tests) {
+            if ($t.Result -eq 'Failed') {
+                Write-Host "`e[31m  [-] $($t.ExpandedPath)`e[0m"
+                foreach ($err in $t.ErrorRecord) {
+                    Write-Host "      $($err.DisplayErrorMessage)"
+                }
+            }
+        }
+    }
     exit 1
 } else {
     Write-Host "`e[32mPester: $passed/$total tests passed`e[0m"
