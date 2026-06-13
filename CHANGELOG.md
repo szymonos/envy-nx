@@ -5,6 +5,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-06-13
+
+### Added
+
+- `setup_vscode_macos_env` in `.assets/lib/vscode.sh` configures VS Code desktop on macOS: writes `~/.nix-profile/bin` to `/etc/paths.d/nix` for GUI-app PATH resolution and registers nix-managed `pwsh` in VS Code User settings.
+- `.shellcheckrc` at the repo root centralizes ShellCheck global excludes, shared by pre-commit, VS Code, and CLI invocations.
+- Post-install cleanup of the legacy `do-linux` PS module during `setup_common.sh` module installation phase.
+- `design/cleanup_queue.md` consolidates deferred tech-debt removals with a `CQ-NNN` template and `# CLEANUP:` code annotations for grep-ability.
+
+### Changed
+
+- **PowerShell module rename**: `do-linux` → `do-unix`. All references updated in `setup_common.sh`, `setup_profile_user.ps1`, `module_manage.ps1`, and `modules_update.ps1`.
+- ShellCheck `--exclude=` args moved from `.pre-commit-config.yaml` to `.shellcheckrc`; `--severity=warning` remains in pre-commit args (`.shellcheckrc` does not support `severity=`).
+- `setup_vscode_server_env` jq invocation hardened with error guard to avoid leaving a truncated `.tmp` file on parse failure.
+- `design/marker_rename_cleanup.md` renamed to `design/cleanup_queue.md` and restructured as a multi-item cleanup ledger.
+
+### Fixed
+
+- `nx doctor` bats tests now pin `SHELL=/bin/bash` in `setup()`, fixing 9 test failures on macOS where `$SHELL` defaults to `/bin/zsh` and the doctor audited `.zshrc` instead of `.bashrc`.
+- `Sync-WslSshKeys` Pester test now pins `$HOME` to a Windows-like path and derives the expected WSL mount path using `$HOME` (matching the function's v1.11.5 change), fixing a failure on macOS where `$HOME` produced an invalid `/mnt/` path.
+- Pester parallel runner now reports failed test names and error messages instead of just the count.
+- PowerShell profile adds `/usr/local/bin` to PATH on macOS; bash/zsh get it from `path_helper` but pwsh has no equivalent hook, so `code` and other Homebrew-installed tools were invisible.
+
 ## [1.11.5] - 2026-06-09
 
 ### Added
@@ -620,7 +643,7 @@ This release introduces the **manifest-driven nx CLI surface** - `.assets/lib/nx
 - extended `k8s_dev` scope with crane and kyverno cli.
 - moved `.assets/provision/gh_helpers.sh` to `.assets/lib/helpers.sh` so it can be sourced from the nix path (used by `nix/configure/conda.sh` for `download_file`); added `helpers` to the `check-bash32` hook regex.
 - `nix/configure/az.sh`: pass `--fix_certify true` on macOS too (was Linux-only) - keychain-intercepted certs now land in `~/.config/certs/ca-custom.crt`, so the same patch path applies cross-platform; safe no-op when no custom bundle exists.
-- `nx setup`: removed the interactive clone-path prompt. Primary path is `install.json:repo_path` when it points to a valid envy-nx checkout (respects forks / non-canonical clones); falls back to canonical `~/source/repos/szymonos/envy-nx` when the recorded path is unset or stale, cloning on demand. Stale-fallback case prints a one-line notice.
+- `nx setup`: removed the interactive clone-path prompt. Primary path is `install.json:repo_path` when it points to a valid envy-nx checkout (respects forks / non-canonical clones); falls back to canonical `~/source/repos/procter-gamble/gto-cse-envy-nx` when the recorded path is unset or stale, cloning on demand. Stale-fallback case prints a one-line notice.
 
 ### Fixed
 
