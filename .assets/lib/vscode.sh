@@ -38,6 +38,61 @@ setup_vscode_certs() {
   fi
 }
 
+# setup_vscode_macos_env
+# Configures VS Code desktop on macOS for nix-installed tools:
+# 1. Writes ~/.nix-profile/bin to /etc/paths.d/nix (best-effort via sudo -n) so
+#    VS Code's shell-resolver picks up Nix tools without a login shell.
+# 2. Registers pwsh in ~/Library/Application Support/Code/User/settings.json
+#    so the PowerShell extension finds it via an absolute stable symlink.
+# Idempotent: skips parts that are already up to date.
+setup_vscode_macos_env() {
+  [ "$(uname -s)" = "Darwin" ] || return 0
+
+  local nix_bin="$HOME/.nix-profile/bin"
+  [ -d "$nix_bin" ] || return 0
+
+  # -- /etc/paths.d/nix (PATH for all GUI apps, including VS Code) -------------
+  local paths_d="/etc/paths.d/nix"
+  if [ ! -f "$paths_d" ] || ! grep -qF "$nix_bin" "$paths_d" 2>/dev/null; then
+    if command -v sudo >/dev/null 2>&1; then
+      if printf '%s\n' "$nix_bin" | sudo -n tee "$paths_d" >/dev/null 2>&1; then
+        ok "  wrote $nix_bin to $paths_d (PATH for GUI apps)"
+      fi
+    fi
+  fi
+
+  # -- pwsh in User settings.json ---------------------------------------------
+  local pwsh_bin="$nix_bin/pwsh"
+  [ -x "$pwsh_bin" ] || return 0
+  command -v jq >/dev/null 2>&1 || return 0
+
+  local settings_dir="$HOME/Library/Application Support/Code/User"
+  local settings_file="$settings_dir/settings.json"
+  [ -d "$settings_dir" ] || return 0
+
+  local current_path=""
+  if [ -f "$settings_file" ]; then
+    current_path="$(jq -r '.["powershell.powerShellAdditionalExePaths"]["nix"] // empty' "$settings_file" 2>/dev/null)" || true
+  fi
+
+  if [ "$current_path" = "$pwsh_bin" ]; then
+    return 0
+  fi
+
+  local settings='{}'
+  [ -f "$settings_file" ] && settings="$(cat "$settings_file")"
+  if ! printf '%s\n' "$settings" |
+    jq --arg path "$pwsh_bin" \
+      '.["powershell.powerShellAdditionalExePaths"].nix = $path |
+       .["powershell.powerShellDefaultVersion"] = "nix"' \
+      >"$settings_file.tmp" 2>/dev/null; then
+    rm -f "$settings_file.tmp"
+    return 0
+  fi
+  mv -f "$settings_file.tmp" "$settings_file"
+  ok "  added pwsh path to VS Code User settings (macOS)"
+}
+
 # setup_vscode_server_env
 # Configures VS Code Server for nix-installed tools:
 # 1. Adds nix PATH entries to server-env-setup so extensions resolve tools.
@@ -55,6 +110,7 @@ setup_vscode_server_env() {
   local env_file="$HOME/.vscode-server/server-env-setup"
   local marker="nix-env:path"
 
+  # shellcheck disable=SC2016
   local block
   block="$(printf '%s\n' \
     "# >>> $marker >>>" \
@@ -102,9 +158,12 @@ setup_vscode_server_env() {
 
   local settings='{}'
   [ -f "$settings_file" ] && settings="$(cat "$settings_file")"
-  printf '%s\n' "$settings" |
+  if ! printf '%s\n' "$settings" |
     jq --arg path "$pwsh_bin" '.["powershell.powerShellAdditionalExePaths"].nix = $path' \
-      >"$settings_file.tmp"
+      >"$settings_file.tmp" 2>/dev/null; then
+    rm -f "$settings_file.tmp"
+    return 0
+  fi
   mv -f "$settings_file.tmp" "$settings_file"
   ok "  added pwsh path to VS Code Machine settings"
 }
