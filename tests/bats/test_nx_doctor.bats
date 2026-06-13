@@ -9,6 +9,10 @@ setup() {
   export ENV_DIR="$TEST_DIR/nix-env"
   export DEV_ENV_DIR="$TEST_DIR/dev-env"
   export HOME="$TEST_DIR"
+  # Pin SHELL so _invoking_rc() falls back to bash deterministically;
+  # on macOS the login shell is /bin/zsh and the doctor would audit
+  # .zshrc instead of .bashrc, breaking every test that writes .bashrc.
+  export SHELL=/bin/bash
   # Skip network in version_skew - 100s of parallel `gh api` calls under
   # xargs -P 4 either rate-limit or hang on /dev/tty auth prompts in a
   # sandbox HOME without gh credentials. Production runs aren't affected.
