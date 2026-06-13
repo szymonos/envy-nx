@@ -352,8 +352,13 @@ Describe 'Sync-WslGitHubConfig' {
 
 Describe 'Sync-WslSshKeys' {
     BeforeEach {
-        $env:HOMEDRIVE = 'C:'
-        $env:HOMEPATH = '\Users\testuser'
+        # Sync-WslSshKeys derives the WSL /mnt path from $HOME. Pin HOME to
+        # a Windows-like path so the test works on macOS/Linux runners too
+        # (process-global env; restored in AfterEach).
+        $script:savedHome = $HOME
+        $script:savedEnvHome = $env:HOME
+        Set-Variable -Name HOME -Value 'C:\Users\testuser' -Force -Scope Global
+        $env:HOME = 'C:\Users\testuser'
         $script:wslInvoked = $false
         $script:wslArgs = $null
         Mock -CommandName 'wsl.exe' -ModuleName 'utils-setup' -MockWith {
@@ -363,6 +368,10 @@ Describe 'Sync-WslSshKeys' {
         Mock -CommandName 'Test-Path' -ModuleName 'utils-setup' -MockWith { return $script:winKeyExists }
         Mock -CommandName 'Remove-Item' -ModuleName 'utils-setup' -MockWith { }
         Mock -CommandName 'New-Item' -ModuleName 'utils-setup' -MockWith { }
+    }
+    AfterEach {
+        Set-Variable -Name HOME -Value $script:savedHome -Force -Scope Global
+        $env:HOME = $script:savedEnvHome
     }
 
     It 'copies Windows -> WSL when WSL has no key but Windows has' {
@@ -381,7 +390,7 @@ Describe 'Sync-WslSshKeys' {
         # The script must also copy the generated key BACK to the Windows
         # /mnt/<drive>/<homepath>/.ssh path - covers the second half of the
         # test name, which silently passed before this assertion was added.
-        $winSshPath = "/mnt/$($env:HOMEDRIVE.Replace(':', '').ToLower())$($env:HOMEPATH.Replace('\', '/'))/.ssh"
+        $winSshPath = "/mnt/$($HOME.Replace(':', '').Replace('\', '/').ToLower())/.ssh"
         $argStr | Should -Match ([regex]::Escape("cp `"`$HOME/.ssh/id_ed25519`" $winSshPath/id_ed25519"))
         $argStr | Should -Match ([regex]::Escape("cp `"`$HOME/.ssh/id_ed25519.pub`" $winSshPath/id_ed25519.pub"))
     }
