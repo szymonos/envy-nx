@@ -86,7 +86,7 @@ repos:
       - id: trailing-whitespace
         exclude: \.md$
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.16
+    rev: v0.15.17
     hooks:
       - id: ruff-check
         types_or: [python, pyi]
@@ -118,9 +118,9 @@ repos:
     hooks:
       - id: shfmt
         exclude: \.zsh$
-  - repo: https://github.com/koalaman/shellcheck-precommit
-    rev: v0.11.0
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1
     hooks:
       - id: shellcheck
-        args: ["--severity=warning", "--exclude=SC1090,SC2139,SC2148,SC2155,SC2174"]
+        args: ["--severity=warning"]
         exclude: \.zsh$
