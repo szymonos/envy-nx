@@ -1,0 +1,14 @@
+# ShellCheck configuration - shared by pre-commit, VS Code, and CLI.
+# Analogous to ruff settings in pyproject.toml.
+#
+# Note: .shellcheckrc does not support `severity=`; pre-commit passes
+# --severity=warning explicitly. For VS Code (bash-ide extension), add
+# to user settings: "bashIde.shellcheckArguments": "--severity=warning"
+
+# Global excludes (see ARCHITECTURE.md §7.8 for rationale):
+#   SC1090  non-constant source
+#   SC2139  expand at define time
+#   SC2148  missing shebang on sourced files
+#   SC2155  declare and assign separately
+#   SC2174  mkdir mode
+disable=SC1090,SC2139,SC2148,SC2155,SC2174
