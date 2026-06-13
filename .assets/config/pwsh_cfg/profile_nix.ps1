@@ -43,8 +43,10 @@ if ($IsLinux -and (Test-Path /etc/os-release -PathType Leaf)) {
         }
     )
 }
-# $env:PATH variable
+# $env:PATH variable (/usr/local/bin: macOS path_helper adds it for bash/zsh
+# via /etc/zprofile, but PowerShell has no equivalent hook)
 @(
+    '/usr/local/bin'
     [IO.Path]::Combine($HOME, '.local', 'bin')
     [IO.Path]::Combine($HOME, '.bun', 'bin')
     [IO.Path]::Combine($HOME, '.cargo', 'bin')

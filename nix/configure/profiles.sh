@@ -66,6 +66,7 @@ fi
 build_ca_bundle
 setup_vscode_certs
 setup_vscode_server_env
+setup_vscode_macos_env
 
 # ---------------------------------------------------------------------------
 # Delegate managed block rendering to nx
