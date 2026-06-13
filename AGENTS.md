@@ -71,6 +71,10 @@ All `lint*` targets accept `HOOK=<id>` to run a single hook - seconds instead of
 
 Before fixing a pattern globally, run `rg <pattern> .` or `git grep <pattern>` first to find **all** occurrences - don't start editing until the full scope is known. For bulk renames across multiple files, use `sed -i` instead of editing files one by one. Verify with another grep afterwards.
 
+## Transitional code
+
+When adding migration shims, compatibility guards, or legacy-cleanup code that should be removed after users have had time to upgrade, add an entry to [`design/cleanup_queue.md`](design/cleanup_queue.md) and annotate the code with `# CLEANUP: CQ-NNN`. This keeps deferred removals grep-able and prevents transitional paths from becoming permanent.
+
 ## Cross-shell parity
 
 bash, zsh, and PowerShell are all first-class user shells. When editing shell-init, profile-rendering, or alias files, check both sides - the [`.claude/rules/cross-shell-parity.md`](.claude/rules/cross-shell-parity.md) rule activates with the paired-file map and the canonical asymmetry example (the v1.6.3 fnm incident).

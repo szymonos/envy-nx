@@ -653,9 +653,9 @@ Rules: use `# comment` lines to describe what the next example does; the followi
 - For conditional/loop with multiple conditions, all conditions and the opening `{` on the same line
 - `wsl_setup.ps1` uses `$Script:rel_*` variables to cache release versions across distro loops
 
-### 7.8. ShellCheck global excludes
+### 7.8. ShellCheck configuration
 
-`SC1090` (non-constant source), `SC2139` (expand at define time), `SC2148` (missing shebang on sourced files), `SC2155` (declare and assign separately), `SC2174` (mkdir mode).
+`.shellcheckrc` at the repo root is the single source of truth for ShellCheck global excludes - shared by pre-commit, VS Code, and CLI invocations. Severity (`--severity=warning`) is set per-invoker (pre-commit args, VS Code user settings) because `.shellcheckrc` does not support the `severity=` directive. Global excludes: `SC1090` (non-constant source), `SC2139` (expand at define time), `SC2148` (missing shebang on sourced files), `SC2155` (declare and assign separately), `SC2174` (mkdir mode).
 
 ### 7.9. Never use `read </dev/tty` in scripts that have unit tests
 
@@ -1020,14 +1020,15 @@ These are read, not set, by `nx*.sh`. Useful for tests, dev iteration, and overr
 
 ## 14. Cross-links
 
-| For                                                   | See                     |
-| ----------------------------------------------------- | ----------------------- |
-| Why specific design choices were made                 | `docs/decisions.md`     |
-| End-user `nx` CLI guide                               | `docs/nx.md`            |
-| Customization (overlay, hooks, scopes, pin)           | `docs/customization.md` |
-| Corporate proxy / cert handling (operational details) | `docs/proxy.md`         |
-| End-user architecture overview (mermaid diagrams)     | `docs/architecture.md`  |
-| Quality / testing summary                             | `docs/standards.md`     |
-| Release process detail                                | `docs/releasing.md`     |
-| Workflow (how to develop on this repo)                | `CONTRIBUTING.md`       |
-| Versioning policy                                     | §11 of this file        |
+| For                                                   | See                       |
+| ----------------------------------------------------- | ------------------------- |
+| Why specific design choices were made                 | `docs/decisions.md`       |
+| End-user `nx` CLI guide                               | `docs/nx.md`              |
+| Customization (overlay, hooks, scopes, pin)           | `docs/customization.md`   |
+| Corporate proxy / cert handling (operational details) | `docs/proxy.md`           |
+| End-user architecture overview (mermaid diagrams)     | `docs/architecture.md`    |
+| Quality / testing summary                             | `docs/standards.md`       |
+| Release process detail                                | `docs/releasing.md`       |
+| Workflow (how to develop on this repo)                | `CONTRIBUTING.md`         |
+| Versioning policy                                     | §11 of this file          |
+| Deferred cleanup / tech-debt removal                  | `design/cleanup_queue.md` |
