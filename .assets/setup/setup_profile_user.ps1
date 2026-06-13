@@ -175,7 +175,7 @@ if (Test-Path "$HOME/$uvCli" -PathType Leaf) {
 
 # set up make completer
 $completerFunction = 'Register-MakeCompleter'
-if (Get-Command $completerFunction -Module 'do-linux' -CommandType Function -ErrorAction SilentlyContinue) {
+if (Get-Command $completerFunction -Module 'do-unix' -CommandType Function -ErrorAction SilentlyContinue) {
     if (-not ($profileContent | Select-String $completerFunction -SimpleMatch -Quiet)) {
         Write-Host 'adding make auto-completion...'
         $profileContent.AddRange(

@@ -57,7 +57,7 @@ if command -v pwsh &>/dev/null; then
   fi
 
   info "installing PS modules..."
-  modules=('do-common' 'do-linux')
+  modules=('do-common' 'do-unix')
   has_scope az && modules+=(do-az) || true
   command -v git &>/dev/null && modules+=(aliases-git) || true
   command -v kubectl &>/dev/null && modules+=(aliases-kubectl) || true
@@ -67,6 +67,8 @@ if command -v pwsh &>/dev/null; then
     mods="$mods'$element',"
   done
   pushd "$SCRIPT_ROOT" >/dev/null
+  # CLEANUP: CQ-002 - remove legacy do-linux module (renamed to do-unix)
+  _io_pwsh_nop -c "if (Get-Module do-linux -ListAvailable) { .assets/scripts/module_manage.ps1 do-linux -Delete }" || true
   _io_pwsh_nop -c "@(${mods%,}) | .assets/scripts/module_manage.ps1 -CleanUp"
   popd >/dev/null
 
