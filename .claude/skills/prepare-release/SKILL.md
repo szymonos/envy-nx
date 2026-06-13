@@ -368,11 +368,20 @@ git commit --no-verify -m "docs(changelog): cut <X.Y.Z> release notes"
 
 ### Phase 5.5: Address PR review comments (optional)
 
-After Phase 5 pushes and creates/updates the PR, invoke `/address-pr-review` to drive the GitHub Copilot **server-side PR review** to a clean state. This is **independent of the Copilot CLI** used in Phase 3.5 - it uses `gh` CLI and `pr_review.py` to interact with GitHub's review API. The skill is **state-aware**: it triggers the server-side Copilot reviewer via `gh pr edit --add-reviewer`, waits for in-progress reviews, processes unresolved fresh threads, and only exits when the fresh review (matching HEAD SHA) has zero unresolved fresh threads.
+After Phase 5 pushes and creates/updates the PR, drive the GitHub Copilot **server-side PR review** to a clean state. This is **independent of the Copilot CLI** used in Phase 3.5 - it uses `pr_review.py` (not raw `gh` commands) to interact with GitHub's review API.
 
-1. **Skip-check.** If the user passed `--skip-review`, announce the skip and stop. (Same flag skips Phase 3.5.) This is the **only** skip condition - unlike Phase 3.5, Phase 5.5 does not depend on the `copilot` CLI binary being on PATH.
+**Entry point:** always use `pr_review.py` subcommands - never call `gh pr edit --add-reviewer` directly (the raw GraphQL call fails on most repo configurations). The correct sequence is:
+
+```bash
+python3 .claude/skills/address-pr-review/scripts/pr_review.py state    # detect review state (A/B/C/D)
+python3 .claude/skills/address-pr-review/scripts/pr_review.py trigger  # request Copilot review
+python3 .claude/skills/address-pr-review/scripts/pr_review.py wait --timeout 300  # poll until complete
+python3 .claude/skills/address-pr-review/scripts/pr_review.py resolve <thread-id>  # resolve a thread
+```
+
+1. **Skip-check.** If the user passed `--skip-review`, announce the skip and stop. (Same flag skips Phase 3.5.) This is the **only** skip condition - unlike Phase 3.5, Phase 5.5 does not depend on the `copilot` CLI binary being on PATH. **Never skip because a raw `gh` command failed** - use `pr_review.py` which handles the API correctly.
 2. **Iteration loop (cap at 2):**
-   - Invoke `/address-pr-review` (Phase 1-3 only - skip Phase 4 commit; this phase handles commits via the re-cut below). The skill drives the review from any state (A/B/C/D) to either State D (clean - done) or "fixes applied, ready for re-cut."
+   - Use `pr_review.py state` to detect current state, then `trigger` + `wait` to get the review, then process unresolved fresh threads per the `/address-pr-review` skill (Phase 1-3 only - skip Phase 4 commit; this phase handles commits via the re-cut below). Drive from any state (A/B/C/D) to either State D (clean - done) or "fixes applied, ready for re-cut."
    - **If no fixes were applied** (State D reached without code edits, or all unresolved threads were `resolve-only`/`skip`-leave-open) → done. Exit.
    - **If fixes were applied** → re-run Phase 4 (soft-reset + recommit, NO Phase 3.5) → re-run Phase 5 (force-push + update PR body). The new push triggers a fresh Copilot review automatically.
 3. **After 2 iterations:** if fixes are still being made, surface to user: "2 fix cycles complete. Run `/address-pr-review` manually if more comments arrive." Stop.
