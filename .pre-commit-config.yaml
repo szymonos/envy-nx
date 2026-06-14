@@ -40,6 +40,15 @@ repos:
         entry: python3 -m tests.hooks.check_no_tty_read
         language: system
         files: ^(\.assets/|nix/|wsl/|modules/).*\.(sh|zsh|bash)$
+      - id: check-no-aliased-builtins
+        name: Forbid bare `mv`/`cp` in interactively-sourced shell files
+        entry: python3 -m tests.hooks.check_no_aliased_builtins
+        language: system
+        # File list owned by tests/hooks/_file_scopes.py::ALIASED_BUILTINS_FILES.
+        # Keep this regex in sync when you add or remove an INTERACTIVE_SHELL
+        # entry there. (Future: gen_pre_commit_scopes.py will codegen this.)
+        files: (\.assets/config/shell_cfg/(aliases_git|aliases_kubectl|aliases_nix|functions)\.sh$|\.assets/lib/(nx|nx_pkg|nx_scope|nx_profile|nx_lifecycle|nx_doctor|profile_block|helpers|certs|env_block)\.sh$)
+        types: [file]
       - id: check-md-html-tags
         name: Forbid unbalanced tag-like '<...' in mkdocs-published Markdown
         entry: python3 -m tests.hooks.check_md_html_tags
