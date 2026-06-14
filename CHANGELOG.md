@@ -5,6 +5,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.13.0] - 2026-06-14
+
+Cross-platform docker support reaches first-class on macOS: `--docker` now installs colima plus the docker CLI trio via nix, and the configure hook auto-mirrors host-trusted CA certs into the Lima VM so corporate-MITM environments work out of the box. A new lint-time hook closes a long-standing trap where common `mv -i` / `cp -i` aliases silently hung `nx install`.
+
+### Added
+
+- macOS `--docker` scope installs a Docker Desktop-free stack via nix: `colima`, `docker-client`, `docker-compose`, `docker-buildx`. Linux `--docker` unchanged (still root-installed `docker-ce`). `nx doctor` skips bin auditing for the docker scope on both platforms (`# bins: (external-installer)`) since binary locations vary by install path.
+- `nix/configure/docker.sh` upserts an `envy-nx:certs` managed block into the colima template and each `~/.colima/<profile>/colima.yaml` - mounts `~/.config/certs` into the Lima VM and trusts `ca-custom.crt` on every boot, extending host-side cert handling (§3g) across the VM boundary.
+- `check-no-aliased-builtins` pre-commit hook forbids bare `mv` / `cp` in interactively-sourced shell files (the source of the `nx install` hang). Suppress with `# alias-ok` for the rare exception.
+- `tests/hooks/_file_scopes.py` centralizes the interactively-sourced-files list as the single source of truth for shell-rule hook scopes. `check_zsh_compat` / `check_bash32` migration queued as CQ-003.
+
+### Changed
+
+- Refreshed test / hook counters in `docs/standards.md`, `docs/index.md`, `docs/architecture.md`, and `docs/decisions.md` to match the current 27 bats / 9 Pester totals after this release's new tests.
+
+### Fixed
+
+- `nx install` / `nx scope add` no longer hang under `alias mv='mv -i'` or `cp -i`. Bare `mv`/`cp` calls in `nx.sh`, `nx_scope.sh`, `helpers.sh`, `profile_block.sh`, `nx_doctor.sh`, and `certs.sh` now use `command` to bypass aliases and shell-function shadows.
+
 ## [1.12.0] - 2026-06-13
 
 ### Added

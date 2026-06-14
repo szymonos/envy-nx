@@ -14,11 +14,13 @@ bootcamp
 bootstrapper
 btop
 buglog
+buildx
 cafile
 certifi
 chsh
 cloudsdk
 cmatrix
+codegen
 compdef
 compgen
 compinit
@@ -156,6 +158,7 @@ unblocker
 unioned
 unsets
 unvalidated
+upserts
 vdisk
 venv
 versinfo
