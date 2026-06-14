@@ -42,7 +42,9 @@ function _nx_write_pkgs() {
     [ -n "$name" ] && printf '  "%s"\n' "$name" >>"$tmp"
   done
   printf ']\n' >>"$tmp"
-  mv "$tmp" "$_NX_PKG_FILE"
+  # `command` bypasses any user `alias mv='mv -i'` shadow that would prompt
+  # and hang the rebuild (this file is sourced into the interactive shell).
+  command mv "$tmp" "$_NX_PKG_FILE"
 }
 
 function _nx_apply() {

@@ -28,7 +28,7 @@ install_atomic() {
   mkdir -p "$dst_dir"
   local tmp
   tmp="$(mktemp "${dst}.XXXXXX")" || return 1
-  if ! cp -p "$src" "$tmp"; then
+  if ! command cp -p "$src" "$tmp"; then
     rm -f "$tmp"
     return 1
   fi
@@ -42,7 +42,9 @@ install_atomic() {
     rm -f "$tmp"
     return 0
   fi
-  mv -f "$tmp" "$dst"
+  # `command` bypasses any user `alias mv='mv -i'` shadow that would prompt
+  # and hang the install (helpers.sh can be sourced from interactive nx calls).
+  command mv -f "$tmp" "$dst"
 }
 
 # *Function to download file from specified uri

@@ -108,7 +108,7 @@ function manage_block() {
 
     if [ "$count" -eq 0 ]; then
       # First insertion - backup before modifying
-      cp -p "$rc" "${rc}.nixenv-backup-$(date +%Y%m%d%H%M%S)" 2>/dev/null || true
+      command cp -p "$rc" "${rc}.nixenv-backup-$(date +%Y%m%d%H%M%S)" 2>/dev/null || true
       # Append: ensure blank line separator before the block
       {
         if [ -s "$rc" ]; then
