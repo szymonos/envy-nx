@@ -48,7 +48,9 @@ function _nx_write_config() {
 $nix_scopes  ];
 }
 WRITE_CFG_EOF
-  mv "$tmp" "$config_nix"
+  # `command` bypasses any user `alias mv='mv -i'` shadow that would prompt
+  # and hang the rebuild (this file is sourced into the interactive shell).
+  command mv "$tmp" "$config_nix"
 }
 
 # Append packages to a local scope .nix file. Caller passes the absolute

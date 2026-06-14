@@ -741,7 +741,7 @@ else
       printf '\n'
       printf '%s' "$_dr_log_body"
       printf '\n%s\n' "$_summary"
-    } >"$_log_tmp" 2>/dev/null && mv "$_log_tmp" "$_dr_log_path" 2>/dev/null || rm -f "$_log_tmp" 2>/dev/null
+    } >"$_log_tmp" 2>/dev/null && command mv "$_log_tmp" "$_dr_log_path" 2>/dev/null || rm -f "$_log_tmp" 2>/dev/null
   fi
 
   if [ $((_dr_fail + _dr_warn)) -gt 0 ] && [ -f "$_dr_log_path" ]; then

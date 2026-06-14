@@ -99,7 +99,7 @@ build_ca_bundle() {
     if [ -s "$bundle_tmp" ]; then
       # Replace any prior file or stale symlink atomically.
       [ -L "$bundle_link" ] && rm -f "$bundle_link"
-      mv -f "$bundle_tmp" "$bundle_link"
+      command mv -f "$bundle_tmp" "$bundle_link"
       ok "  ca-bundle.crt rebuilt from $_src_msg"
     else
       # Differentiate "rebuild succeeded with same content" (fine, silent)
