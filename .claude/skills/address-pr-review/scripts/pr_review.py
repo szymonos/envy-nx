@@ -25,7 +25,7 @@ state --pr N
 trigger --pr N
     Request Copilot review (gh pr edit --add-reviewer). Idempotent.
 
-wait --pr N [--interval 30] [--timeout 300]
+wait --pr N [--interval 30] [--timeout 480]
     Poll until state resolves to C or D. Same JSON shape as `state`.
     Exit 1 = C, 0 = D, 4 = timeout.
 
@@ -35,7 +35,7 @@ resolve <thread-id>
 # :example
 .claude/skills/address-pr-review/scripts/pr_review.py state --pr 37
 .claude/skills/address-pr-review/scripts/pr_review.py trigger --pr 37
-.claude/skills/address-pr-review/scripts/pr_review.py wait --pr 37 --timeout 300
+.claude/skills/address-pr-review/scripts/pr_review.py wait --pr 37 --timeout 480
 .claude/skills/address-pr-review/scripts/pr_review.py resolve PRRT_xxx
 """
 
@@ -314,7 +314,7 @@ def main(argv: list[str]) -> int:
         "--interval", type=int, default=30, help="Seconds between polls"
     )
     p_wait.add_argument(
-        "--timeout", type=int, default=300, help="Total timeout in seconds"
+        "--timeout", type=int, default=480, help="Total timeout in seconds"
     )
 
     p_resolve = sub.add_parser("resolve", help="Resolve a review thread")
