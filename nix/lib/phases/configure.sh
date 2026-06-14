@@ -39,7 +39,9 @@ phase_configure_per_scope() {
   for sc in "${_scope_sorted[@]}"; do
     case $sc in
     docker)
-      _io_run "$CONFIGURE_DIR/docker.sh" || warn "docker configuration failed"
+      # shellcheck disable=SC2154  # unattended set by phase_bootstrap_parse_args
+      _io_run "$CONFIGURE_DIR/docker.sh" "${unattended:-false}" ||
+        warn "docker configuration failed"
       ;;
     conda)
       _io_run "$CONFIGURE_DIR/conda.sh" || warn "conda configuration failed"
