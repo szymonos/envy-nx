@@ -1,5 +1,9 @@
 #!/usr/bin/env -S uv run python3
-"""Extract learning signals from WIP history for /prepare-release."""
+"""
+Bundled helpers for /prepare-release.
+
+Subcommands: signals, architecture, preflight-wip.
+"""
 
 from __future__ import annotations
 
@@ -158,6 +162,62 @@ def cmd_signals(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_preflight_wip(args: argparse.Namespace) -> int:
+    """
+    Print 'create-wip' or 'skip' on stdout; reason on stderr.
+
+    Guards against the failure mode where /second-opinion silently reports
+    "no findings" because git diff <base>..HEAD is empty - either because
+    the branch is at parity with the base and all work is in the dirty
+    tree, OR because the dirty tree contains review-relevant changes that
+    aren't visible to the committed diff. Either way, the fix is one
+    throwaway WIP commit; Phase 4's soft-reset dissolves it.
+
+    Uses git status --porcelain (not git diff --quiet HEAD) so untracked
+    files trip the guard too - a brand-new file on a fresh branch is
+    invisible to git diff.
+    """
+    base = args.base
+    if not base:
+        # Default: merge-base with main. Same target the signals/architecture
+        # subcommands use when --base is omitted.
+        base = _run(["git", "merge-base", "main", "HEAD"])
+    if not base:
+        print("could not resolve base; pass --base <last-tag>", file=sys.stderr)
+        return 1
+    base_sha = _run(["git", "rev-parse", base])
+    head = _run(["git", "rev-parse", "HEAD"])
+    porcelain = _run(["git", "status", "--porcelain", "--untracked-files=all"])
+    if not base_sha or not head:
+        print("git rev-parse failed", file=sys.stderr)
+        return 1
+    dirty = bool(porcelain)
+    at_parity = base_sha == head
+    if not dirty and at_parity:
+        print("skip")
+        print(
+            "branch clean and at parity with base - nothing to review",
+            file=sys.stderr,
+        )
+        return 0
+    if not dirty:
+        print("skip")
+        print(
+            "working tree clean - existing commits ARE the review scope",
+            file=sys.stderr,
+        )
+        return 0
+    reason = (
+        "branch at parity with base AND working tree dirty"
+        if at_parity
+        else "branch has commits ahead of base AND working tree dirty - "
+        "WIP needed so /second-opinion sees committed + uncommitted together"
+    )
+    print("create-wip")
+    print(reason, file=sys.stderr)
+    return 0
+
+
 def cmd_architecture(args: argparse.Namespace) -> int:
     """Check ARCHITECTURE.md for staleness against the branch diff."""
     base = args.base or _run(["git", "merge-base", "main", "HEAD"])
@@ -214,12 +274,22 @@ def main() -> int:
         "--base", help="Git ref to diff against (default: merge-base with main)"
     )
 
+    pf = sub.add_parser(
+        "preflight-wip",
+        help="Decide whether Phase 3.5 needs a throwaway WIP commit",
+    )
+    pf.add_argument(
+        "--base", help="Git ref to diff against (default: merge-base with main)"
+    )
+
     args = parser.parse_args()
 
     if args.command == "signals":
         return cmd_signals(args)
     if args.command == "architecture":
         return cmd_architecture(args)
+    if args.command == "preflight-wip":
+        return cmd_preflight_wip(args)
     return 1
 
 

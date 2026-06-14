@@ -191,15 +191,37 @@ Continue with X.Y.Z, change to X.(Y+1).0, or abort?
 Invoke `/second-opinion` for an author-time review by a different model family (GitHub Copilot CLI with `gpt-5.3-codex`) before the destructive soft-reset. The point of running here, not after Phase 4: any review-driven fixes get absorbed into the still-WIP commit history and Phase 4's per-prefix consolidation cleans them up for free. Running this after the soft-reset would require a second reset cycle to re-cut the clean commits.
 
 1. **Skip-check.** If the user passed `--skip-review` in the slash-command args, announce the skip and proceed to Phase 4. Otherwise, **run** `command -v copilot >/dev/null` to verify the Copilot CLI is available. If it fails, log a warning and proceed to Phase 4 (never block the release on Copilot CLI availability). Do NOT assume copilot is missing without running the check - it is installed at `~/.vscode-server/data/User/globalStorage/github.copilot-chat/copilotCli/copilot` in VS Code Server environments.
-2. **Invoke the skill.** Run the Copilot invocation from `.claude/skills/second-opinion/SKILL.md` Phase 2 with `base="$(git merge-base main HEAD)"` - exactly "what the release adds since the last tag's merge into main."
-3. **Challenge every finding before acting.** The reviewer is a different model with no project context beyond `REVIEW-BRIEF.md`. It will flag intentional patterns, misread regex intent, and suggest "fixes" that break things. For each finding:
+2. **Ensure the branch has reviewable history.** `/second-opinion` only sees committed state (`git diff <base>..HEAD`); any uncommitted work in the working tree is invisible to it. Two failure modes the preflight catches:
+
+   - Branch at parity with `<last-tag>` + dirty tree (e.g., the CHANGELOG/lint edits from Phase 1 aren't committed yet, no prior WIP commits exist) → empty review diff, "no findings" silently returned.
+   - Branch ahead of `<last-tag>` + dirty tree → review sees the *committed* changes but **not** the Phase 1 / 1.5 / 1.6 dirty work added on top.
+
+   In both cases the fix is the same: create one throwaway WIP commit so everything is committed. `extract_signals.py preflight-wip --base <last-tag>` checks both conditions and prints either `create-wip` or `skip` on stdout (with a diagnostic reason on stderr). Run it, read stdout, and only if it printed `create-wip` issue the two follow-up commands:
+
+   ```bash
+   .claude/skills/prepare-release/scripts/extract_signals.py preflight-wip --base <last-tag>
+   # If stdout was 'create-wip', then:
+   git add -A
+   git commit --no-verify -m "WIP for review"
+   ```
+
+   The preflight uses `git status --porcelain` (not `git diff --quiet HEAD`) so **untracked** files trip the guard too. This is the **only** legitimate `git add -A` in the whole skill - the commit is throwaway. Phase 4's soft-reset to `<last-tag>` (first-cut) or the oldest-touched commit (re-run / merge case) dissolves it automatically while preserving the working tree, so review-driven fixes fold into the per-prefix commits like any other WIP. No explicit teardown needed.
+3. **Invoke the skill with author-intent context.** Run the Copilot invocation from `.claude/skills/second-opinion/SKILL.md` Phase 2 with `base="<last-tag>"` AND **point the reviewer at the freshly-composed `## [<X.Y.Z>]` section of `CHANGELOG.md`** so it sees the author's stated intent before flagging the diff. The CHANGELOG section is the "why" the brief + diff cannot supply on their own (e.g., "`command mv` is intentional alias-bypass, not paranoia"; "macOS-only by design, Linux is unchanged"). Extend the prompt's reading list:
+
+   ```bash
+   copilot -p "Read .claude/skills/second-opinion/REVIEW-BRIEF.md AND the '## [<X.Y.Z>]' section of CHANGELOG.md (the author's stated intent for these changes), then review the current branch's changes since <last-tag>. Run: git diff <last-tag>..HEAD to see all changes. Use the CHANGELOG section to understand WHY each change was made - dismiss findings that contradict the documented intent unless the code genuinely fails to deliver it (in which case flag the gap between bullet and code as a real finding). Read referenced files for context as needed. Output findings using the format and severities specified in the brief." \
+     -s --model gpt-5.3-codex --no-custom-instructions --allow-all-tools
+   ```
+
+   The CHANGELOG section is 5-15 lines - cheap context, high signal. Two failure modes it catches that the brief + diff alone miss: (a) the reviewer flagging documented decisions (intent visible only in CHANGELOG, not code), and (b) bullet-vs-code mismatches (CHANGELOG promises macOS-only, code path fires on Linux → real finding). For a *re-run / merge* case where the previous commits already shipped to a release PR but were rewound, use the same `<last-tag>` - the review scope is always "what this release introduces over the last tagged release."
+4. **Challenge every finding before acting.** The reviewer is a different model with no project context beyond `REVIEW-BRIEF.md`. It will flag intentional patterns, misread regex intent, and suggest "fixes" that break things. For each finding:
    - Read the flagged code and understand the author's intent (check git blame, surrounding context, ARCHITECTURE.md, comments).
    - If the finding is clearly wrong (flags a known pattern, misunderstands the regex/logic, contradicts a documented convention) - **dismiss it** and note why.
    - If the finding is clearly right (genuine bug, obvious typo, provably broken logic) - fix it.
    - If you cannot determine whether the finding is valid - **surface it to the user** via `AskUserQuestion` with the finding detail and your assessment of why it might or might not apply. Never auto-fix when uncertain.
-4. **Present a summary** of all findings with your verdict for each: `fixed`, `dismissed (reason)`, or `needs-user-judgment`. The user should see what the reviewer flagged AND what you decided, not just the fixes.
-5. **After fixes (if any).** Re-run `make lint` (same WATCHOUT as Phase 1: lint stages modifications; Phase 4 will redo staging). If a fix changes the user-facing surface of a feature *also* being introduced in this release, fold the change into the existing Added/Changed bullet (see "Section reclassification" below) - do NOT add a new `Fixed` bullet for a bug that never shipped. Don't add bullets for trivial nits.
-6. **Verification rerun (if any fixes were applied).** Rerun `/second-opinion` scoped to only the files that were fixed - not the full branch diff. The fixed file list comes from your own context: you applied fixes via Edit in step 3, so you know exactly which files changed. Pass them as path arguments to `git diff`:
+5. **Present a summary** of all findings with your verdict for each: `fixed`, `dismissed (reason)`, or `needs-user-judgment`. The user should see what the reviewer flagged AND what you decided, not just the fixes.
+6. **After fixes (if any).** Re-run `make lint` (same WATCHOUT as Phase 1: lint stages modifications; Phase 4 will redo staging). If a fix changes the user-facing surface of a feature *also* being introduced in this release, fold the change into the existing Added/Changed bullet (see "Section reclassification" below) - do NOT add a new `Fixed` bullet for a bug that never shipped. Don't add bullets for trivial nits.
+7. **Verification rerun (if any fixes were applied).** Rerun `/second-opinion` scoped to only the files that were fixed - not the full branch diff. The fixed file list comes from your own context: you applied fixes via Edit in step 4, so you know exactly which files changed. Pass them as path arguments to `git diff`:
 
    ```bash
    copilot -p "Review ONLY these files for remaining issues: <fixed-file-list>. Run: git diff <base>..HEAD -- path/to/fixed1.sh path/to/fixed2.sh to see the changes. Flag bugs and correctness issues only. Output as: F-NNN - severity - file:line + description, or 'No findings.' if clean." \
@@ -207,7 +229,7 @@ Invoke `/second-opinion` for an author-time review by a different model family (
    ```
 
    This catches regressions from the fixes without re-reviewing the entire branch (which would repeat dismissed findings). Cap at 1 verification rerun. If the rerun finds new issues, fix them and proceed without a third pass.
-7. **Proceed to Phase 3.6.** The fixes become part of the WIP commits and get categorized into the right Conventional Commits prefix during Phase 4's consolidation.
+8. **Proceed to Phase 3.6.** The fixes become part of the WIP commits and get categorized into the right Conventional Commits prefix during Phase 4's consolidation.
 
 If `/second-opinion` reports "No findings.", announce it and proceed straight to Phase 3.6 - most release diffs will land here.
 
@@ -453,6 +475,7 @@ The git commit history captures development reality; the CHANGELOG captures user
 - **Skipping Phase 3 (release verification).** A patch release that's actually feature-shaped is the most common quiet bug - verify before destroying history, when fixing is one Edit.
 - **Adding `Fixed` / `Changed` bullets for changes that never shipped.** A bug introduced and fixed within the same release cycle never reached users - it is not "Fixed" from the CHANGELOG's perspective; the corrected behavior is just part of the feature's `Added` description. Same for `Changed` bullets describing iteration on an unreleased feature - fold into the existing `Added` bullet. See "Section reclassification" for the decision matrix. This is the most common merge-case error; recurred twice in v1.11.0 development.
 - **Running `/second-opinion` after Phase 4 (soft-reset).** The soft-reset is the point of no return for commit topology; review-driven fixes after that need a second reset cycle. Phase 3.5 fires *before* Phase 4 by design - fixes land in WIP commits and Phase 4 absorbs them for free.
+- **Invoking `/second-opinion` with no commits ahead of `<last-tag>` (or with uncommitted work invisible to the diff).** `/second-opinion` reviews `git diff <base>..HEAD`. If the branch is at parity with `<last-tag>` and all work is uncommitted (Phase 1 CHANGELOG/lint edits, Phase 1.5 cspell additions, Phase 1.6 stat-callout fixes), the diff is empty - the reviewer reports "no findings," and the agent (and the user) thinks the release passed review when it was never actually reviewed. Same trap if the branch HAS commits ahead but Phase 1-1.6 left dirty work on top - the dirty work is invisible. Phase 3.5 step 2's `preflight-wip` + Phase 4's soft-reset is the workaround - never invoke `/second-opinion` on an empty `<base>..HEAD` diff and treat success as meaningful.
 - **Skipping Phase 5.5 because `copilot` CLI is missing.** Phase 5.5 uses the GitHub server-side Copilot reviewer via `gh` CLI and `pr_review.py` - it does NOT use the `copilot` CLI binary. Only `--skip-review` should skip it. Phase 3.5 is the one that needs the `copilot` CLI.
 - **Assuming `copilot` CLI is not installed without running `command -v copilot`.** In VS Code Server / WSL environments, copilot lives at `~/.vscode-server/.../copilotCli/copilot` and is on PATH. Always run the check.
 - **Auto-applying `/second-opinion` findings without challenge.** The reviewer is a different model with limited project context. It will misread intentional regex patterns, flag documented conventions, and suggest "fixes" that break scoping or logic. Every finding must be validated against the author's intent before acting. When uncertain, surface to the user - never auto-fix on faith.

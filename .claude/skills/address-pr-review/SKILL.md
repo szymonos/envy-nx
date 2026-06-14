@@ -19,7 +19,7 @@ State-aware Copilot PR review handler. Detects the current review state, drives 
 - `gh` CLI installed and authenticated.
 - Copilot enabled on the repository.
 
-**Important:** never call `gh pr edit --add-reviewer copilot-pull-request-reviewer` directly - it fails with a GraphQL permissions error on most repo configurations. Always use `pr_review.py trigger` which handles the API call correctly. If `trigger` fails, surface the error to the user - Copilot may need to be enabled in repo settings.
+**Important:** always trigger Copilot via `pr_review.py trigger`, never via ad-hoc `gh pr edit --add-reviewer` invocations or raw GraphQL mutations from the agent. `pr_review.py trigger` wraps `gh pr edit --add-reviewer copilot-pull-request-reviewer` with the right reviewer login, idempotency handling, and uniform error reporting; one-off calls drift in subtle ways (wrong login alias, no idempotency, no JSON output for the skill's state machine to consume). If `trigger` fails, surface the error to the user - Copilot may need to be enabled in repo settings.
 
 ## Review states
 
@@ -74,7 +74,11 @@ The `state` JSON already contains `unresolvedFreshThreads` with `{id, path, line
 | 2 | docs/index.md:109 | copilot | Stale reference count |
 ```
 
-For each thread, read the comment body + the referenced file at the specified line. Classify:
+**Known false positives** - auto-resolve without reading the file:
+
+- Comments flagging `ubuntu-slim` as an invalid or non-standard GitHub runner (e.g., "runs-on: ubuntu-slim is likely to fail"). `ubuntu-slim` is a valid runner label configured for this repo (used by every workflow under `.github/workflows/`) - not a GitHub-hosted label, but an intentional self-hosted / org-managed runner that the reviewer cannot see.
+
+For each remaining thread, read the comment body + the referenced file at the specified line. Classify:
 
 - **`fix`** - the comment identifies a real issue (bug, missing code, inconsistency, stale reference). Read the referenced file, formulate a fix using Claude's knowledge of the codebase (not a copy-paste of the suggestion), apply via Edit.
 - **`resolve-only`** - the comment is already addressed by a prior fix in this session, or the issue genuinely doesn't apply (e.g., stale on a specific line but the file changed elsewhere). Resolve silently.

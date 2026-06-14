@@ -63,9 +63,11 @@ base="<user-arg>"
 
 If `base == HEAD`, exit early: "Nothing to review - branch is at parity with the base." Don't invoke Copilot.
 
+**Caller contract: review scope is committed state only.** Uncommitted working-tree changes are invisible to `git diff <base>..HEAD` and therefore invisible to the reviewer. Callers that need to review uncommitted work (a branch at parity with the base but with dirty CHANGELOG/lint edits, or a branch ahead of base whose Phase 1 fixes haven't been committed yet) must create a throwaway WIP commit *before* invoking this skill, then dispose of it after via their own flow (e.g., `git reset --soft <last-tag>`). This skill will not silently degrade by reviewing the working tree - the process boundary that gives Copilot its bias-control also means it only sees what `git` shows it. `/prepare-release` Phase 3.5 handles this via `extract_signals.py preflight-wip`.
+
 ### Phase 2 - invoke Copilot
 
-Single Bash call. The prompt tells Copilot to read the brief, run `git diff` itself, and produce findings in the brief's specified format:
+Single Bash call. The prompt tells Copilot to read the brief, run `git diff` itself, and produce findings in the brief's specified format. **Callers may extend the prompt's reading list with additional context files** that explain author intent (e.g., the `## [<X.Y.Z>]` CHANGELOG section in `/prepare-release` Phase 3.5, a design doc in `/prepare-pr`, etc.). The brief + diff stay the source of truth; extra reading lets the reviewer dismiss findings that contradict documented intent and flag the inverse (a bullet promising X while the code does Y is a real gap, not noise).
 
 ```bash
 copilot -p "Read .claude/skills/second-opinion/REVIEW-BRIEF.md, then review the current branch's changes since <base>. Run: git diff <base>..HEAD to see all changes. Read referenced files for context as needed. Output findings using the format and severities specified in the brief." \
