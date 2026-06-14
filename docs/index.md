@@ -104,8 +104,8 @@ See [Customization](customization.md) for the full guide.
 
 | Metric                  | Value                                                                       |
 | ----------------------- | --------------------------------------------------------------------------- |
-| Unit tests              | Bats (bash) and Pester (PowerShell) suites across 35 test files             |
-| Custom pre-commit hooks | 13 (bash 3.2 enforcer, scope validator, manifest-drift defenders, and more) |
+| Unit tests              | Bats (bash) and Pester (PowerShell) suites across 36 test files             |
+| Custom pre-commit hooks | 14 (bash 3.2 enforcer, scope validator, manifest-drift defenders, and more) |
 | CI matrix               | Ubuntu (daemon, rootless, tarball), macOS (Sequoia default, Tahoe opt-in)   |
 | Idempotency             | Verified on every PR - second run produces identical results                |
 | Install provenance      | Every run writes `install.json` with version, scopes, status                |
