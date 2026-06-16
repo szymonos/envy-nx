@@ -42,9 +42,32 @@ setup_vscode_certs() {
 # Configures VS Code desktop on macOS for nix-installed tools:
 # 1. Writes ~/.nix-profile/bin to /etc/paths.d/nix (best-effort via sudo -n) so
 #    VS Code's shell-resolver picks up Nix tools without a login shell.
-# 2. Registers pwsh in ~/Library/Application Support/Code/User/settings.json
-#    so the PowerShell extension finds it via an absolute stable symlink.
+# 2. Registers nix-managed ripgrep path in
+#    ~/Library/Application Support/Code/User/settings.json so the
+#    Todo-Tree extension finds it.
+# 3. Registers nix-managed pwsh in the same settings.json *only when no
+#    existing entry already points at it* (preserves any user-chosen
+#    key name like "pwsh (Nix)" and any custom default-version pick).
 # Idempotent: skips parts that are already up to date.
+#
+# Why awk + targeted line edits instead of jq: VS Code's User
+# settings.json is JSONC - it can contain `//` line comments and trailing
+# commas that jq cannot parse. jq either silently fails (the bug we're
+# fixing) or, in the absence of comments, strips them on rewrite
+# (silently rewriting a user's annotated config). The awk-based path
+# touches only the lines it needs to and preserves everything else.
+#
+# Why detect pwsh by VALUE rather than KEY: users often register the nix
+# pwsh under their own label (`"pwsh (Nix)"`, `"nix-pwsh"`, etc.). Any
+# entry whose value resolves to `$HOME/.nix-profile/bin/pwsh` means the
+# user is already covered - inserting a second entry would just clutter
+# the picker.
+#
+# Why explicit `todo-tree.ripgrep.ripgrep`: the Todo-Tree extension does
+# NOT search PATH for ripgrep - it looks for the bundled `vscode-ripgrep`
+# npm module inside VS Code's app bundle and falls back to the
+# `todo-tree.ripgrep.ripgrep` setting when that lookup fails.
+# /etc/paths.d/nix doesn't help here.
 setup_vscode_macos_env() {
   [ "$(uname -s)" = "Darwin" ] || return 0
 
@@ -61,36 +84,121 @@ setup_vscode_macos_env() {
     fi
   fi
 
-  # -- pwsh in User settings.json ---------------------------------------------
-  local pwsh_bin="$nix_bin/pwsh"
-  [ -x "$pwsh_bin" ] || return 0
-  command -v jq >/dev/null 2>&1 || return 0
-
+  # -- User settings.json (pwsh + todo-tree ripgrep) ---------------------------
   local settings_dir="$HOME/Library/Application Support/Code/User"
   local settings_file="$settings_dir/settings.json"
   [ -d "$settings_dir" ] || return 0
 
-  local current_path=""
-  if [ -f "$settings_file" ]; then
-    current_path="$(jq -r '.["powershell.powerShellAdditionalExePaths"]["nix"] // empty' "$settings_file" 2>/dev/null)" || true
+  local pwsh_bin="$nix_bin/pwsh"
+  local rg_bin="$nix_bin/rg"
+
+  # If neither tool is installed, nothing to register.
+  [ -x "$pwsh_bin" ] || [ -x "$rg_bin" ] || return 0
+
+  # Bootstrap as multi-line so the line-based insert below always has a
+  # `}` on its own line to anchor to. Skipping this would force the
+  # writer to handle single-line `{}` as a special case.
+  if [ ! -f "$settings_file" ]; then
+    printf '{\n}\n' >"$settings_file"
   fi
 
-  if [ "$current_path" = "$pwsh_bin" ]; then
-    return 0
+  _vscode_macos_settings_update "$settings_file" "$pwsh_bin" "$rg_bin"
+}
+
+# Internal helper. Edits the given settings.json in place to register the
+# nix pwsh (only when no existing entry points at it) and the nix rg path
+# (only when the `todo-tree.ripgrep.ripgrep` key is absent). Insert-only -
+# the writer never modifies values the user has already set. Bails out
+# without touching the file when the structural shape isn't recognized.
+#
+# Strategy: assume the file is a JSONC object whose final `}` sits on its
+# own line. That's how VS Code writes settings.json itself, how our
+# bootstrap creates new files, and how every "Format Document" pass
+# leaves things - if a user has hand-collapsed the root onto one line,
+# we refuse to edit rather than guess. Given that assumption:
+#   1. Find the line containing the lone `}` (the root close).
+#   2. If the last non-blank line before it doesn't end in `,` or `{`,
+#      append a `,` to it so our new keys are valid siblings. JSONC
+#      tolerates trailing commas, so we don't have to remove the one we
+#      add even if the file later loses our new keys.
+#   3. Print the insert block immediately before the close line.
+# No JSONC parser, no string-scanning depth tracker, no validation pass.
+_vscode_macos_settings_update() {
+  local settings_file="$1" pwsh_bin="$2" rg_bin="$3"
+
+  local want_pwsh="" want_rg=""
+  [ -x "$pwsh_bin" ] && want_pwsh="$pwsh_bin"
+  [ -x "$rg_bin" ] && want_rg="$rg_bin"
+
+  # pwsh: skip if ANY string value in the file matches the nix pwsh path
+  # (user already has it registered under some label like "pwsh (Nix)").
+  # rg: skip if the exact top-level key is already present (any value).
+  local need_pwsh=0 need_rg=0
+  [ -n "$want_pwsh" ] && ! grep -qF "\"$want_pwsh\"" "$settings_file" 2>/dev/null && need_pwsh=1
+  [ -n "$want_rg" ] && ! grep -qE '^[[:space:]]*"todo-tree\.ripgrep\.ripgrep"[[:space:]]*:' "$settings_file" 2>/dev/null && need_rg=1
+  [ "$need_pwsh" -eq 1 ] || [ "$need_rg" -eq 1 ] || return 0
+
+  # Find the last line that is exactly `}` (with optional surrounding
+  # whitespace). That's the root close - or we bail.
+  local close_line
+  close_line="$(awk '/^[[:space:]]*\}[[:space:]]*$/ { ln = NR } END { if (ln) print ln }' "$settings_file")"
+  [ -n "$close_line" ] || return 0
+
+  # Find the previous non-blank line. If it doesn't end in `,` or `{`,
+  # we need to append a `,` so our insert is a valid sibling.
+  local prev_ln need_comma=0
+  prev_ln="$(awk -v close_ln="$close_line" 'NR < close_ln && NF { ln = NR } END { if (ln) print ln }' "$settings_file")"
+  if [ -n "$prev_ln" ]; then
+    local last_char
+    last_char="$(sed -n "${prev_ln}p" "$settings_file" | sed -E 's/[[:space:]]+$//' | awk '{ print substr($0, length($0), 1) }')"
+    case "$last_char" in
+    ',' | '{') ;;
+    *) need_comma=1 ;;
+    esac
   fi
 
-  local settings='{}'
-  [ -f "$settings_file" ] && settings="$(cat "$settings_file")"
-  if ! printf '%s\n' "$settings" |
-    jq --arg path "$pwsh_bin" \
-      '.["powershell.powerShellAdditionalExePaths"].nix = $path |
-       .["powershell.powerShellDefaultVersion"] = "nix"' \
-      >"$settings_file.tmp" 2>/dev/null; then
-    rm -f "$settings_file.tmp"
-    return 0
+  # Build the insert block (2-space indent per VS Code convention; no
+  # trailing comma on our last key - the close `}` follows directly).
+  local insert=""
+  if [ "$need_pwsh" -eq 1 ]; then
+    insert="$insert  \"powershell.powerShellAdditionalExePaths\": {
+    \"nix\": \"$want_pwsh\"
+  },
+  \"powershell.powerShellDefaultVersion\": \"nix\""
+    if [ "$need_rg" -eq 1 ]; then
+      insert="$insert,
+"
+    else
+      insert="$insert
+"
+    fi
   fi
-  mv -f "$settings_file.tmp" "$settings_file"
-  ok "  added pwsh path to VS Code User settings (macOS)"
+  if [ "$need_rg" -eq 1 ]; then
+    insert="$insert  \"todo-tree.ripgrep.ripgrep\": \"$want_rg\"
+"
+  fi
+
+  # One awk pass: optionally append `,` to prev line, then emit the
+  # insert block immediately before the close line. Atomic via mktemp+mv.
+  local tmp
+  tmp="$(mktemp "$settings_file.XXXXXX")" || return 0
+  awk -v close_ln="$close_line" -v prev_ln="$prev_ln" -v need_comma="$need_comma" -v insert="$insert" '
+    NR == prev_ln && need_comma == "1" {
+      sub(/[[:space:]]+$/, "")
+      print $0 ","
+      next
+    }
+    NR == close_ln { printf "%s", insert }
+    { print }
+  ' "$settings_file" >"$tmp" || {
+    rm -f "$tmp"
+    return 0
+  }
+
+  mv -f "$tmp" "$settings_file"
+  [ "$need_pwsh" -eq 1 ] && ok "  added pwsh path to VS Code User settings (macOS)"
+  [ "$need_rg" -eq 1 ] && ok "  added todo-tree.ripgrep.ripgrep to VS Code User settings (macOS)"
+  return 0
 }
 
 # setup_vscode_server_env
