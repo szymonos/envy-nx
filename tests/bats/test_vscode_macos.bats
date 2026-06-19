@@ -245,3 +245,47 @@ EOF
   setup_vscode_macos_env
   [ ! -f "$SETTINGS_FILE" ]
 }
+
+@test "macos: writes into most-recently-modified profile alongside default" {
+  # VS Code Profiles: per-profile settings live under
+  # User/profiles/<id>/settings.json. The function picks the most
+  # recently modified profile (mtime) as a proxy for "the one I was just
+  # editing." Older profiles are left untouched.
+  local profiles_dir="$SETTINGS_DIR/profiles"
+  mkdir -p "$profiles_dir/old/" "$profiles_dir/active/"
+  printf '{}\n' >"$profiles_dir/old/settings.json"
+  printf '{}\n' >"$profiles_dir/active/settings.json"
+  # Backdate the "old" profile so "active" wins the mtime race
+  # regardless of fs ordering (touch in seconds resolution is enough on
+  # macOS/Linux for unit-test timescales).
+  touch -t 202001010000 "$profiles_dir/old" "$profiles_dir/old/settings.json"
+
+  setup_vscode_macos_env
+
+  # Default got the keys
+  grep -qF '"todo-tree.ripgrep.ripgrep"' "$SETTINGS_FILE"
+  # Active profile got the keys
+  grep -qF '"todo-tree.ripgrep.ripgrep"' "$profiles_dir/active/settings.json"
+  # Old profile was NOT touched (still the original `{}\n`)
+  [ "$(cat "$profiles_dir/old/settings.json")" = '{}' ]
+}
+
+@test "macos: handles missing profiles dir gracefully" {
+  # Most users without VS Code Profiles enabled never get a `profiles/`
+  # directory. The function must still write the default file.
+  [ ! -d "$SETTINGS_DIR/profiles" ]
+  setup_vscode_macos_env
+  grep -qF '"todo-tree.ripgrep.ripgrep"' "$SETTINGS_FILE"
+}
+
+@test "macos: skips profile target whose settings.json does not exist" {
+  # The profile dir exists (created by VS Code on profile creation) but
+  # the user has never opened a window in it, so settings.json was never
+  # written. The function must not bootstrap an empty file in an unused
+  # profile - that would create churn for a profile the user isn't using.
+  local profiles_dir="$SETTINGS_DIR/profiles"
+  mkdir -p "$profiles_dir/empty/"
+  setup_vscode_macos_env
+  grep -qF '"todo-tree.ripgrep.ripgrep"' "$SETTINGS_FILE"
+  [ ! -f "$profiles_dir/empty/settings.json" ]
+}

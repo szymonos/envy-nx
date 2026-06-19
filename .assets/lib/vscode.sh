@@ -42,20 +42,29 @@ setup_vscode_certs() {
 # Configures VS Code desktop on macOS for nix-installed tools:
 # 1. Writes ~/.nix-profile/bin to /etc/paths.d/nix (best-effort via sudo -n) so
 #    VS Code's shell-resolver picks up Nix tools without a login shell.
-# 2. Registers nix-managed ripgrep path in
-#    ~/Library/Application Support/Code/User/settings.json so the
-#    Todo-Tree extension finds it.
-# 3. Registers nix-managed pwsh in the same settings.json *only when no
+# 2. Registers nix-managed ripgrep path so the Todo-Tree extension finds
+#    it (the extension does NOT search PATH).
+# 3. Registers nix-managed pwsh under the `nix` key *only when no
 #    existing entry already points at it* (preserves any user-chosen
 #    key name like "pwsh (Nix)" and any custom default-version pick).
 # Idempotent: skips parts that are already up to date.
 #
-# Why awk + targeted line edits instead of jq: VS Code's User
-# settings.json is JSONC - it can contain `//` line comments and trailing
-# commas that jq cannot parse. jq either silently fails (the bug we're
-# fixing) or, in the absence of comments, strips them on rewrite
-# (silently rewriting a user's annotated config). The awk-based path
-# touches only the lines it needs to and preserves everything else.
+# Profile targets: VS Code stores settings per profile, not just at the
+# default `User/settings.json`. We write to (a) the default file and (b)
+# the most-recently-modified profile under `User/profiles/<id>/`. There
+# is no on-disk "currently active profile" - VS Code maps profile to
+# window via `globalStorage/storage.json#profileAssociations.workspaces`,
+# which the terminal can't observe in real time. The mtime heuristic
+# approximates "the one I was just editing" without walking every
+# profile (which would just create stale duplicate keys in profiles the
+# user hasn't touched in months).
+#
+# Why awk + targeted line edits instead of jq: VS Code's settings.json
+# is JSONC - it can contain `//` line comments and trailing commas that
+# jq cannot parse. jq either silently fails (the bug we're fixing) or,
+# in the absence of comments, strips them on rewrite (silently rewriting
+# a user's annotated config). The awk-based path touches only the lines
+# it needs to and preserves everything else.
 #
 # Why detect pwsh by VALUE rather than KEY: users often register the nix
 # pwsh under their own label (`"pwsh (Nix)"`, `"nix-pwsh"`, etc.). Any
@@ -63,11 +72,12 @@ setup_vscode_certs() {
 # user is already covered - inserting a second entry would just clutter
 # the picker.
 #
-# Why explicit `todo-tree.ripgrep.ripgrep`: the Todo-Tree extension does
-# NOT search PATH for ripgrep - it looks for the bundled `vscode-ripgrep`
-# npm module inside VS Code's app bundle and falls back to the
-# `todo-tree.ripgrep.ripgrep` setting when that lookup fails.
-# /etc/paths.d/nix doesn't help here.
+# Settings Sync caveat: these two keys are absolute paths, and neither
+# extension supports `$HOME` / `${userHome}` expansion. Linux and macOS
+# paths will fight via Settings Sync. The user is expected to add both
+# keys to `settingsSync.ignoredSettings` once per profile - the script
+# does not seed that itself (would itself be a synced setting, defeating
+# the purpose).
 setup_vscode_macos_env() {
   [ "$(uname -s)" = "Darwin" ] || return 0
 
@@ -85,9 +95,8 @@ setup_vscode_macos_env() {
   fi
 
   # -- User settings.json (pwsh + todo-tree ripgrep) ---------------------------
-  local settings_dir="$HOME/Library/Application Support/Code/User"
-  local settings_file="$settings_dir/settings.json"
-  [ -d "$settings_dir" ] || return 0
+  local code_user_dir="$HOME/Library/Application Support/Code/User"
+  [ -d "$code_user_dir" ] || return 0
 
   local pwsh_bin="$nix_bin/pwsh"
   local rg_bin="$nix_bin/rg"
@@ -95,14 +104,33 @@ setup_vscode_macos_env() {
   # If neither tool is installed, nothing to register.
   [ -x "$pwsh_bin" ] || [ -x "$rg_bin" ] || return 0
 
-  # Bootstrap as multi-line so the line-based insert below always has a
-  # `}` on its own line to anchor to. Skipping this would force the
-  # writer to handle single-line `{}` as a special case.
-  if [ ! -f "$settings_file" ]; then
-    printf '{\n}\n' >"$settings_file"
+  # Collect target settings.json files: the default, plus the
+  # most-recently-modified per-profile settings (if any profile exists).
+  # `ls -t` is bash-3.2-safe and orders by mtime descending; we read
+  # only the first entry to avoid carrying a list.
+  local default_settings="$code_user_dir/settings.json"
+  local profiles_dir="$code_user_dir/profiles"
+  local recent_profile_settings=""
+  if [ -d "$profiles_dir" ]; then
+    local first_profile
+    first_profile="$(ls -t "$profiles_dir" 2>/dev/null | head -n 1)"
+    if [ -n "$first_profile" ] && [ -f "$profiles_dir/$first_profile/settings.json" ]; then
+      recent_profile_settings="$profiles_dir/$first_profile/settings.json"
+    fi
   fi
 
-  _vscode_macos_settings_update "$settings_file" "$pwsh_bin" "$rg_bin"
+  local target
+  for target in "$default_settings" "$recent_profile_settings"; do
+    [ -n "$target" ] || continue
+    # Bootstrap as multi-line so the line-based insert below always has
+    # a `}` on its own line to anchor to. Skipping this would force the
+    # writer to handle single-line `{}` as a special case. Also covers
+    # fresh VS Code Profiles that init settings.json as literal `{}`.
+    if [ ! -f "$target" ] || [ "$(tr -d '[:space:]' <"$target")" = "{}" ]; then
+      printf '{\n}\n' >"$target"
+    fi
+    _vscode_macos_settings_update "$target" "$pwsh_bin" "$rg_bin"
+  done
 }
 
 # Internal helper. Edits the given settings.json in place to register the
@@ -196,8 +224,13 @@ _vscode_macos_settings_update() {
   }
 
   mv -f "$tmp" "$settings_file"
-  [ "$need_pwsh" -eq 1 ] && ok "  added pwsh path to VS Code User settings (macOS)"
-  [ "$need_rg" -eq 1 ] && ok "  added todo-tree.ripgrep.ripgrep to VS Code User settings (macOS)"
+  # Label by parent dir basename so users running with multiple profiles
+  # can tell which file got the new keys ("User" = default, profile-id
+  # otherwise).
+  local label
+  label="$(basename "$(dirname "$settings_file")")"
+  [ "$need_pwsh" -eq 1 ] && ok "  added pwsh path to VS Code settings ($label)"
+  [ "$need_rg" -eq 1 ] && ok "  added todo-tree.ripgrep.ripgrep to VS Code settings ($label)"
   return 0
 }
 

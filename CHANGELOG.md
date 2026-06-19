@@ -5,6 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `setup_vscode_macos_env` now writes pwsh / `todo-tree.ripgrep.ripgrep` into both `Code/User/settings.json` and the most-recently-modified `Code/User/profiles/<id>/settings.json`. VS Code Profiles store settings per-profile, so v1.13.1 silently missed users whose active window ran under a non-default profile.
+
 ## [1.13.1] - 2026-06-15
 
 ### Changed
