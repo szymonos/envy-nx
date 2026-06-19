@@ -5,6 +5,7 @@
 /logs/*.log
 /tmp/
 /tmp.*/
+.DS_Store
 
 # local settings
 settings.local.json

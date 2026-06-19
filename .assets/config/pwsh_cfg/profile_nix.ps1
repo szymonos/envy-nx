@@ -36,6 +36,9 @@ if (-not $isWSL1) {
 #endregion
 
 #region environment variables and aliases
+# pwsh telemetry / update-check opt-out (process-scope; macOS/Linux have no User env store)
+[Environment]::SetEnvironmentVariable('POWERSHELL_TELEMETRY_OPTOUT', '1')
+[Environment]::SetEnvironmentVariable('POWERSHELL_UPDATECHECK', 'Off')
 [Environment]::SetEnvironmentVariable('USER_SCRIPTS_PATH', "$HOME/.config/powershell/Scripts")
 if ($IsLinux -and (Test-Path /etc/os-release -PathType Leaf)) {
     (Select-String '(?<=^ID.+)(alpine|arch|fedora|debian|ubuntu|opensuse)' -List /etc/os-release).Matches.Value.ForEach({

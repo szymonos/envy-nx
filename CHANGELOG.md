@@ -5,6 +5,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `setup_vscode_macos_env` now writes pwsh / `todo-tree.ripgrep.ripgrep` into both `Code/User/settings.json` and the most-recently-modified `Code/User/profiles/<id>/settings.json`. VS Code Profiles store settings per-profile, so v1.13.1 silently missed users whose active window ran under a non-default profile.
+
+## [1.13.1] - 2026-06-15
+
+### Changed
+
+- Refreshed test-suite counters in `docs/standards.md`, `docs/index.md`, `docs/architecture.md`, and `docs/decisions.md` to match the current 28 bats / 9 Pester totals after this release's new test file.
+
+### Fixed
+
+- `setup_vscode_macos_env` on macOS now registers the nix-managed `rg` path under `todo-tree.ripgrep.ripgrep` in VS Code User settings, silencing Todo-Tree's `Failed to find vscode-ripgrep` warning. The extension ignores `PATH` and `/etc/paths.d/nix`, so v1.12.0 alone could not fix it.
+- The same writer is now JSONC-aware. The v1.12.0 helper piped `settings.json` through `jq`, which silently bailed when the file contained `//` comments (the common case for VS Code users) and, when comments were absent, stripped them on rewrite. The helper now uses targeted line-level awk edits that preserve comments, block comments, and trailing commas verbatim.
+- pwsh detection switched from key-name (`"nix"`) to value-match: when any `powerShellAdditionalExePaths` entry already points at `~/.nix-profile/bin/pwsh` under a user-chosen label (commonly `"pwsh (Nix)"`), the writer leaves the user's pwsh setup untouched instead of inserting a duplicate entry under `"nix"`.
+
 ## [1.13.0] - 2026-06-14
 
 Cross-platform docker support reaches first-class on macOS: `--docker` now installs colima plus the docker CLI trio via nix, and the configure hook auto-mirrors host-trusted CA certs into the Lima VM so corporate-MITM environments work out of the box. A new lint-time hook closes a long-standing trap where common `mv -i` / `cp -i` aliases silently hung `nx install`.
