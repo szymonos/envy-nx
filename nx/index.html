@@ -1,0 +1,1112 @@
+
+<!DOCTYPE html>
+
+<html class="no-js" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width,initial-scale=1" name="viewport"/>
+<meta content="Universal, cross-platform developer environment provisioning with Nix" name="description"/>
+<link href="https://szymonos.github.io/envy-nx/nx/" rel="canonical"/>
+<link href="../benefits/" rel="prev"/>
+<link href="../architecture/" rel="next"/>
+<link href="../assets/images/favicon.png" rel="icon"/>
+<meta content="mkdocs-1.6.1, mkdocs-material-9.7.6" name="generator"/>
+<title>The nx CLI - Dev Environment Setup</title>
+<link href="../assets/stylesheets/main.484c7ddc.min.css" rel="stylesheet"/>
+<link href="../assets/stylesheets/palette.ab4e12ef.min.css" rel="stylesheet"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&amp;display=fallback" rel="stylesheet"/>
+<style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+<link href="../assets/stylesheets/layout-wide-screen.css" rel="stylesheet"/>
+<link href="../assets/stylesheets/mermaid-lightbox.css" rel="stylesheet"/>
+<script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+</head>
+<body data-md-color-accent="blue" data-md-color-primary="indigo" data-md-color-scheme="slate" dir="ltr">
+<input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox"/>
+<input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox"/>
+<label class="md-overlay" for="__drawer"></label>
+<div data-md-component="skip">
+<a class="md-skip" href="#the-nx-cli">
+          Skip to content
+        </a>
+</div>
+<div data-md-component="announce">
+</div>
+<header class="md-header md-header--shadow" data-md-component="header">
+<nav aria-label="Header" class="md-header__inner md-grid">
+<a aria-label="Dev Environment Setup" class="md-header__button md-logo" data-md-component="logo" href=".." title="Dev Environment Setup">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
+</a>
+<label class="md-header__button md-icon" for="__drawer">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"></path></svg>
+</label>
+<div class="md-header__title" data-md-component="header-title">
+<div class="md-header__ellipsis">
+<div class="md-header__topic">
+<span class="md-ellipsis">
+            Dev Environment Setup
+          </span>
+</div>
+<div class="md-header__topic" data-md-component="header-topic">
+<span class="md-ellipsis">
+            
+              The nx CLI
+            
+          </span>
+</div>
+</div>
+</div>
+<label class="md-header__button md-icon" for="__search">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+</label>
+<div class="md-search" data-md-component="search" role="dialog">
+<label class="md-search__overlay" for="__search"></label>
+<div class="md-search__inner" role="search">
+<form class="md-search__form" name="search">
+<input aria-label="Search" autocapitalize="off" autocomplete="off" autocorrect="off" class="md-search__input" data-md-component="search-query" name="query" placeholder="Search" required="" spellcheck="false" type="text"/>
+<label class="md-search__icon md-icon" for="__search">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
+</label>
+<nav aria-label="Search" class="md-search__options">
+<button aria-label="Clear" class="md-search__icon md-icon" tabindex="-1" title="Clear" type="reset">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
+</button>
+</nav>
+</form>
+<div class="md-search__output">
+<div class="md-search__scrollwrap" data-md-scrollfix="" tabindex="0">
+<div class="md-search-result" data-md-component="search-result">
+<div class="md-search-result__meta">
+            Initializing search
+          </div>
+<ol class="md-search-result__list" role="presentation"></ol>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="md-header__source">
+<a class="md-source" data-md-component="source" href="https://github.com/szymonos/envy-nx" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewbox="0 0 512 512" xmlns="http://www.w3.org/2000/svg"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"></path></svg>
+</div>
+<div class="md-source__repository">
+    szymonos/envy-nx
+  </div>
+</a>
+</div>
+</nav>
+</header>
+<div class="md-container" data-md-component="container">
+<main class="md-main" data-md-component="main">
+<div class="md-main__inner md-grid">
+<div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Navigation" class="md-nav md-nav--primary" data-md-level="0">
+<label class="md-nav__title" for="__drawer">
+<a aria-label="Dev Environment Setup" class="md-nav__button md-logo" data-md-component="logo" href=".." title="Dev Environment Setup">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
+</a>
+    Dev Environment Setup
+  </label>
+<div class="md-nav__source">
+<a class="md-source" data-md-component="source" href="https://github.com/szymonos/envy-nx" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewbox="0 0 512 512" xmlns="http://www.w3.org/2000/svg"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"></path></svg>
+</div>
+<div class="md-source__repository">
+    szymonos/envy-nx
+  </div>
+</a>
+</div>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="..">
+<span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../benefits/">
+<span class="md-ellipsis">
+    
+  
+    Benefits
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item md-nav__item--active">
+<input class="md-nav__toggle md-toggle" id="__toc" type="checkbox"/>
+<label class="md-nav__link md-nav__link--active" for="__toc">
+<span class="md-ellipsis">
+    
+  
+    The nx CLI
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<a class="md-nav__link md-nav__link--active" href="./">
+<span class="md-ellipsis">
+    
+  
+    The nx CLI
+  
+
+    
+  </span>
+</a>
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#command-surface-at-a-glance">
+<span class="md-ellipsis">
+      
+        Command surface at a glance
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#tab-completion-bash-zsh-powershell">
+<span class="md-ellipsis">
+      
+        Tab completion (bash, zsh, PowerShell)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#package-management-the-aptbrew-layer">
+<span class="md-ellipsis">
+      
+        Package management - the apt/brew layer
+      
+    </span>
+</a>
+<nav aria-label="Package management - the apt/brew layer" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#nx-install-pkg">
+<span class="md-ellipsis">
+      
+        nx install &lt;pkg&gt;...
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#nx-remove-pkg">
+<span class="md-ellipsis">
+      
+        nx remove &lt;pkg&gt;...
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#nx-upgrade">
+<span class="md-ellipsis">
+      
+        nx upgrade
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#nx-list">
+<span class="md-ellipsis">
+      
+        nx list
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#nx-search-query">
+<span class="md-ellipsis">
+      
+        nx search &lt;query&gt;
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#scopes-the-curated-bundles">
+<span class="md-ellipsis">
+      
+        Scopes - the curated bundles
+      
+    </span>
+</a>
+<nav aria-label="Scopes - the curated bundles" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#nx-overlay">
+<span class="md-ellipsis">
+      
+        nx overlay
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#lifecycle-the-unique-entry-point">
+<span class="md-ellipsis">
+      
+        Lifecycle - the unique entry point
+      
+    </span>
+</a>
+<nav aria-label="Lifecycle - the unique entry point" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#nx-setup-flags">
+<span class="md-ellipsis">
+      
+        nx setup [flags...]
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#nx-self-update-force">
+<span class="md-ellipsis">
+      
+        nx self update [--force]
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#nx-version">
+<span class="md-ellipsis">
+      
+        nx version
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#nx-doctor">
+<span class="md-ellipsis">
+      
+        nx doctor
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#maintenance-every-operation-is-reversible">
+<span class="md-ellipsis">
+      
+        Maintenance - every operation is reversible
+      
+    </span>
+</a>
+<nav aria-label="Maintenance - every operation is reversible" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#nx-rollback">
+<span class="md-ellipsis">
+      
+        nx rollback
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#nx-pin">
+<span class="md-ellipsis">
+      
+        nx pin
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#nx-prune">
+<span class="md-ellipsis">
+      
+        nx prune
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#nx-gc-nx-clean">
+<span class="md-ellipsis">
+      
+        nx gc (nx clean)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#nx-profile">
+<span class="md-ellipsis">
+      
+        nx profile
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#why-nx-matters-for-this-tool">
+<span class="md-ellipsis">
+      
+        Why nx matters for this tool
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#reference">
+<span class="md-ellipsis">
+      
+        Reference
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../architecture/">
+<span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../decisions/">
+<span class="md-ellipsis">
+    
+  
+    Design Decisions
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../standards/">
+<span class="md-ellipsis">
+    
+  
+    Quality &amp; Testing
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../enterprise/">
+<span class="md-ellipsis">
+    
+  
+    Enterprise Readiness
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../proxy/">
+<span class="md-ellipsis">
+    
+  
+    Corporate Proxy
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../releasing/">
+<span class="md-ellipsis">
+    
+  
+    Releasing
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../customization/">
+<span class="md-ellipsis">
+    
+  
+    Customization
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#command-surface-at-a-glance">
+<span class="md-ellipsis">
+      
+        Command surface at a glance
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#tab-completion-bash-zsh-powershell">
+<span class="md-ellipsis">
+      
+        Tab completion (bash, zsh, PowerShell)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#package-management-the-aptbrew-layer">
+<span class="md-ellipsis">
+      
+        Package management - the apt/brew layer
+      
+    </span>
+</a>
+<nav aria-label="Package management - the apt/brew layer" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#nx-install-pkg">
+<span class="md-ellipsis">
+      
+        nx install &lt;pkg&gt;...
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#nx-remove-pkg">
+<span class="md-ellipsis">
+      
+        nx remove &lt;pkg&gt;...
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#nx-upgrade">
+<span class="md-ellipsis">
+      
+        nx upgrade
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#nx-list">
+<span class="md-ellipsis">
+      
+        nx list
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#nx-search-query">
+<span class="md-ellipsis">
+      
+        nx search &lt;query&gt;
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#scopes-the-curated-bundles">
+<span class="md-ellipsis">
+      
+        Scopes - the curated bundles
+      
+    </span>
+</a>
+<nav aria-label="Scopes - the curated bundles" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#nx-overlay">
+<span class="md-ellipsis">
+      
+        nx overlay
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#lifecycle-the-unique-entry-point">
+<span class="md-ellipsis">
+      
+        Lifecycle - the unique entry point
+      
+    </span>
+</a>
+<nav aria-label="Lifecycle - the unique entry point" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#nx-setup-flags">
+<span class="md-ellipsis">
+      
+        nx setup [flags...]
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#nx-self-update-force">
+<span class="md-ellipsis">
+      
+        nx self update [--force]
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#nx-version">
+<span class="md-ellipsis">
+      
+        nx version
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#nx-doctor">
+<span class="md-ellipsis">
+      
+        nx doctor
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#maintenance-every-operation-is-reversible">
+<span class="md-ellipsis">
+      
+        Maintenance - every operation is reversible
+      
+    </span>
+</a>
+<nav aria-label="Maintenance - every operation is reversible" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#nx-rollback">
+<span class="md-ellipsis">
+      
+        nx rollback
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#nx-pin">
+<span class="md-ellipsis">
+      
+        nx pin
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#nx-prune">
+<span class="md-ellipsis">
+      
+        nx prune
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#nx-gc-nx-clean">
+<span class="md-ellipsis">
+      
+        nx gc (nx clean)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#nx-profile">
+<span class="md-ellipsis">
+      
+        nx profile
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#why-nx-matters-for-this-tool">
+<span class="md-ellipsis">
+      
+        Why nx matters for this tool
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#reference">
+<span class="md-ellipsis">
+      
+        Reference
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-content" data-md-component="content">
+<article class="md-content__inner md-typeset">
+<h1 id="the-nx-cli">The <code>nx</code> CLI<a class="headerlink" href="#the-nx-cli" title="Permanent link">¤</a></h1>
+<p>Nix is wonderful and intimidating in equal measure. The flake API is sharp, the language is alien on first contact, and the day-to-day tasks every developer expects from a package manager - <em>install this, remove that, upgrade everything, undo what just broke</em> - are buried under terminology like <em>profiles</em>, <em>generations</em>, and <em>closures</em>. The result is a steep cliff between "nix is installed" and "nix is useful".</p>
+<p><code>nx</code> is the bridge. It is a single, friendly command that wraps everything this tool ships - Nix profile management, scope composition, shell-profile injection, certificate handling, and the source-repo lifecycle - behind verbs you already know from <code>apt</code>, <code>brew</code>, and <code>pip</code>.</p>
+<div class="highlight"><pre><span></span><code>nx<span class="w"> </span>install<span class="w"> </span>httpie<span class="w">       </span><span class="c1"># add a package</span>
+nx<span class="w"> </span>remove<span class="w"> </span>httpie<span class="w">        </span><span class="c1"># remove it</span>
+nx<span class="w"> </span>upgrade<span class="w">              </span><span class="c1"># pull latest of everything</span>
+nx<span class="w"> </span>rollback<span class="w">             </span><span class="c1"># back out the last change</span>
+nx<span class="w"> </span>list<span class="w">                 </span><span class="c1"># what's installed and where it came from</span>
+nx<span class="w"> </span>search<span class="w"> </span>ripgrep<span class="w">       </span><span class="c1"># find a package before installing</span>
+</code></pre></div>
+<p>If you stopped reading here and only used those six commands, you would already be more productive with Nix than the official documentation lets on. But <code>nx</code> does more - it manages <strong>scopes</strong> (named bundles of related tools), runs <strong>health checks</strong>, exposes <strong>install provenance</strong>, and gives you a single entry point to <strong>re-provision the whole environment</strong> without remembering where you cloned the source repository six months ago. That is what the rest of this page covers.</p>
+<div class="admonition tip">
+<p class="admonition-title">The one mental model</p>
+<p><code>nx</code> writes plain text files in <code>~/.config/nix-env/</code> and asks Nix to make reality match. Every command is either <em>editing the desired state</em> (<code>install</code>, <code>remove</code>, <code>scope add</code>) or <em>querying / maintaining the actual state</em> (<code>list</code>, <code>doctor</code>, <code>gc</code>, <code>rollback</code>). There is no hidden database, no daemon, and no lock file you cannot read.</p>
+</div>
+<h2 id="command-surface-at-a-glance">Command surface at a glance<a class="headerlink" href="#command-surface-at-a-glance" title="Permanent link">¤</a></h2>
+<table>
+<thead>
+<tr>
+<th>Verb</th>
+<th>Closest analog</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>nx search</code></td>
+<td><code>apt search</code></td>
+<td>Find a package in nixpkgs before installing</td>
+</tr>
+<tr>
+<td><code>nx install</code></td>
+<td><code>apt install</code> / <code>brew</code></td>
+<td>Add packages by name (validates against nixpkgs)</td>
+</tr>
+<tr>
+<td><code>nx remove</code></td>
+<td><code>apt remove</code></td>
+<td>Drop user-installed packages</td>
+</tr>
+<tr>
+<td><code>nx upgrade</code></td>
+<td><code>apt upgrade</code></td>
+<td>Pull latest nixpkgs and rebuild the profile</td>
+</tr>
+<tr>
+<td><code>nx list</code></td>
+<td><code>apt list --installed</code></td>
+<td>Show every package with its scope/origin annotation</td>
+</tr>
+<tr>
+<td><code>nx rollback</code></td>
+<td>(unique)</td>
+<td>Revert to the previous Nix profile generation</td>
+</tr>
+<tr>
+<td><code>nx scope</code></td>
+<td><code>apt-get groups</code></td>
+<td>Manage named bundles of packages (curated or custom)</td>
+</tr>
+<tr>
+<td><code>nx overlay</code></td>
+<td>(unique)</td>
+<td>Inspect team/org customization layer</td>
+</tr>
+<tr>
+<td><code>nx pin</code></td>
+<td>(unique)</td>
+<td>Lock nixpkgs to a specific commit for reproducibility</td>
+</tr>
+<tr>
+<td><code>nx profile</code></td>
+<td>(unique)</td>
+<td>Manage shell-rc managed blocks (bash/zsh)</td>
+</tr>
+<tr>
+<td><code>nx setup</code></td>
+<td>(unique)</td>
+<td>Re-run full provisioning (<code>nix/setup.sh</code> from anywhere)</td>
+</tr>
+<tr>
+<td><code>nx self</code></td>
+<td>(unique)</td>
+<td>Update the source repository this tool lives in</td>
+</tr>
+<tr>
+<td><code>nx doctor</code></td>
+<td><code>brew doctor</code></td>
+<td>Health checks against the live environment</td>
+</tr>
+<tr>
+<td><code>nx version</code></td>
+<td><code>apt-config</code></td>
+<td>Show install provenance, scopes, and live config</td>
+</tr>
+<tr>
+<td><code>nx prune</code></td>
+<td>(unique)</td>
+<td>Remove orphaned <code>nix profile</code> entries</td>
+</tr>
+<tr>
+<td><code>nx gc</code> / <code>clean</code></td>
+<td><code>apt clean</code></td>
+<td>Garbage-collect old generations to reclaim disk</td>
+</tr>
+</tbody>
+</table>
+<p>Run <code>nx help</code> for the inline cheat sheet, or <code>nx &lt;command&gt; help</code> for subcommand help.</p>
+<h2 id="tab-completion-bash-zsh-powershell">Tab completion (bash, zsh, PowerShell)<a class="headerlink" href="#tab-completion-bash-zsh-powershell" title="Permanent link">¤</a></h2>
+<p>You should never have to memorize the verbs in the table above. <code>nx</code> ships native tab completion for every shell it supports - installed automatically by <code>nix/setup.sh</code> into the managed shell-rc block, no extra wiring required.</p>
+<table>
+<thead>
+<tr>
+<th>Shell</th>
+<th>Source</th>
+<th>Style</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>bash</strong></td>
+<td><code>.assets/config/shell_cfg/completions.bash</code></td>
+<td>Programmable completion (<code>compgen -W ...</code>) - completes verbs, subcommands, scope names from <code>config.nix</code>, and every <code>setup</code> flag</td>
+</tr>
+<tr>
+<td><strong>zsh</strong></td>
+<td><code>.assets/config/shell_cfg/completions.zsh</code></td>
+<td>Native <code>_describe</code> style - each subcommand suggestion includes a one-line description</td>
+</tr>
+<tr>
+<td><strong>PowerShell</strong></td>
+<td><code>.assets/config/pwsh_cfg/_aliases_nix.ps1</code></td>
+<td><code>Register-ArgumentCompleter -Native</code> - same coverage as bash, integrated with PSReadLine</td>
+</tr>
+</tbody>
+</table>
+<p>What you get out of the box:</p>
+<div class="highlight"><pre><span></span><code>nx<span class="w"> </span>&lt;TAB&gt;&lt;TAB&gt;<span class="w">          </span><span class="c1"># all top-level commands</span>
+nx<span class="w"> </span>scope<span class="w"> </span>&lt;TAB&gt;<span class="w">         </span><span class="c1"># list  show  tree  add  edit  remove</span>
+nx<span class="w"> </span>scope<span class="w"> </span>edit<span class="w"> </span>&lt;TAB&gt;<span class="w">    </span><span class="c1"># dynamic: only the scopes actually present in config.nix</span>
+nx<span class="w"> </span>setup<span class="w"> </span>--&lt;TAB&gt;<span class="w">       </span><span class="c1"># every scope flag + --omp-theme, --starship-theme, --upgrade, --all, ...</span>
+nx<span class="w"> </span>self<span class="w"> </span>update<span class="w"> </span>--&lt;TAB&gt;<span class="w"> </span><span class="c1"># --force</span>
+</code></pre></div>
+<p>The PowerShell completer fires inside both the native <code>pwsh</code> REPL and VS Code's PowerShell terminal. The dynamic scope completion (for <code>nx scope show|edit|remove</code>) reads <code>~/.config/nix-env/config.nix</code> directly, so it always reflects the current installation - including overlay scopes prefixed with <code>local_</code>.</p>
+<div class="admonition tip">
+<p class="admonition-title">Nothing to install</p>
+<p>Completions live in the same managed shell-rc blocks that <code>nix/setup.sh</code> writes. If <code>nx &lt;TAB&gt;</code> doesn't fire, run <code>nx profile doctor</code> - a missing or duplicated block is the usual culprit, and <code>nx profile regenerate</code> fixes it without re-running setup.</p>
+</div>
+<h2 id="package-management-the-aptbrew-layer">Package management - the apt/brew layer<a class="headerlink" href="#package-management-the-aptbrew-layer" title="Permanent link">¤</a></h2>
+<p>This is the part that erases the Nix learning cliff. Four verbs cover 90% of daily use.</p>
+<h3 id="nx-install-pkg"><code>nx install &lt;pkg&gt;...</code><a class="headerlink" href="#nx-install-pkg" title="Permanent link">¤</a></h3>
+<div class="highlight"><pre><span></span><code>nx<span class="w"> </span>install<span class="w"> </span>httpie
+nx<span class="w"> </span>install<span class="w"> </span>ripgrep<span class="w"> </span>fd<span class="w"> </span>bat<span class="w">        </span><span class="c1"># install several at once</span>
+</code></pre></div>
+<p>Each name is <strong>validated against nixpkgs before being added</strong> to <code>packages.nix</code>, so typos and non-existent packages fail fast - not after a 30-second <code>nix profile upgrade</code>. If a package is already provided by an enabled scope, <code>nx</code> tells you and skips the duplicate.</p>
+<p>The package list lives in plain Nix at <code>~/.config/nix-env/packages.nix</code>. You can read it, version-control it, or edit it by hand - but you almost never need to.</p>
+<h3 id="nx-remove-pkg"><code>nx remove &lt;pkg&gt;...</code><a class="headerlink" href="#nx-remove-pkg" title="Permanent link">¤</a></h3>
+<div class="highlight"><pre><span></span><code>nx<span class="w"> </span>remove<span class="w"> </span>httpie
+nx<span class="w"> </span>uninstall<span class="w"> </span>httpie<span class="w">              </span><span class="c1"># alias</span>
+</code></pre></div>
+<p>Removes packages from the user layer. If you ask to remove a package that's owned by a scope, <code>nx</code> refuses and points you at the right command (<code>nx scope remove ...</code>). This protects you from accidentally amputating a tool that something else depends on.</p>
+<h3 id="nx-upgrade"><code>nx upgrade</code><a class="headerlink" href="#nx-upgrade" title="Permanent link">¤</a></h3>
+<div class="highlight"><pre><span></span><code>nx<span class="w"> </span>upgrade
+nx<span class="w"> </span>update<span class="w">                        </span><span class="c1"># alias</span>
+</code></pre></div>
+<p>Runs <code>nix flake update</code> on the per-user lock, then <code>nix profile upgrade nix-env</code>. If <code>nx pin</code> is set, the upgrade respects the pinned <code>nixpkgs</code> revision instead. If the network is unreachable, the existing lock is kept and the upgrade is reported as a warning rather than a failure - so a flaky VPN doesn't leave you with a half-broken profile.</p>
+<h3 id="nx-list"><code>nx list</code><a class="headerlink" href="#nx-list" title="Permanent link">¤</a></h3>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>nx<span class="w"> </span>list
+<span class="w">  </span>*<span class="w"> </span>bash-completion<span class="w">       </span><span class="o">(</span>base<span class="o">)</span>
+<span class="w">  </span>*<span class="w"> </span>git<span class="w">                   </span><span class="o">(</span>base<span class="o">)</span>
+<span class="w">  </span>*<span class="w"> </span>httpie<span class="w">                </span><span class="o">(</span>extra<span class="o">)</span>
+<span class="w">  </span>*<span class="w"> </span>kubectl<span class="w">               </span><span class="o">(</span>k8s_base<span class="o">)</span>
+<span class="w">  </span>*<span class="w"> </span>ripgrep<span class="w">               </span><span class="o">(</span>shell<span class="o">)</span>
+<span class="w">  </span>*<span class="w"> </span>uv<span class="w">                    </span><span class="o">(</span>python<span class="o">)</span>
+</code></pre></div>
+<p>Every installed package, annotated with where it came from: <code>(base)</code> for the always-on baseline, <code>(scope-name)</code> for scope-owned packages, <code>(extra)</code> for <code>nx install</code> additions, <code>(local)</code> for overlay scopes. No more guessing why a binary is on your PATH.</p>
+<h3 id="nx-search-query"><code>nx search &lt;query&gt;</code><a class="headerlink" href="#nx-search-query" title="Permanent link">¤</a></h3>
+<div class="highlight"><pre><span></span><code>nx<span class="w"> </span>search<span class="w"> </span>ripgrep
+</code></pre></div>
+<p>Thin wrapper over <code>nix search nixpkgs --json</code> with the output reformatted into a readable list (name + version + description). Use it before <code>nx install</code> to confirm the upstream package name.</p>
+<h2 id="scopes-the-curated-bundles">Scopes - the curated bundles<a class="headerlink" href="#scopes-the-curated-bundles" title="Permanent link">¤</a></h2>
+<p>A <strong>scope</strong> is a named set of packages that belongs together: <code>python</code> ships <code>uv</code> + <code>prek</code> + <code>python3</code>; <code>k8s_dev</code> ships <code>helm</code>, <code>flux</code>, <code>kustomize</code>, <code>trivy</code>, <code>kyverno</code>, and friends. Scopes are how teams agree on a tooling baseline without writing a wiki page nobody reads.</p>
+<p>See <a href="../customization/">Customization</a> for the full layering model. The day-to-day commands:</p>
+<div class="highlight"><pre><span></span><code>nx<span class="w"> </span>scope<span class="w"> </span>list<span class="w">                           </span><span class="c1"># what's enabled</span>
+nx<span class="w"> </span>scope<span class="w"> </span>show<span class="w"> </span>k8s_dev<span class="w">                   </span><span class="c1"># what packages does k8s_dev contain</span>
+nx<span class="w"> </span>scope<span class="w"> </span>tree<span class="w">                           </span><span class="c1"># everything, expanded</span>
+nx<span class="w"> </span>scope<span class="w"> </span>add<span class="w"> </span>devtools<span class="w"> </span>httpie<span class="w"> </span>jq<span class="w"> </span>bat<span class="w">     </span><span class="c1"># create a custom scope (overlay layer)</span>
+nx<span class="w"> </span>scope<span class="w"> </span>edit<span class="w"> </span>devtools<span class="w">                  </span><span class="c1"># open in $EDITOR</span>
+nx<span class="w"> </span>scope<span class="w"> </span>remove<span class="w"> </span>devtools<span class="w">                </span><span class="c1"># drop the scope</span>
+</code></pre></div>
+<div class="admonition info">
+<p class="admonition-title">Base vs overlay</p>
+<p>Scopes shipped in this repository are read-only - <code>nx scope edit shell</code> will refuse and tell you to create an overlay scope instead. Custom overlay scopes get a <code>local_</code> prefix on disk so they cannot collide with base scope names. Adding a scope re-runs <code>nix profile upgrade</code> automatically, so the new packages land immediately.</p>
+</div>
+<h3 id="nx-overlay"><code>nx overlay</code><a class="headerlink" href="#nx-overlay" title="Permanent link">¤</a></h3>
+<div class="highlight"><pre><span></span><code>nx<span class="w"> </span>overlay
+</code></pre></div>
+<p>Shows the active overlay directory (defaults to <code>~/.config/nix-env/local/</code>, override with <code>$NIX_ENV_OVERLAY_DIR</code>) and the sync state of every overlay file: <code>(synced)</code>, <code>(differs)</code>, <code>(modified)</code>, <code>(source missing)</code>. Use it to spot drift between the source-of-truth overlay and what's actually installed.</p>
+<h2 id="lifecycle-the-unique-entry-point">Lifecycle - the unique entry point<a class="headerlink" href="#lifecycle-the-unique-entry-point" title="Permanent link">¤</a></h2>
+<p>This is where <code>nx</code> does things <code>apt</code> cannot. Three verbs manage the <strong>tool itself</strong>, not just packages.</p>
+<h3 id="nx-setup-flags"><code>nx setup [flags...]</code><a class="headerlink" href="#nx-setup-flags" title="Permanent link">¤</a></h3>
+<div class="highlight"><pre><span></span><code>nx<span class="w"> </span>setup<span class="w">                                </span><span class="c1"># re-run with current scopes</span>
+nx<span class="w"> </span>setup<span class="w"> </span>--terraform<span class="w"> </span>--gcloud<span class="w">           </span><span class="c1"># add scopes to the existing config</span>
+nx<span class="w"> </span>setup<span class="w"> </span>--upgrade<span class="w">                      </span><span class="c1"># full upgrade pass</span>
+</code></pre></div>
+<p>Re-runs <code>nix/setup.sh</code> from anywhere - no need to remember where you cloned the repo. The lookup order is:</p>
+<ol>
+<li><code>install.json:repo_path</code> if it points to a valid envy-nx checkout (respects forks and non-canonical clones).</li>
+<li>Otherwise the canonical fallback <code>$HOME/source/repos/szymonos/envy-nx</code>. If that location doesn't exist, <code>nx setup</code> clones it on demand - no prompt, no surprises.</li>
+<li>If neither is reachable, <code>nx setup</code> fails with a clear error.</li>
+</ol>
+<p>When the recorded <code>repo_path</code> is stale (the directory was deleted or moved), <code>nx setup</code> falls back to the canonical location and prints a one-line notice so you know what happened. The new path is recorded in <code>install.json</code> automatically when <code>nix/setup.sh</code> exits - no manual cleanup.</p>
+<h3 id="nx-self-update-force"><code>nx self update [--force]</code><a class="headerlink" href="#nx-self-update-force" title="Permanent link">¤</a></h3>
+<div class="highlight"><pre><span></span><code>nx<span class="w"> </span>self<span class="w"> </span>update<span class="w">                          </span><span class="c1"># git pull --ff-only</span>
+nx<span class="w"> </span>self<span class="w"> </span>update<span class="w"> </span>--force<span class="w">                  </span><span class="c1"># fetch + reset --hard origin/&lt;branch&gt;</span>
+nx<span class="w"> </span>self<span class="w"> </span>path<span class="w">                            </span><span class="c1"># print the recorded repo path</span>
+</code></pre></div>
+<p>Updates the source repository. Default is <strong>safe</strong> (<code>--ff-only</code> refuses to clobber local commits). <code>--force</code> resets to <code>origin/&lt;current-branch&gt;</code> for environments where the clone is treated as ephemeral. If the install was from a release tarball (no <code>.git</code>), <code>nx self update</code> offers to convert it to a git clone instead.</p>
+<p>After an update, the in-shell <code>nx_main</code> function is invalidated so the next <code>nx</code> call re-sources the freshly-updated <code>nx.sh</code> - no shell restart needed.</p>
+<h3 id="nx-version"><code>nx version</code><a class="headerlink" href="#nx-version" title="Permanent link">¤</a></h3>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>nx<span class="w"> </span>version
+<span class="w">  </span>envy-nx<span class="w">    </span>v1.2.0<span class="w"> </span><span class="o">(</span>rfr/envy-setup<span class="o">)</span>
+<span class="w">  </span>Repo:<span class="w">      </span>/home/me/source/repos/szymonos/envy-nx
+<span class="w">  </span>Installed:<span class="w"> </span><span class="m">2026</span>-04-29<span class="w"> </span>by<span class="w"> </span>me<span class="w"> </span>on<span class="w"> </span>Linux<span class="w"> </span>x86_64
+<span class="w">  </span>Scopes:<span class="w">    </span>k8s_base<span class="w"> </span>k8s_dev<span class="w"> </span>python<span class="w"> </span>conda<span class="w"> </span>az<span class="w"> </span>terraform<span class="w"> </span>oh_my_posh<span class="w"> </span>shell<span class="w"> </span>pwsh<span class="w"> </span>rice
+<span class="w">  </span>Mode:<span class="w">      </span>install
+<span class="w">  </span>Status:<span class="w">    </span>success
+<span class="w">  </span>Nix:<span class="w">       </span>Determinate<span class="w"> </span>Nix<span class="w"> </span><span class="m">3</span>.18.1
+</code></pre></div>
+<p>Reads <code>~/.config/dev-env/install.json</code> and prints the full provenance: tool version, repo path and branch, install timestamp, active scopes, last-run status. The single command that answers "what is actually deployed here?" - useful for fleet visibility, support tickets, and post-incident audits.</p>
+<h3 id="nx-doctor"><code>nx doctor</code><a class="headerlink" href="#nx-doctor" title="Permanent link">¤</a></h3>
+<div class="highlight"><pre><span></span><code>nx<span class="w"> </span>doctor
+nx<span class="w"> </span>doctor<span class="w"> </span>--strict<span class="w">                      </span><span class="c1"># warnings also exit non-zero (CI use)</span>
+nx<span class="w"> </span>doctor<span class="w"> </span>--json<span class="w">                        </span><span class="c1"># machine-readable, no log file written</span>
+</code></pre></div>
+<p>Read-only health checks that don't touch state. Failing or warning checks print a <code>Fix: &lt;command&gt;</code> hint indented under the check, so the common remediation (<code>nx self sync</code>, <code>nx profile regenerate</code>, <code>nx upgrade</code>, ...) is one read away. The full plain-text output is also written to <code>~/.config/dev-env/doctor.log</code> (overwritten per run); the path is printed only when there are failures or warnings - a clean run is silent about it.</p>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>Verifies</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>nix_available</code></td>
+<td><code>nix</code> resolves on PATH and reports version ≥ 2.18 (older nix produces cryptic flake errors)</td>
+</tr>
+<tr>
+<td><code>flake_lock</code></td>
+<td><code>flake.lock</code> exists and the nixpkgs node is valid</td>
+</tr>
+<tr>
+<td><code>env_dir_files</code></td>
+<td><code>flake.nix</code>, <code>nx.sh</code>, <code>nx_{pkg,scope,profile,lifecycle,doctor}.sh</code>, <code>profile_block.sh</code>, <code>config.nix</code> present in <code>~/.config/nix-env/</code></td>
+</tr>
+<tr>
+<td><code>install_record</code></td>
+<td><code>install.json</code> exists and the last run succeeded</td>
+</tr>
+<tr>
+<td><code>scope_binaries</code></td>
+<td>Every binary declared by a scope's <code># bins:</code> is found anywhere on <code>$PATH</code></td>
+</tr>
+<tr>
+<td><code>scope_bins_in_profile</code></td>
+<td>Tighter: each <code># bins:</code> binary must live under <code>~/.nix-profile/bin/</code> (proves nix provided it, not a system shadow)</td>
+</tr>
+<tr>
+<td><code>shell_profile</code></td>
+<td>Exactly one managed block in the <strong>invoking shell's</strong> rc (bash → <code>.bashrc</code>, zsh → <code>.zshrc</code>)</td>
+</tr>
+<tr>
+<td><code>managed_block_drift</code></td>
+<td>Both managed blocks (<code>env:managed</code>, <code>nix:managed</code>) in the invoking shell's rc match what <code>nx profile regenerate</code> would write today</td>
+</tr>
+<tr>
+<td><code>shell_config_files</code></td>
+<td>Every <code>~/.config/shell/&lt;file&gt;</code> referenced by the rc resolves on disk</td>
+</tr>
+<tr>
+<td><code>cert_bundle</code></td>
+<td>Custom CA bundle present and VS Code env wired up</td>
+</tr>
+<tr>
+<td><code>vscode_server_env</code></td>
+<td><code>~/.vscode-server/server-env-setup</code> includes nix PATH</td>
+</tr>
+<tr>
+<td><code>nix_profile</code></td>
+<td><code>nix-env</code> entry exists in <code>nix profile list</code></td>
+</tr>
+<tr>
+<td><code>nix_profile_link</code></td>
+<td><code>~/.nix-profile</code> is a live symlink (not missing or dangling)</td>
+</tr>
+<tr>
+<td><code>overlay_dir</code></td>
+<td>Overlay directory is readable (when <code>NIX_ENV_OVERLAY_DIR</code> is set)</td>
+</tr>
+<tr>
+<td><code>version_skew</code></td>
+<td>Installed version matches the latest GitHub release (when <code>gh</code> is available)</td>
+</tr>
+</tbody>
+</table>
+<p>The <code>nx doctor --strict</code> form is what CI runs after every smoke test. Locally, run it whenever something feels off - it usually points at the broken edge in one line.</p>
+<h2 id="maintenance-every-operation-is-reversible">Maintenance - every operation is reversible<a class="headerlink" href="#maintenance-every-operation-is-reversible" title="Permanent link">¤</a></h2>
+<p>Nix's killer feature is <strong>profile generations</strong>. Every change creates a new generation; the previous one stays on disk until you explicitly clean it up. <code>nx</code> exposes that as everyday verbs.</p>
+<h3 id="nx-rollback"><code>nx rollback</code><a class="headerlink" href="#nx-rollback" title="Permanent link">¤</a></h3>
+<div class="highlight"><pre><span></span><code>nx<span class="w"> </span>rollback
+</code></pre></div>
+<p>Reverts to the previous profile generation. If <code>nx upgrade</code> brought in a broken kubectl, one command and a shell restart later, the old kubectl is back.</p>
+<h3 id="nx-pin"><code>nx pin</code><a class="headerlink" href="#nx-pin" title="Permanent link">¤</a></h3>
+<div class="highlight"><pre><span></span><code>nx<span class="w"> </span>pin<span class="w"> </span><span class="nb">set</span><span class="w">                              </span><span class="c1"># pin to whatever flake.lock currently has</span>
+nx<span class="w"> </span>pin<span class="w"> </span><span class="nb">set</span><span class="w"> </span>1234abcd...<span class="w">                  </span><span class="c1"># pin to a specific nixpkgs commit</span>
+nx<span class="w"> </span>pin<span class="w"> </span>show
+nx<span class="w"> </span>pin<span class="w"> </span>remove<span class="w">                           </span><span class="c1"># back to nixpkgs-unstable HEAD</span>
+</code></pre></div>
+<p>Coordinates a team or fleet on a single nixpkgs revision without shipping a <code>flake.lock</code> in the repo. <code>nx upgrade</code> honors the pin transparently. Useful for reproducible builds, cohort rollouts, or freezing during a release window.</p>
+<h3 id="nx-prune"><code>nx prune</code><a class="headerlink" href="#nx-prune" title="Permanent link">¤</a></h3>
+<div class="highlight"><pre><span></span><code>nx<span class="w"> </span>prune
+</code></pre></div>
+<p>Removes stale entries from <code>nix profile list</code> - leftovers from old experiments or aborted upgrades that aren't <code>nix-env</code> (the canonical profile this tool manages). Doesn't touch generations on disk; for that, use <code>gc</code>.</p>
+<h3 id="nx-gc-nx-clean"><code>nx gc</code> (<code>nx clean</code>)<a class="headerlink" href="#nx-gc-nx-clean" title="Permanent link">¤</a></h3>
+<div class="highlight"><pre><span></span><code>nx<span class="w"> </span>gc
+</code></pre></div>
+<p><code>nix profile wipe-history</code> + <code>nix store gc</code>. Deletes old profile generations and runs the Nix store garbage collector. Reclaims disk space - safe to run anytime, but rolls back the rollback target.</p>
+<h3 id="nx-profile"><code>nx profile</code><a class="headerlink" href="#nx-profile" title="Permanent link">¤</a></h3>
+<div class="highlight"><pre><span></span><code>nx<span class="w"> </span>profile<span class="w"> </span>doctor<span class="w">                       </span><span class="c1"># check shell-rc managed blocks</span>
+nx<span class="w"> </span>profile<span class="w"> </span>regenerate<span class="w">                   </span><span class="c1"># rewrite the blocks</span>
+nx<span class="w"> </span>profile<span class="w"> </span>uninstall<span class="w">                    </span><span class="c1"># remove the blocks (keeps sourced files)</span>
+</code></pre></div>
+<p>Manages the <strong>managed blocks</strong> that <code>nix/setup.sh</code> writes into <code>~/.bashrc</code> and <code>~/.zshrc</code>. See <a href="../architecture/">Architecture → Managed block pattern</a> for the full design. The everyday case: if <code>nx doctor</code> reports a duplicate block, <code>nx profile regenerate</code> fixes it without re-running setup.</p>
+<h2 id="why-nx-matters-for-this-tool">Why <code>nx</code> matters for this tool<a class="headerlink" href="#why-nx-matters-for-this-tool" title="Permanent link">¤</a></h2>
+<p>A traditional take on Nix gives you <code>nix profile add nixpkgs#httpie</code>, <code>nix flake update</code>, <code>nix profile rollback</code>, and a stack of overlay terminology. It works, but it leaks the implementation into every command.</p>
+<p><code>nx</code> lets you forget that:</p>
+<ul>
+<li><strong>No flake URLs to memorize.</strong> <code>nx install httpie</code> is what you'd type with <code>apt</code>.</li>
+<li><strong>No "profile" vs "store" distinction at the surface.</strong> <code>nx upgrade</code> does what you mean, regardless of which Nix concept is involved underneath.</li>
+<li><strong>No hunting for the source repo.</strong> <code>nx setup</code> finds it, or clones the canonical location on demand.</li>
+<li><strong>Health, provenance, and rollback are first-class verbs.</strong> <code>nx doctor</code>, <code>nx version</code>, <code>nx rollback</code> - each one is a single word, and each one answers a question you would otherwise google.</li>
+<li><strong>Imperative UX over declarative state.</strong> You change <em>one</em> thing imperatively (<code>nx install</code>); <code>nx</code> updates the declarative file (<code>packages.nix</code>) on your behalf and applies it. Best of both worlds.</li>
+</ul>
+<p>The cost of this convenience is roughly 1200 lines of bash, a handful of unit tests, and a hard rule that the tool stays bash 3.2 / BSD-sed compatible so it works on a stock macOS shell. The cost is paid once. The benefit compounds every time a developer runs <code>nx install</code> instead of reading the Nix manual.</p>
+<h2 id="reference">Reference<a class="headerlink" href="#reference" title="Permanent link">¤</a></h2>
+<ul>
+<li>Inline help: <code>nx help</code>, <code>nx &lt;command&gt; help</code></li>
+<li>Source: <a href="https://github.com/szymonos/envy-nx/blob/main/.assets/lib/nx.sh"><code>.assets/lib/nx.sh</code></a></li>
+<li>Architecture context: <a href="../architecture/">Architecture</a>, <a href="../customization/">Customization</a></li>
+<li>Tests: <code>tests/bats/test_nx_commands.bats</code>, <code>tests/bats/test_nx_doctor.bats</code>, <code>tests/bats/test_nx_scope.bats</code></li>
+</ul>
+</article>
+</div>
+<script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+</div>
+</main>
+<footer class="md-footer">
+<div class="md-footer-meta md-typeset">
+<div class="md-footer-meta__inner md-grid">
+<div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" rel="noopener" target="_blank">
+      Material for MkDocs
+    </a>
+</div>
+</div>
+</div>
+</footer>
+</div>
+<div class="md-dialog" data-md-component="dialog">
+<div class="md-dialog__inner md-typeset"></div>
+</div>
+<script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.indexes", "navigation.sections", "content.code.copy", "content.tabs.link"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+<script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+<script src="../assets/javascripts/diagram-zoom.js"></script>
+</body>
+</html>
