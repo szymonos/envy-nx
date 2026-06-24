@@ -4,6 +4,31 @@ Tracked design ideas that are noted but not scheduled. New items append to the
 top with a date stamp; remove an item when it lands or is rejected (capture
 the rationale in `docs/decisions.md` if rejected).
 
+## `setup_vscode_macos_env`: set `terminal.integrated.macOptionIsMeta` for PSReadLine keybindings
+
+**Date noted:** 2026-06-24
+
+On macOS the Option key sends a dead-key character (e.g. `å` for `Option+a`) rather than an Escape prefix, so PSReadLine Emacs-mode bindings like `Alt+a` (`SelectCommandArgument`) silently do nothing in the VS Code integrated terminal. The fix is a single VS Code setting:
+
+```json
+"terminal.integrated.macOptionIsMeta": true
+```
+
+This makes the VS Code terminal send `Esc+<key>` for Option combos, which PSReadLine reads as Meta/Alt — the same behavior iTerm2's "Use Option as Meta key" provides.
+
+**What `setup_vscode_macos_env` / `_vscode_macos_settings_update` would need:**
+
+- Add `terminal.integrated.macOptionIsMeta` to the `need_*` detection block alongside the existing `todo-tree.ripgrep.ripgrep` check.
+- Detection: skip if the key already exists (any value) — same pattern as rg.
+- Insert: append the key before the root close-brace using the same awk insert block.
+- No new ok() message label needed; follow the existing `[ "$need_rg" -eq 1 ] && ok "..."` pattern.
+- New bats test cases to add to `tests/bats/test_vscode_macos.bats`:
+  - fresh install writes the key.
+  - second run is a no-op (existing key, any value, is respected).
+  - writes only the key when pwsh and rg are both absent but `$nix_bin` exists (requires relaxing the early-return guard that bails when neither binary is found — or guard the setting separately).
+
+**Gating decision:** write `terminal.integrated.macOptionIsMeta` only when `pwsh` is installed (it's a pwsh UX fix, not a general setting). It is independent of rg availability — the early-exit at line 105 needs to be split so that `need_meta` follows `need_pwsh`, not `need_rg`.
+
 ## `nx upgrade --all` - refresh non-Nix tools alongside Nix profile
 
 **Date noted:** 2026-05-12
