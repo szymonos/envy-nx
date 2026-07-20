@@ -164,6 +164,7 @@ venv
 versinfo
 virtualenv
 whatis
+wikilinks
 winget
 worktree
 worktrees

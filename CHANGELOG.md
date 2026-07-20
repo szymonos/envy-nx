@@ -5,6 +5,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.14.0] - 2026-07-20
+
+### Added
+
+- `gremlins` hook now gives markup files (`.md`, `.html`, `.htm`) a curated allow-list for intentional typography (em dash, no-break space), while still flagging smart quotes, en dash, and invisible characters everywhere.
+- `align_tables` hook preserves literal pipes inside Obsidian wikilinks (`[[target|display]]`) and `\|` escapes so table cells containing them are no longer split mid-column.
+- `do-common` PowerShell module synced to `2.0.0`: adds `Split-UriHostPort` and refactored certificate/python helpers. `Get-Certificate`'s `-BuildChain` switch is renamed `-PresentedChain`; the `wsl_certs_add.ps1` caller is updated to match.
+
+### Changed
+
+- Bumped pinned pre-commit hooks (`ruff` `v0.15.22`, `markdownlint-cli2` `v0.23.1`, `cspell-cli` `v10.0.1`) and refreshed transitive dependencies in `uv.lock`.
+- `make lint` / `lint-diff` now run hooks against a disposable scratch index (`GIT_INDEX_FILE`) instead of staging the whole tree and restoring, so the user's staged state is never touched.
+- CI `repo_checks` workflow runs on `ubuntu-slim` and installs Pester `6.0.0`.
+
+### Fixed
+
+- `align_tables` no longer breaks alignment on narrow columns; separator cells now honor the GFM one-dash minimum instead of an arbitrary three-dash floor that broke MD060 pipe alignment.
+- `modules_update.ps1` no longer fails on macOS - the `sed -i` call (which BSD sed rejects) is replaced with a native .NET `[IO.File]` read/replace/write.
+
 ## [1.13.0] - 2026-06-14
 
 Cross-platform docker support reaches first-class on macOS: `--docker` now installs colima plus the docker CLI trio via nix, and the configure hook auto-mirrors host-trusted CA certs into the Lima VM so corporate-MITM environments work out of the box. A new lint-time hook closes a long-standing trap where common `mv -i` / `cp -i` aliases silently hung `nx install`.
