@@ -71,7 +71,13 @@ process {
         }
     }
     # replace '/usr/bin/kubens' with "$HOME/.nix-profile/bin/kubens" in helper.ps1 of aliases-kubectl module
-    sed -i "s|'/usr/bin/kubens'|`"`$HOME/.nix-profile/bin/kubens`"|g" modules/aliases-kubectl/Functions/helper.ps1
+    # native .NET replace instead of `sed -i` - BSD sed (macOS) and GNU sed disagree
+    # on the -i backup-suffix argument, so the external call isn't portable.
+    # Convert-Path resolves against $PWD (set by Push-Location above); [IO.File]
+    # resolves relative paths against .NET's CWD, which Push-Location does not change.
+    $helperPath = Convert-Path 'modules/aliases-kubectl/Functions/helper.ps1'
+    $helper = [IO.File]::ReadAllText($helperPath).Replace("'/usr/bin/kubens'", '"$HOME/.nix-profile/bin/kubens"')
+    [IO.File]::WriteAllText($helperPath, $helper)
     Get-ChildItem -Path './modules' -Filter '*.ps1' -File -Recurse | Select-String -Pattern '/usr/bin' -SimpleMatch
 }
 
