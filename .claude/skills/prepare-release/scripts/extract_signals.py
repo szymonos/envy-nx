@@ -48,10 +48,22 @@ ARCHITECTURE_SECTIONS = {
 
 
 def _run(cmd: list[str], **kwargs: object) -> str:
-    result = subprocess.run(cmd, capture_output=True, text=True, **kwargs)
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, **kwargs)
+    except FileNotFoundError:
+        # Executable not on PATH - treat as a soft failure so callers get "" and
+        # can surface a clean error rather than a traceback (e.g. git missing).
+        return ""
     if result.returncode != 0:
         return ""
     return result.stdout.strip()
+
+
+def _emit(payload: dict[str, object], code: int = 0) -> int:
+    """Emit a JSON payload to stdout (indent=2) and return the exit code."""
+    json.dump(payload, sys.stdout, indent=2)
+    print()
+    return code
 
 
 def _commits_since(base: str) -> list[dict[str, str]]:
@@ -80,7 +92,7 @@ def _changed_files_since(base: str) -> list[str]:
 def _next_lesson_id(lessons_path: Path) -> int:
     if not lessons_path.exists():
         return 1
-    text = lessons_path.read_text()
+    text = lessons_path.read_text(encoding="utf-8", errors="replace")
     ids = [int(m.group(1)) for m in re.finditer(r"^## L-(\d{3})", text, re.MULTILINE)]
     return (max(ids) + 1) if ids else 1
 
@@ -88,7 +100,7 @@ def _next_lesson_id(lessons_path: Path) -> int:
 def _existing_lessons(lessons_path: Path) -> list[str]:
     if not lessons_path.exists():
         return []
-    text = lessons_path.read_text()
+    text = lessons_path.read_text(encoding="utf-8", errors="replace")
     return re.findall(r"^## L-\d{3} - .+$", text, re.MULTILINE)
 
 
@@ -96,8 +108,7 @@ def cmd_signals(args: argparse.Namespace) -> int:
     """Extract learning signals from WIP history."""
     base = args.base or _run(["git", "merge-base", "main", "HEAD"])
     if not base:
-        print('{"error": "Could not determine merge-base"}', file=sys.stderr)
-        return 1
+        return _emit({"error": "Could not determine merge-base"}, code=1)
 
     lessons_path = Path(args.lessons or "design/lessons.md")
 
@@ -164,7 +175,18 @@ def cmd_signals(args: argparse.Namespace) -> int:
 
 def cmd_preflight_wip(args: argparse.Namespace) -> int:
     """
-    Print 'create-wip' or 'skip' on stdout; reason on stderr.
+    Self-applying WIP guard: print 'created-wip' or 'skip' and act accordingly.
+
+    By default (no flag), this subcommand BOTH decides AND acts: if a WIP commit
+    is needed, it runs `git add -A && git commit --no-verify -m "WIP for review"`
+    itself, then prints 'created-wip' on stdout. If the tree is already clean or
+    the branch is at parity with the base, it prints 'skip'. The agent's job is
+    one line: run the command. No stdout parsing, no conditional follow-up
+    commands - that manual follow-up was the failure mode this design eliminates
+    (an agent that reasoned its way past the commit and reviewed nothing).
+
+    `--dry-run` restores the old behavior: print 'create-wip' or 'skip' but do
+    not commit. Useful for tests and for callers that want to inspect first.
 
     Guards against the failure mode where /second-opinion silently reports
     "no findings" because git diff <base>..HEAD is empty - either because
@@ -213,8 +235,28 @@ def cmd_preflight_wip(args: argparse.Namespace) -> int:
         else "branch has commits ahead of base AND working tree dirty - "
         "WIP needed so /second-opinion sees committed + uncommitted together"
     )
-    print("create-wip")
-    print(reason, file=sys.stderr)
+    if args.dry_run:
+        print("create-wip")
+        print(reason, file=sys.stderr)
+        return 0
+    add_rc = subprocess.run(
+        ["git", "add", "-A"], capture_output=True, text=True, check=False
+    )
+    if add_rc.returncode != 0:
+        print(f"git add -A failed: {add_rc.stderr.strip()}", file=sys.stderr)
+        return 1
+    commit_rc = subprocess.run(
+        ["git", "commit", "--no-verify", "-m", "WIP for review"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if commit_rc.returncode != 0:
+        err = commit_rc.stderr.strip() or commit_rc.stdout.strip()
+        print(f"git commit failed: {err}", file=sys.stderr)
+        return 1
+    print("created-wip")
+    print(f"{reason} - WIP commit created", file=sys.stderr)
     return 0
 
 
@@ -222,8 +264,7 @@ def cmd_architecture(args: argparse.Namespace) -> int:
     """Check ARCHITECTURE.md for staleness against the branch diff."""
     base = args.base or _run(["git", "merge-base", "main", "HEAD"])
     if not base:
-        print('{"error": "Could not determine merge-base"}', file=sys.stderr)
-        return 1
+        return _emit({"error": "Could not determine merge-base"}, code=1)
 
     arch_path = Path("ARCHITECTURE.md")
     if not arch_path.exists():
@@ -276,10 +317,18 @@ def main() -> int:
 
     pf = sub.add_parser(
         "preflight-wip",
-        help="Decide whether Phase 3.5 needs a throwaway WIP commit",
+        help=(
+            "Self-applying WIP guard for Phase 3.5: commits dirty work itself "
+            "(use --dry-run to inspect without committing)."
+        ),
     )
     pf.add_argument(
         "--base", help="Git ref to diff against (default: merge-base with main)"
+    )
+    pf.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print 'create-wip'/'skip' but do NOT commit (legacy behavior).",
     )
 
     args = parser.parse_args()

@@ -196,16 +196,15 @@ Invoke `/second-opinion` for an author-time review by a different model family (
    - Branch at parity with `<last-tag>` + dirty tree (e.g., the CHANGELOG/lint edits from Phase 1 aren't committed yet, no prior WIP commits exist) → empty review diff, "no findings" silently returned.
    - Branch ahead of `<last-tag>` + dirty tree → review sees the *committed* changes but **not** the Phase 1 / 1.5 / 1.6 dirty work added on top.
 
-   In both cases the fix is the same: create one throwaway WIP commit so everything is committed. `extract_signals.py preflight-wip --base <last-tag>` checks both conditions and prints either `create-wip` or `skip` on stdout (with a diagnostic reason on stderr). Run it, read stdout, and only if it printed `create-wip` issue the two follow-up commands:
+   In both cases the fix is the same: create one throwaway WIP commit so everything is committed. `extract_signals.py preflight-wip` is **self-applying** - it inspects the tree, and if a WIP commit is needed, it stages everything and commits with `--no-verify` on its own. The agent runs **one command, unconditionally, every time**:
 
    ```bash
    .claude/skills/prepare-release/scripts/extract_signals.py preflight-wip --base <last-tag>
-   # If stdout was 'create-wip', then:
-   git add -A
-   git commit --no-verify -m "WIP for review"
    ```
 
-   The preflight uses `git status --porcelain` (not `git diff --quiet HEAD`) so **untracked** files trip the guard too. This is the **only** legitimate `git add -A` in the whole skill - the commit is throwaway. Phase 4's soft-reset to `<last-tag>` (first-cut) or the oldest-touched commit (re-run / merge case) dissolves it automatically while preserving the working tree, so review-driven fixes fold into the per-prefix commits like any other WIP. No explicit teardown needed.
+   Stdout will be either `created-wip` (a commit was made) or `skip` (tree was already clean). Never gate this call on your own assessment of the tree state - the script's whole purpose is to make the right call so the agent can't get it wrong. The prior failure mode that motivated this self-applying design: the agent saw a branch with commits ahead, decided manually a WIP commit wasn't needed ("there's already a diff for Copilot to see"), ran `/second-opinion`, and got "No findings" on uncommitted work that was never in any commit. If you ever find yourself reasoning about whether to run preflight, the answer is: run it.
+
+   The preflight uses `git status --porcelain` (not `git diff --quiet HEAD`) so **untracked** files trip the guard too. The internal `git add -A` is the **only** legitimate one in the whole skill - the commit is throwaway. Phase 4's soft-reset to `<last-tag>` (first-cut) or the oldest-touched commit (re-run / merge case) dissolves it automatically while preserving the working tree, so review-driven fixes fold into the per-prefix commits like any other WIP. No explicit teardown needed. Pass `--dry-run` only when you want to inspect the decision without acting (tests, debugging) - never in the live skill flow.
 3. **Invoke the skill with author-intent context.** Run the Copilot invocation from `.claude/skills/second-opinion/SKILL.md` Phase 2 with `base="<last-tag>"` AND **point the reviewer at the freshly-composed `## [<X.Y.Z>]` section of `CHANGELOG.md`** so it sees the author's stated intent before flagging the diff. The CHANGELOG section is the "why" the brief + diff cannot supply on their own (e.g., "`command mv` is intentional alias-bypass, not paranoia"; "macOS-only by design, Linux is unchanged"). Extend the prompt's reading list:
 
    ```bash

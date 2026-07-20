@@ -1,4 +1,4 @@
-#!/usr/bin/env -S uv run python3
+#!/usr/bin/env -S uv run --frozen python
 """
 pr_review.py - state-aware GitHub PR review thread management.
 
@@ -48,7 +48,12 @@ import sys
 import time
 
 COPILOT_REVIEWER_LOGIN = "copilot-pull-request-reviewer"  # author of submitted reviews
-COPILOT_REQUESTED_LOGIN = "Copilot"  # appears in requested_reviewers users list
+# The requested_reviewers users list may surface Copilot under either login
+# depending on the API surface: "Copilot" (bot display login) or the same
+# "copilot-pull-request-reviewer" slug used when triggering. Accept both so
+# state detection doesn't misclassify an in-progress review as "not requested"
+# and re-trigger in a loop.
+COPILOT_REQUESTED_LOGINS = frozenset({"Copilot", COPILOT_REVIEWER_LOGIN})
 
 STATE_QUERY = """
 query($owner: String!, $repo: String!, $pr: Int!) {
@@ -102,25 +107,44 @@ mutation($threadId: ID!) {
 """
 
 
+def _run_gh(cmd: list[str]) -> str:
+    """
+    Run a gh command, returning stdout. Exit with a concise message on failure.
+
+    Using check=True here would raise CalledProcessError and dump a Python
+    traceback on common, expected failures (gh not installed, not logged in,
+    missing scopes). Surface a readable one-line error the calling skill can
+    show the user instead.
+    """
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+    except FileNotFoundError:
+        print("gh CLI not found on PATH. Install and authenticate gh.", file=sys.stderr)
+        raise SystemExit(1) from None
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or "unknown error"
+        print(f"gh command failed ({' '.join(cmd[:3])} ...): {detail}", file=sys.stderr)
+        raise SystemExit(1)
+    return result.stdout
+
+
 def _repo_info() -> tuple[str, str]:
     """Return (owner, repo_name) from gh."""
-    result = subprocess.run(
-        ["gh", "repo", "view", "--json", "owner,name"],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    data = json.loads(result.stdout)
+    data = json.loads(_run_gh(["gh", "repo", "view", "--json", "owner,name"]))
     return data["owner"]["login"], data["name"]
 
 
 def _auto_pr() -> int:
     """Auto-detect PR number from current branch."""
-    result = subprocess.run(
-        ["gh", "pr", "view", "--json", "number", "--jq", ".number"],
-        capture_output=True,
-        text=True,
-    )
+    try:
+        result = subprocess.run(
+            ["gh", "pr", "view", "--json", "number", "--jq", ".number"],
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError:
+        print("gh CLI not found on PATH. Install and authenticate gh.", file=sys.stderr)
+        raise SystemExit(1) from None
     if result.returncode != 0 or not result.stdout.strip():
         print("No open PR on this branch. Push first or specify --pr.", file=sys.stderr)
         raise SystemExit(1)
@@ -133,20 +157,17 @@ def _graphql(query: str, **variables: str | int) -> dict:
     for k, v in variables.items():
         flag = "-F" if isinstance(v, int) else "-f"
         cmd.extend([flag, f"{k}={v}"])
-    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-    return json.loads(result.stdout)
+    return json.loads(_run_gh(cmd))
 
 
 def _copilot_requested(owner: str, repo: str, pr: int) -> bool:
     """Check if Copilot is in the PR's requested_reviewers list."""
-    result = subprocess.run(
-        ["gh", "api", f"repos/{owner}/{repo}/pulls/{pr}/requested_reviewers"],
-        capture_output=True,
-        text=True,
-        check=True,
+    data = json.loads(
+        _run_gh(["gh", "api", f"repos/{owner}/{repo}/pulls/{pr}/requested_reviewers"])
     )
-    data = json.loads(result.stdout)
-    return any(u.get("login") == COPILOT_REQUESTED_LOGIN for u in data.get("users", []))
+    return any(
+        u.get("login") in COPILOT_REQUESTED_LOGINS for u in data.get("users", [])
+    )
 
 
 def _flatten_thread(thread: dict) -> dict:
@@ -183,36 +204,51 @@ def _fetch_all_threads(owner: str, repo: str, pr: int) -> list[dict]:
 def _detect_state(owner: str, repo: str, pr: int) -> dict:
     """Run state detection. Returns a dict for JSON output + exit-code decisions."""
     data = _graphql(STATE_QUERY, owner=owner, repo=repo, pr=pr)
-    pr_node = data["data"]["repository"]["pullRequest"]
+    pr_node = (data.get("data") or {}).get("repository", {}).get("pullRequest")
+    if pr_node is None:
+        print(
+            f"PR #{pr} not found in {owner}/{repo} (invalid number or no access).",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
     head_sha = pr_node["headRefOid"]
 
-    # Find the most-recent Copilot review matching HEAD SHA.
+    # Find the most-recent Copilot review matching HEAD SHA. GraphQL can return
+    # author: null (deleted user) or commit: null (edge cases), so guard both
+    # rather than indexing blindly.
     copilot_reviews = [
         r
         for r in pr_node["reviews"]["nodes"]
-        if r["author"]["login"] == COPILOT_REVIEWER_LOGIN
+        if (r.get("author") or {}).get("login") == COPILOT_REVIEWER_LOGIN
     ]
-    copilot_reviews.sort(key=lambda r: r["submittedAt"], reverse=True)
+    copilot_reviews.sort(key=lambda r: r.get("submittedAt") or "", reverse=True)
     fresh_review = next(
-        (r for r in copilot_reviews if r["commit"]["oid"] == head_sha),
+        (r for r in copilot_reviews if (r.get("commit") or {}).get("oid") == head_sha),
         None,
     )
-    fresh_review_sha = fresh_review["commit"]["oid"] if fresh_review else None
+    fresh_review_sha = (
+        (fresh_review.get("commit") or {}).get("oid") if fresh_review else None
+    )
 
-    # Unresolved fresh threads (not resolved AND not outdated) - paginated fetch.
-    all_threads = _fetch_all_threads(owner, repo, pr)
-    fresh_threads = [
-        _flatten_thread(t)
-        for t in all_threads
-        if not t["isResolved"] and not t["isOutdated"]
-    ]
-
-    copilot_requested = _copilot_requested(owner, repo, pr)
-
-    # State classification.
+    # Only fetch review threads when a fresh review exists (states C/D). Without
+    # one (states A/B), the threads are irrelevant to classification, so skip the
+    # paginated fetch - it would add unnecessary GitHub API calls to every `wait`
+    # poll and risk rate limits.
+    fresh_threads: list[dict] = []
     if fresh_review_sha is not None:
+        all_threads = _fetch_all_threads(owner, repo, pr)
+        fresh_threads = [
+            _flatten_thread(t)
+            for t in all_threads
+            if not t["isResolved"] and not t["isOutdated"]
+        ]
         state = "C" if fresh_threads else "D"
+        # A fresh review exists, so state is C/D regardless of this flag. Report the
+        # real requested-reviewer status rather than assuming True, so the field
+        # stays semantically accurate for callers.
+        copilot_requested = _copilot_requested(owner, repo, pr)
     else:
+        copilot_requested = _copilot_requested(owner, repo, pr)
         state = "B" if copilot_requested else "A"
 
     return {
@@ -242,17 +278,9 @@ def cmd_state(args: argparse.Namespace) -> int:
 def cmd_trigger(args: argparse.Namespace) -> int:
     """Request Copilot review (idempotent)."""
     pr = args.pr or _auto_pr()
-    result = subprocess.run(
-        ["gh", "pr", "edit", str(pr), "--add-reviewer", COPILOT_REVIEWER_LOGIN],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        print(
-            f"Failed to request Copilot review: {result.stderr.strip()}",
-            file=sys.stderr,
-        )
-        return result.returncode
+    # route through _run_gh for consistent, traceback-free errors (missing gh,
+    # auth failure, etc.) - it exits with a concise message on failure
+    _run_gh(["gh", "pr", "edit", str(pr), "--add-reviewer", COPILOT_REVIEWER_LOGIN])
     print(json.dumps({"triggered": True, "pr": pr}))
     return 0
 
