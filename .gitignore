@@ -6,6 +6,10 @@
 /tmp/
 /tmp.*/
 
+# files
+.DS_Store
+*.drawio.bkp
+
 # local settings
 settings.local.json
 /.claude/rules/openwolf.md
