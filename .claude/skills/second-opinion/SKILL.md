@@ -1,18 +1,18 @@
 ---
 name: second-opinion
-description: Heterogeneous-model code review of the current branch's changes. Invokes GitHub Copilot CLI with gpt-5.3-codex to review git diff since merge-base with main (or user-specified commit). Reads .claude/skills/second-opinion/REVIEW-BRIEF.md for focused project context. Returns structured findings that Claude reads, summarizes, and acts on. Use when the user types `/second-opinion`, asks for a second opinion on a branch, wants GPT to review the work, or wants an independent review before pushing. Disabled for auto-invocation.
-disable-model-invocation: true
+description: Heterogeneous-model code review of the current branch's changes. Invokes GitHub Copilot CLI with gpt-5.3-codex to review git diff since merge-base with the repo's trunk branch (or user-specified commit). Reads .claude/skills/second-opinion/REVIEW-BRIEF.md for focused project context. Returns structured findings that Claude reads, summarizes, and acts on. Use when the user types `/second-opinion`, asks for a second opinion on a branch, wants GPT to review the work, or wants an independent review before pushing.
+disable-model-invocation: false
 ---
 
 # Second opinion
 
-Heterogeneous-model author-time review of the current branch. Runs **GitHub Copilot CLI** (`copilot`) with a GPT-family model (default `gpt-5.3-codex`) against the diff since `git merge-base main HEAD`. The reviewer returns structured findings; Claude reads them and acts.
+Heterogeneous-model author-time review of the current branch. Runs **GitHub Copilot CLI** (`copilot`) with a GPT-family model (default `gpt-5.3-codex`) against the diff since `git merge-base "$TRUNK_REF" HEAD`, where `$TRUNK_REF` is a resolvable git ref for the repo's default branch - either a local branch (`main`) or a remote-tracking ref (`origin/main`), resolved in Phase 1. The reviewer returns structured findings; Claude reads them and acts.
 
 The bias-control mechanism is **the process boundary itself**. Copilot runs as a separate binary, with a separate model family, returning only text. Claude (the implementer) cannot influence Copilot's review; Copilot cannot edit code. Tool restriction inside Copilot is unnecessary - the architecture enforces the separation.
 
 ## When to use
 
-- `/second-opinion` - review current branch vs. `git merge-base main HEAD`
+- `/second-opinion` - review current branch vs. `git merge-base "$TRUNK_REF" HEAD` (trunk autodetected in Phase 1; works for both local and remote-only checkouts)
 - `/second-opinion <commit>` - review since an arbitrary commit hash
 - `/second-opinion --model <id>` - use a different Copilot model
 - "Get a second opinion before I push" / "have GPT review this" - same as `/second-opinion`
@@ -28,7 +28,7 @@ The bias-control mechanism is **the process boundary itself**. Copilot runs as a
 Run the bundled check script to verify `REVIEW-BRIEF.md` targets this repo:
 
 ```bash
-python3 <skill-path>/scripts/review_brief.py check
+uv run --frozen python <skill-path>/scripts/review_brief.py check
 ```
 
 Returns JSON with `match`, `brief_repo`, `current_repo`, `needs_update`.
@@ -37,7 +37,7 @@ Returns JSON with `match`, `brief_repo`, `current_repo`, `needs_update`.
 - **Mismatch or missing `repo:` tag** → run discovery and offer a one-time rewrite:
 
   ```bash
-  python3 <skill-path>/scripts/review_brief.py discover
+  uv run --frozen python <skill-path>/scripts/review_brief.py discover
   ```
 
   The discovery output includes detected stacks, context from `CLAUDE.md`/`AGENTS.md`/`README.md`, and the existing brief content. Use this context to rewrite `REVIEW-BRIEF.md` with:
@@ -53,21 +53,45 @@ This phase runs once per repo. After the brief is updated, `check` returns `matc
 
 ### Phase 1 - resolve the diff base
 
-```bash
-# Default: merge-base with main
-base="$(git merge-base main HEAD)"
+This skill is portable across repos that use `main`, `master`, `trunk`, `prod`, etc. - never assume `main`. Resolve `$TRUNK_REF` to a git ref that's guaranteed to exist locally (a local branch OR a remote-tracking ref - many CI environments only have the trunk at `refs/remotes/origin/<name>`), then merge-base against it:
 
-# Or, user-specified commit from skill args
-base="<user-arg>"
+```bash
+# Detect the trunk name (zero-network first, then fallbacks)
+TRUNK_NAME=""
+ref="$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null)" && TRUNK_NAME="${ref#origin/}"
+[ -n "$TRUNK_NAME" ] || TRUNK_NAME="$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name 2>/dev/null)"
+[ -n "$TRUNK_NAME" ] || for c in main master trunk prod; do
+  git show-ref --verify --quiet "refs/heads/$c" && TRUNK_NAME="$c" && break
+  git show-ref --verify --quiet "refs/remotes/origin/$c" && TRUNK_NAME="$c" && break
+done
+[ -n "$TRUNK_NAME" ] || { echo "Could not resolve trunk; run: git remote set-head origin -a" >&2; exit 1; }
+
+# Resolve to a usable git ref (prefer local branch, fall back to remote)
+if git show-ref --verify --quiet "refs/heads/$TRUNK_NAME"; then
+  TRUNK_REF="$TRUNK_NAME"
+elif git show-ref --verify --quiet "refs/remotes/origin/$TRUNK_NAME"; then
+  TRUNK_REF="origin/$TRUNK_NAME"
+else
+  echo "Trunk '$TRUNK_NAME' has no local or remote ref; run: git fetch origin $TRUNK_NAME" >&2; exit 1
+fi
+
+# Default: merge-base with trunk
+base="$(git merge-base "$TRUNK_REF" HEAD)"
+
+# Alternative: a user-specified commit from skill args overrides the default.
+# Uncomment and substitute when the caller passed an explicit base ref:
+# base="<user-arg>"
 ```
+
+Each fallback is gated on the previous one having actually produced a value - **never collapse the `symbolic-ref` step into a `git symbolic-ref ... | sed ...` pipeline**, because `sed` always exits 0 even when the upstream `git symbolic-ref` failed, so the `||` chain wouldn't trigger. The block always re-resolves `TRUNK_REF` from scratch every time it runs - it does not check for or respect a pre-existing `$TRUNK_REF` in the environment. If a caller has already resolved trunk, the re-resolution returns the same value (so re-running is safe and produces no surprises), but it does *run* every time; it's not skipped.
 
 If `base == HEAD`, exit early: "Nothing to review - branch is at parity with the base." Don't invoke Copilot.
 
-**Caller contract: review scope is committed state only.** Uncommitted working-tree changes are invisible to `git diff <base>..HEAD` and therefore invisible to the reviewer. Callers that need to review uncommitted work (a branch at parity with the base but with dirty CHANGELOG/lint edits, or a branch ahead of base whose Phase 1 fixes haven't been committed yet) must create a throwaway WIP commit *before* invoking this skill, then dispose of it after via their own flow (e.g., `git reset --soft <last-tag>`). This skill will not silently degrade by reviewing the working tree - the process boundary that gives Copilot its bias-control also means it only sees what `git` shows it. `/prepare-release` Phase 3.5 handles this via `extract_signals.py preflight-wip`.
+**Caller contract: review scope is committed state only.** Uncommitted working-tree changes are invisible to `git diff <base>..HEAD` and therefore invisible to the reviewer. Callers that need to review uncommitted work (a branch with WIP in the working tree but no commits ahead of the base) must create a throwaway WIP commit *before* invoking this skill, then dispose of it after via their own flow (e.g., `git reset --soft <base>`). This skill will not silently degrade by reviewing the working tree - the process boundary that gives Copilot its bias-control also means it only sees what `git` shows it.
 
 ### Phase 2 - invoke Copilot
 
-Single Bash call. The prompt tells Copilot to read the brief, run `git diff` itself, and produce findings in the brief's specified format. **Callers may extend the prompt's reading list with additional context files** that explain author intent (e.g., the `## [<X.Y.Z>]` CHANGELOG section in `/prepare-release` Phase 3.5, a design doc in `/prepare-pr`, etc.). The brief + diff stay the source of truth; extra reading lets the reviewer dismiss findings that contradict documented intent and flag the inverse (a bullet promising X while the code does Y is a real gap, not noise).
+Single Bash call. The prompt tells Copilot to read the brief, run `git diff` itself, and produce findings in the brief's specified format:
 
 ```bash
 copilot -p "Read .claude/skills/second-opinion/REVIEW-BRIEF.md, then review the current branch's changes since <base>. Run: git diff <base>..HEAD to see all changes. Read referenced files for context as needed. Output findings using the format and severities specified in the brief." \
@@ -91,7 +115,7 @@ If Copilot exits non-zero, capture the error and surface to the user. Don't retr
 Save Copilot's raw output to a temp file and parse it with the bundled script:
 
 ```bash
-python3 <skill-path>/scripts/review_brief.py parse /tmp/copilot-review.md
+uv run --frozen python <skill-path>/scripts/review_brief.py parse /tmp/copilot-review.md
 ```
 
 Returns JSON: `{"findings": [{id, severity, file, line, description, suggestion}, ...], "count": N}`. If count is 0, announce "No findings." and exit.
@@ -156,7 +180,7 @@ Currently available Copilot models (May 2026 - list with `copilot -p "list avail
 
 ## Example invocations
 
-- `/second-opinion` - review against `git merge-base main HEAD`
+- `/second-opinion` - review against `git merge-base "$TRUNK_REF" HEAD` (trunk autodetected in Phase 1; works for both local and remote-only checkouts)
 - `/second-opinion abc1234` - review against an arbitrary commit
 - `/second-opinion --model gpt-5.5` - use a heavier model for a security-sensitive branch
 - "Get a second opinion before I push" - same as `/second-opinion`

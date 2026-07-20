@@ -43,7 +43,7 @@ The skill operates as a state machine. Four states are possible:
 ### Phase 1 - detect state
 
 ```bash
-.claude/skills/address-pr-review/scripts/pr_review.py state --pr <N>
+uv run --frozen python .claude/skills/address-pr-review/scripts/pr_review.py state --pr <N>
 ```
 
 Returns JSON with `state`, `headSha`, `freshReviewSha`, `copilotRequested`, and `unresolvedFreshThreads`. Exit code: `0`=D, `1`=C, `2`=B, `3`=A.
@@ -76,7 +76,7 @@ The `state` JSON already contains `unresolvedFreshThreads` with `{id, path, line
 
 **Known false positives** - auto-resolve without reading the file:
 
-- Comments flagging `ubuntu-slim` as an invalid or non-standard GitHub runner (e.g., "runs-on: ubuntu-slim is likely to fail"). `ubuntu-slim` is a valid runner label configured for this repo (used by every workflow under `.github/workflows/`) - not a GitHub-hosted label, but an intentional self-hosted / org-managed runner that the reviewer cannot see.
+- Comments flagging `ubuntu-slim` as an invalid or non-standard GitHub runner (e.g., "runs-on: ubuntu-slim is likely to fail"). `ubuntu-slim` is a valid GitHub-hosted runner that this repo uses intentionally.
 
 For each remaining thread, read the comment body + the referenced file at the specified line. Classify:
 
@@ -87,7 +87,7 @@ For each remaining thread, read the comment body + the referenced file at the sp
 Resolve `fix` and `resolve-only` threads via:
 
 ```bash
-.claude/skills/address-pr-review/scripts/pr_review.py resolve <thread-id>
+uv run --frozen python .claude/skills/address-pr-review/scripts/pr_review.py resolve <thread-id>
 ```
 
 After processing all `fix` and `resolve-only` items:
