@@ -37,13 +37,39 @@ phase_nix_profile_update_flake() {
     # nix writes progress (the live progress bar and per-path "copying path"
     # lines) to stderr; let it through so the user sees what's happening
     # during the network-bound flake update.
-    if [[ -n "$PINNED_REV" ]]; then
-      _io_nix flake lock --override-input nixpkgs "github:nixos/nixpkgs/$PINNED_REV" --flake "$ENV_DIR" ||
-        warn "flake lock failed - using existing lock"
-    else
-      _io_nix flake update --flake "$ENV_DIR" ||
-        warn "flake update failed (network issue?) - using existing lock"
+    #
+    # Give nix a GitHub token so it can fetch nixpkgs metadata without hitting
+    # the unauthenticated API rate limit (60 req/h). GITHUB_TOKEN is preferred
+    # (covers CI / headless environments); a `gh auth token` fallback covers
+    # interactive sessions where the env var is unset. `-h github.com` scopes the
+    # fallback to github.com so a GitHub Enterprise `gh` config can't hand back a
+    # GHE-host token that we would then mis-wire to github.com (matches the
+    # host-scoped auth in nix/configure/gh.sh).
+    local _gh_token="${GITHUB_TOKEN:-}"
+    if [[ -z "$_gh_token" ]] && command -v gh >/dev/null 2>&1; then
+      _gh_token="$(gh auth token -h github.com 2>/dev/null)" || _gh_token=""
     fi
+    # Pass the token via NIX_CONFIG (env), NOT --extra-access-tokens on the
+    # command line: argv is world-readable (ps, /proc/<pid>/cmdline), so a CLI
+    # token can leak into process listings and echoed logs. Passing the token via
+    # NIX_CONFIG mirrors what the CI workflow already does
+    # (.github/workflows/test_linux.yml); here we use the `extra-access-tokens`
+    # key (which *appends*) rather than CI's `access-tokens` (which replaces) so
+    # an inherited NIX_CONFIG is preserved rather than clobbered. Scoped to a
+    # subshell so the token does not persist into later phases' environment.
+    local _nl=$'\n'
+    (
+      if [[ -n "$_gh_token" ]]; then
+        export NIX_CONFIG="${NIX_CONFIG:+$NIX_CONFIG$_nl}extra-access-tokens = github.com=$_gh_token"
+      fi
+      if [[ -n "$PINNED_REV" ]]; then
+        _io_nix flake lock --override-input nixpkgs "github:nixos/nixpkgs/$PINNED_REV" --flake "$ENV_DIR" ||
+          warn "flake lock failed - using existing lock"
+      else
+        _io_nix flake update --flake "$ENV_DIR" ||
+          warn "flake update failed (network issue?) - using existing lock"
+      fi
+    )
   fi
 }
 
