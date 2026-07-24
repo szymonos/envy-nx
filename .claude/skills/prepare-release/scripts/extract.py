@@ -1,15 +1,29 @@
 #!/usr/bin/env -S uv run python3
 """
-Extract CHANGELOG sections + git context for the /changelog-update skill.
+Extract CHANGELOG sections + git context for the /prepare-release skill.
 
 Avoids the agent having to Read the full CHANGELOG.md (often 100+ KB). Emits
 only the sections needed to compose a new release: the [Unreleased] body, the
 target version's existing block (if any), the latest git tag, and a compact
-git log + diff stat since that tag.
+view of everything that changed since that tag.
+
+The change view spans the *full* release footprint, not just committed history.
+In the WIP release workflow a branch is often cut with all (or most) work still
+uncommitted - staged, unstaged, or untracked. Scoping to ``last_tag..HEAD`` would
+report ``[none]`` for such a branch and hide the entire release. So:
+
+- ``COMMITS``      - committed history since the tag (``last_tag..HEAD``).
+- ``DIFF_STAT``    - the tag compared against the *working tree* (``git diff
+                     --stat last_tag``), i.e. committed + staged + unstaged
+                     tracked changes. Equals ``last_tag..HEAD`` when the tree
+                     is clean, so this is backward-compatible.
+- ``UNCOMMITTED``  - ``git status --porcelain`` so untracked files (which no
+                     ``git diff`` can surface) and the staged/unstaged split
+                     are visible at a glance.
 
 Usage:
-    .claude/skills/changelog-update/scripts/extract.py --version 1.7.3
-    python3 .claude/skills/changelog-update/scripts/extract.py --version 1.7.3
+    .claude/skills/prepare-release/scripts/extract.py --version 1.7.3
+    python3 .claude/skills/prepare-release/scripts/extract.py --version 1.7.3
 """
 
 from __future__ import annotations
@@ -59,7 +73,7 @@ def run_git(args: list[str]) -> str:
 def main() -> int:
     """Parse args, read the CHANGELOG, emit chunks for /prepare-release."""
     parser = argparse.ArgumentParser(
-        description="Extract CHANGELOG sections + git context for /changelog-update"
+        description="Extract CHANGELOG sections + git context for /prepare-release"
     )
     parser.add_argument(
         "--version", required=True, help="Target release version, e.g. 1.7.3"
@@ -82,7 +96,13 @@ def main() -> int:
 
     last_tag = run_git(["describe", "--tags", "--abbrev=0"])
     commits = run_git(["log", "--oneline", f"{last_tag}..HEAD"]) if last_tag else ""
-    diff_stat = run_git(["diff", "--stat", f"{last_tag}..HEAD"]) if last_tag else ""
+    # Diff the tag against the working tree (single-ref form), not `tag..HEAD`,
+    # so staged + unstaged tracked changes are included. Clean tree -> identical
+    # to `tag..HEAD`. Untracked files are invisible to diff -> UNCOMMITTED below.
+    diff_stat = run_git(["diff", "--stat", last_tag]) if last_tag else ""
+    # git status --porcelain surfaces untracked files and the staged/unstaged
+    # split - the part of the release footprint no `git diff` can show.
+    uncommitted = run_git(["status", "--porcelain"])
 
     chunks = [
         ("LAST_TAG", last_tag or "[none]"),
@@ -90,6 +110,7 @@ def main() -> int:
         (f"EXISTING_{args.version}", existing or "[empty]"),
         ("COMMITS", commits or "[none]"),
         ("DIFF_STAT", diff_stat or "[none]"),
+        ("UNCOMMITTED", uncommitted or "[clean]"),
     ]
     for header, body in chunks:
         print(f"=== {header} ===")

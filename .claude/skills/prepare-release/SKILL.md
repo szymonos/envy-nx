@@ -29,11 +29,11 @@ Five numbered phases plus six interstitials (Phase 1.5 cspell sweep, Phase 1.6 t
    .claude/skills/prepare-release/scripts/extract.py --version <X.Y.Z>
    ```
 
-   Returns `LAST_TAG`, `UNRELEASED`, `EXISTING_<X.Y.Z>`, `COMMITS` (since last tag), `DIFF_STAT` (since last tag).
+   Returns `LAST_TAG`, `UNRELEASED`, `EXISTING_<X.Y.Z>`, `COMMITS` (committed history since last tag), `DIFF_STAT` (last tag vs **working tree** - committed + staged + unstaged tracked changes), and `UNCOMMITTED` (`git status --porcelain` - untracked files + the staged/unstaged split). The last two make the extractor honest in the WIP workflow where a branch is cut with all work still uncommitted: `COMMITS` is `[none]` but `DIFF_STAT` / `UNCOMMITTED` still show the full release footprint. On a clean tree they collapse to the same view as `COMMITS`.
 
 3. Compose bullets per the **Bullet style guidelines** below. Three cases:
-   - `[Unreleased]` empty + target version doesn't exist → compose fresh from `COMMITS` + `DIFF_STAT`.
-   - `[Unreleased]` has notes + target version doesn't exist → shape and promote those notes; cross-check against COMMITS/DIFF_STAT to fill gaps.
+   - `[Unreleased]` empty + target version doesn't exist → compose fresh from `COMMITS` + `DIFF_STAT` + `UNCOMMITTED`.
+   - `[Unreleased]` has notes + target version doesn't exist → shape and promote those notes; cross-check against COMMITS/DIFF_STAT/UNCOMMITTED to fill gaps (esp. untracked new files and uncommitted dep/tooling bumps that have no commit yet).
    - Target version already exists (re-run / merge case) → combine `EXISTING_<X.Y.Z>` + new `[Unreleased]`; **reclassify, don't just merge** (see "Section reclassification" below); deduplicate; preserve any intro paragraph.
 
 4. `Edit` `CHANGELOG.md` to splice in the new entry. Targeted `Read` of the first ~15 lines is enough to get the anchor; never `Read` the full file.
