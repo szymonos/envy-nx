@@ -5,6 +5,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.16.0] - 2026-07-24
+
+Adds `/release-auto`, an orchestrator-driven successor to `/prepare-release` that inverts control: a stateful Python driver runs the deterministic release spine headless and calls the agent only at a few batched decision gates, cutting the token cost of a release.
+
+### Added
+
+- `/release-auto` skill: `release.py` orchestrator drives the release spine (`make lint`, extract, `make upgrade`, version bump, commit-plan recut, `lint-diff`, force-push, PR upsert) headless and stops at batched gates (`DECISION_NEEDED`, exit 10) where the agent supplies CHANGELOG prose, cspell classification, commit topology, and review triage.
+- Commit topology as data: an agent-authored `commit-plan.json` (glob→commit, file-granularity) that `release.py recut` executes and re-executes, so re-cutting after a review fix is a scripted verb with zero agent turns. `recut` pre-validates the whole plan before touching git and runs `lint-diff` inside the same atomic block; any failure soft-rewinds the commits and leaves all release work in the working tree, so a failed cut never loses uncommitted work or strands git mid-rewrite.
+- `reconcile` set-diff that gates only on a covered-set delta (new/orphan/newly-touched path); pure content re-edits of already-approved files recut silently. Committed `review-policy.json` default proposes a disposition for every fresh PR-review thread (known false positives, path-ownership, accepted-intentional) for one-bundle confirmation.
+- `pytest` dev dependency and a `tests/skills/` suite for skill-script pure functions, wired into `make test-unit` alongside bats and Pester.
+
 ## [1.15.0] - 2026-07-24
 
 Restores Azure/Graph interactive PowerShell login on headless Linux behind Conditional Access policies that block device-code auth, ported from upstream `linux-setup-scripts`. Also fixes a first-provision make-completer gap and hardens the release tooling.
