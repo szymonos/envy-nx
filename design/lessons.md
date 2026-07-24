@@ -55,7 +55,9 @@ To opt out for a commit that genuinely yields no generalization (and that touche
 
 - **cache-staleness** - [L-002](#l-002---2026-05-23---cache-staleness)
 - **meta** - [L-000](#l-000---2026-05-23---meta)
+- **release-auto** - [L-004](#l-004---2026-07-24---release-auto), [L-005](#l-005---2026-07-24---release-auto)
 - **render-heuristics** - [L-001](#l-001---2026-05-23---render-heuristics)
+- **test-isolation** - [L-003](#l-003---2026-07-24---test-isolation)
 
 <!-- /AUTO-GENERATED -->
 
@@ -99,5 +101,29 @@ To opt out for a commit that genuinely yields no generalization (and that touche
 **Why it matters:** The failure fires on every interactive prompt, not on an explicit command - users see a cryptic error on every keystroke with no obvious trigger. The same `ModuleAnalysisCache-*` / `StartupProfileData-*` staleness pattern affects pwsh. Any new tool that caches shell-init with embedded store paths will hit the same class of bug.
 
 **How to apply:** After any operation that removes Nix store paths (`nix store gc`, `nix profile remove`), sweep shell-init caches that may embed those paths. The sweep lives in `_nx_clear_stale_caches` (called by `nx upgrade` / `nx gc`) and `_phase_post_install_clear_stale_caches` (called after `nix store gc` during setup). When adding a new tool with shell-init caching, add its cache glob to both sweep functions.
+
+---
+
+## L-003 - 2026-07-24 - test-isolation
+
+**Source:** PR #50 (`03d79d7`)
+
+A test runner that spawns subprocesses which create their own git repos must sanitize inherited GIT_* env vars (GIT_INDEX_FILE, GIT_DIR, GIT_WORK_TREE, GIT_OBJECT_DIRECTORY) at the boundary it controls - the env dict passed to the child - before invoking them. An outer wrapper (make/prek) may export git state as an implementation detail; anything it invokes that shells out to git inherits it, and a redirected index/dir silently corrupts the child's fresh repos. The test files cannot defend themselves - only the spawner sees the env - so the fix belongs in the harness, and this generalizes to any tool configured via inherited env vars, not just git.
+
+---
+
+## L-004 - 2026-07-24 - release-auto
+
+**Source:** PR #50 (`03d79d7`)
+
+A cleanup routine that hand-lists the files it removes rots the moment a new sibling file is added next to them - prefer wiping the whole owned directory (rmtree of a driver-owned, git-ignored dir) over enumerating known members, so a later-added state file cannot silently survive a "wiped" report.
+
+---
+
+## L-005 - 2026-07-24 - release-auto
+
+**Source:** PR #50 (`03d79d7`)
+
+An `abort`/rollback verb must scope its rewind to work THIS invocation created, not to everything since a fixed anchor (the last tag). Use a per-run breadcrumb (a safety ref written by the mutating step) as the authority: absent breadcrumb means no owned mutation, so touch nothing - otherwise a no-op re-run's abort silently unwinds an already-finalized, pushed release.
 
 ---
