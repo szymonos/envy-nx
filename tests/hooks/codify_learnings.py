@@ -16,6 +16,11 @@ Trailer syntax:
 The optional `(tag)` segment is a hint for grouping in the index; it can be
 anything alphanumeric, dashes, or underscores. Untagged trailers fall under "general".
 
+Trailers may span multiple lines. Continuation lines (including unindented ones)
+are captured until the first blank line, end of message, or the start of any
+other git-trailer-style line (`Token: value`, e.g. a following `Codified-Learning:`
+or `Co-Authored-By:` trailer), then joined with spaces into a single paragraph.
+
 Output entry format (minimal - the seed L-000 entry shows the richer
 hand-authored shape; auto-codified entries are one paragraph + provenance):
 
@@ -46,7 +51,11 @@ REPO_ROOT = Path(
 )
 
 TRAILER_RE = re.compile(
-    r"^Codified-Learning(?:\(([a-zA-Z0-9_-]+)\))?:\s+(\S.*)$",
+    r"^Codified-Learning(?:\(([a-zA-Z0-9_-]+)\))?:\s+"
+    r"(\S[^\n]*"
+    r"(?:\n(?![ \t]*(?:\n|$))"
+    r"(?![A-Za-z][A-Za-z0-9-]*(?:\([a-zA-Z0-9_-]+\))?:[ \t])"
+    r"[^\n]*)*)$",
     re.MULTILINE,
 )
 LESSON_HEADING_RE = re.compile(
@@ -68,7 +77,7 @@ def parse_trailers(commit_msgs: list[str]) -> list[tuple[str, str]]:
     for msg in commit_msgs:
         for m in TRAILER_RE.finditer(msg or ""):
             tag = (m.group(1) or "general").strip()
-            text = m.group(2).strip()
+            text = " ".join(line.strip() for line in m.group(2).splitlines())
             out.append((tag, text))
     return out
 

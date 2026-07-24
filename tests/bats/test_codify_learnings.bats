@@ -160,14 +160,45 @@ EOF
   grep -qE '\[L-001\]\(#l-001---[0-9]{4}-[0-9]{2}-[0-9]{2}---alpha\)' "$LESSONS"
 }
 
-@test "trailer with continuation line not captured (single-line only for v1)" {
+@test "multi-line trailer is joined into a single paragraph" {
   cat >"$PR_JSON" <<'EOF'
-{"commits":[{"messageBody":"x\n\nCodified-Learning: First line only.\n  continuation should be ignored."}],"mergeCommit":{"oid":"deadbeef1234567"}}
+{"commits":[{"messageBody":"x\n\nCodified-Learning: First line only.\ncontinuation is captured too."}],"mergeCommit":{"oid":"deadbeef1234567"}}
 EOF
   run _run_codify 42 deadbeef1234567
   [[ "$status" -eq 0 ]]
-  grep -q 'First line only.' "$LESSONS"
-  ! grep -q 'continuation should be ignored' "$LESSONS"
+  grep -q 'First line only. continuation is captured too.' "$LESSONS"
+}
+
+@test "continuation line starting with 'Codified-Learning' as prose is captured" {
+  cat >"$PR_JSON" <<'EOF'
+{"commits":[{"messageBody":"x\n\nCodified-Learning: First line.\nCodified-Learning is important to understand."}],"mergeCommit":{"oid":"deadbeef1234567"}}
+EOF
+  run _run_codify 42 deadbeef1234567
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == "L-001" ]]
+  grep -q 'First line. Codified-Learning is important to understand.' "$LESSONS"
+}
+
+@test "following Co-Authored-By trailer is not absorbed into the lesson text" {
+  cat >"$PR_JSON" <<'EOF'
+{"commits":[{"messageBody":"x\n\nCodified-Learning: A lesson here.\nCo-Authored-By: Claude <noreply@anthropic.com>"}],"mergeCommit":{"oid":"deadbeef1234567"}}
+EOF
+  run _run_codify 42 deadbeef1234567
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == "L-001" ]]
+  grep -q 'A lesson here.' "$LESSONS"
+  ! grep -q 'Co-Authored-By' "$LESSONS"
+}
+
+@test "two trailers in one commit separated by a blank line => two entries" {
+  cat >"$PR_JSON" <<'EOF'
+{"commits":[{"messageBody":"x\n\nCodified-Learning: First lesson.\n\nCodified-Learning: Second lesson."}],"mergeCommit":{"oid":"deadbeef1234567"}}
+EOF
+  run _run_codify 42 deadbeef1234567
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == "L-001-L-002" ]]
+  grep -q 'First lesson.' "$LESSONS"
+  grep -q 'Second lesson.' "$LESSONS"
 }
 
 @test "lowercase 'codified-learning' is not matched" {
