@@ -54,6 +54,47 @@ for ($i = 0; (Get-Command git -CommandType Application -ErrorAction SilentlyCont
     Install-PSResource -Name posh-git
 }
 
+#region wslview shim for MSAL browser auth
+# Az/Graph PowerShell (Connect-AzAccount / Connect-MgGraph) start the browser
+# auth-code flow by exec'ing the first opener found on PATH from a list hardcoded
+# in MSAL.NET (NetCorePlatformProxy.cs GetOpenTool): default order
+# xdg-open, gnome-open, kfmclient, microsoft-edge, wslview. `wslview` is just a PATH
+# binary name to MSAL - NOT a wslu dependency (wslu was archived 2025-03), so our
+# shim is unaffected by that. On headless Linux (WSL, SSH VMs) none exist, so MSAL
+# falls back to device code flow - now blocked by the Entra Conditional Access
+# policy. Filling the last-resort wslview slot with a shim makes MSAL print the
+# sign-in URL (like `az login`) so it can be CTRL+Clicked, keeping the localhost
+# listener open to catch the redirect - no device code. Skip on Windows (WAM) and
+# desktop Linux (a real opener already works), and never shadow a real wslview.
+# Resolve the shim source relative to this script - setup_common.sh does not cd to
+# the repo root around this call, so a bare relative path would not resolve.
+$shimSource = Join-Path $PSScriptRoot '../config/bin/wslview'
+$wslviewPath = "$HOME/.local/bin/wslview"
+# a real opener earlier in MSAL's list means wslview is never reached - skip.
+$hasRealOpener = @('xdg-open', 'gnome-open', 'kfmclient', 'microsoft-edge').Where(
+    { Get-Command $_ -CommandType Application -ErrorAction SilentlyContinue }, 'First'
+)
+# a real wslview elsewhere on PATH (not our shim) must not be shadowed
+$realWslview = Get-Command wslview -CommandType Application -ErrorAction SilentlyContinue |
+    Where-Object Source -NE $wslviewPath
+# "headless" = Linux with no MSAL browser opener of its own - the only case we
+# install the shim. (Disabling the WAM broker is done separately by the
+# orchestrator, after Az is installed.)
+$headlessNoOpener = $IsLinux -and -not $hasRealOpener -and -not $realWslview
+if ($headlessNoOpener -and (Test-Path $shimSource -PathType Leaf)) {
+    # (re)install the shim only when missing or changed
+    $installed = (Test-Path $wslviewPath -PathType Leaf) ? [System.IO.File]::ReadAllText($wslviewPath) : ''
+    if ($installed -ne [System.IO.File]::ReadAllText($shimSource)) {
+        Write-Host 'installing wslview shim for MSAL browser auth...'
+        $binDir = [IO.Path]::GetDirectoryName($wslviewPath)
+        if (-not (Test-Path $binDir -PathType Container)) {
+            New-Item $binDir -ItemType Directory | Out-Null
+        }
+        & install -m 0755 $shimSource $wslviewPath
+    }
+}
+#endregion
+
 #region $PROFILE.CurrentUserCurrentHost
 # load existing profile
 $profileContent = [System.Collections.Generic.List[string]]::new()
