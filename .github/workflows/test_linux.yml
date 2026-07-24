@@ -200,6 +200,17 @@ jobs:
           fi
           echo "idempotency check passed"
 
+      # test_release_auto.bats drives release.py, which requires Python 3.13+
+      # (PurePosixPath.full_match). The matrices under test don't install the
+      # --python scope, so bare `python3` is the system 3.12 - the test's `uv
+      # run` needs uv on PATH. Placed right before bats (not after checkout) so
+      # it never perturbs the setup.sh install being validated above.
+      - name: Set up uv (for release.py bats tests)
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: "true"
+          cache-dependency-glob: "uv.lock"
+
       - name: Run full bats suite
         id: bats
         continue-on-error: true

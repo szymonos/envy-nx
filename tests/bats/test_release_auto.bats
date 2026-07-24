@@ -32,8 +32,15 @@ teardown() {
 }
 
 # Run a python snippet with release.py importable and CWD at the temp repo.
+# release.py targets Python 3.13+ (it uses PurePosixPath.full_match, added in
+# 3.13; the project pins requires-python = "~=3.13.0"). Production always runs
+# it under `uv run` via the shebang, so it never sees an older interpreter. The
+# test must honor the same contract - a bare `python3` resolves to the system
+# interpreter (3.12 on stock Ubuntu / macOS runners without the python scope),
+# which lacks full_match and fails every test with an AttributeError. `uv run`
+# provisions a >=3.13 interpreter regardless of what's on PATH.
 _py() {
-  PYTHONPATH="$SCRIPT_DIR" python3 -c "$1"
+  PYTHONPATH="$SCRIPT_DIR" uv run --no-project --python '>=3.13' python3 -c "$1"
 }
 
 # Seed a two-group plan (feature file + changelog riders) and two changed files.
