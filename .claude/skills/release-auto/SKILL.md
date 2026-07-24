@@ -1,0 +1,290 @@
+---
+name: release-auto
+description: Orchestrator-driven release prep. A stateful Python driver (release.py) runs the deterministic release spine headless - make lint, extract, make upgrade, pyproject bump, commit-plan recut, lint-diff, force-push, PR upsert - and stops at ~3 batched gates where the agent supplies judgment (CHANGELOG prose, cspell classification, commit topology, version verdict, review triage). Re-cutting after a fix is a scripted verb (zero agent turns). Inverts /prepare-release's turn-by-turn runbook to cut token cost. Use when the user types `/release-auto <X.Y.Z>`, asks to cut a release the automated way, or wants the orchestrator-driven release. Disabled for auto-invocation.
+disable-model-invocation: true
+---
+
+# Release-auto
+
+Orchestrator-driven release prep for a feature/release branch. A central Python
+driver, `scripts/release.py`, owns the **deterministic spine**; the agent is a
+**decision oracle** called only at batched gates. Tagging is **out of scope** -
+`make release` handles it post-merge.
+
+This skill is the inverted-control successor to `/prepare-release`. Where that
+skill is a ~10K-token runbook the agent interprets turn-by-turn, here the agent
+runs `release.py`, reads a `DECISION_NEEDED` payload, decides, and re-invokes.
+Mechanical steps never reach the agent's context.
+
+## When to use
+
+- `/release-auto 1.16.0` - cut 1.16.0 from the current branch, orchestrator-driven
+- `/release-auto 1.16.0 --skip-review` - skip the review coda (urgent hotfix, Copilot offline, already reviewed)
+- "cut the release the automated way" / "run the orchestrated release" - same
+
+For the legacy turn-by-turn flow, use `/prepare-release`. See **Retirement** below
+for when this skill replaces it outright.
+
+## Prerequisites
+
+- On a feature or `release/*` branch - **never** `main`/`master`/`develop` (the driver refuses).
+- `gh` CLI authenticated; `make lint`, `make upgrade`, `make lint-diff` available.
+- A git tag exists to scope the release against (`git describe --tags` resolves).
+
+## Mental model
+
+```text
+release.py start   ──► [headless: lint, upgrade, bump] ──► GATE phase1  (exit 10)
+   agent: compose CHANGELOG, classify cspell, author commit-plan.json
+release.py resume  ──► [headless: recut, lint-diff]     ──► GATE push   (exit 10)
+   agent: eyeball commits + PR body
+release.py resume  ──► [headless: force-push, PR upsert] ──► SPINE_COMPLETE (exit 0)
+   ── review coda (unless --skip-review) ──
+   agent: trigger Copilot, triage vs review-policy.json, apply fixes
+release.py recut   ──► [reconcile + recut + lint-diff]   (silent if no covered-set delta)
+release.py push --done ──► wipes .release/, release ready to merge
+```
+
+**Exit codes:** `0` = done / step complete, `10` = `DECISION_NEEDED` gate, `1` =
+error (surface it, don't paper over), `2` = usage.
+
+**The core primitive at every gate:** the script *proposes as a bundle*, the agent
+*confirms or overrides inline* in one turn. Deterministic work runs silently
+between gates.
+
+## Workflow
+
+### Step 1 - start the spine
+
+```bash
+.claude/skills/release-auto/scripts/release.py start --version <X.Y.Z> [--skip-review]
+```
+
+This runs headless to the first gate: refuses shared branches, `make lint`,
+bumps `pyproject.toml`, `make upgrade`, then writes `.release/state.json` and
+prints `DECISION_NEEDED` with a `phase1` payload (extract chunks, cspell findings,
+`git diff --name-status`). Exit 10.
+
+If it exits 1, read the error and stop - a failed `make lint`/`make upgrade` must
+be fixed before the release proceeds. If a release is already in progress it tells
+you to `status`/`resume`/`abort` first.
+
+### Step 2 - the phase-1 gate (agent judgment)
+
+From the `phase1` payload, do three things, then resume:
+
+1. **Compose the CHANGELOG entry.** `Edit CHANGELOG.md` to splice in the new
+   `## [<X.Y.Z>] - <today>` block. Use the `extract` chunk (`UNRELEASED`,
+   `COMMITS`, `DIFF_STAT`, `UNCOMMITTED`, `EXISTING_<X.Y.Z>`) - never Read the full
+   CHANGELOG. Follow **Bullet style** and **Section reclassification** below. On a
+   re-run (`is_rerun: true`) combine the existing block with `[Unreleased]` and
+   **reclassify, don't just merge**.
+2. **Classify cspell findings.** For each `{word, file, line, context}`: a
+   code identifier / proper-noun → collect for `cspell_add`; a plain-prose
+   misspelling → `Edit` the source file to fix it (do **not** add to the
+   dictionary); genuinely ambiguous → ask the user in one batched `AskUserQuestion`.
+3. **Author `.release/commit-plan.json`.** `Write` it following
+   `schemas/commit-plan.example.json`: ordered `groups`, each `{globs, prefix,
+   message, trailers}`, **file-granularity**, first-match-wins. Put the CHANGELOG
+   riders (`CHANGELOG.md`, `project-words.txt`, `pyproject.toml`, `uv.lock`) in
+   the final `docs(changelog)` group. Store `Codified-Learning:`/`Co-Authored-By:`
+   lines as `trailers` entries - never re-typed later.
+
+   **Verify version vs content** before resuming (the check `/prepare-release`
+   Phase 3 did): `Added`/`feat:` present but user picked patch → suggest the next
+   minor; a `feat!`/`BREAKING CHANGE` → suggest major; only `fix`/`chore`/`docs` +
+   user picked minor/major → suggest patch. Non-blocking - surface, let the user
+   decide via `AskUserQuestion`, and pass the chosen version as `version_final`.
+
+Then resume with a decision (write it to `.release/decision.json` or pipe via `-`):
+
+```bash
+.claude/skills/release-auto/scripts/release.py resume --decision .release/decision.json
+```
+
+Decision shape:
+
+```json
+{ "cspell_add": ["msal", "wslview"], "version_final": "1.16.0", "plan_written": true }
+```
+
+`resume` adds the approved words, resolves the reset target (last tag for a first
+cut; oldest-touched-commit^ for a re-run), records the confirmed covered set, then
+**recuts headless** (pre-validate → safety backup ref → soft-reset → per-group
+commits) and runs `make lint-diff`. It stops at the `push` gate (exit 10) with the
+commit subjects and a PR-body preview.
+
+If `recut` fails pre-validation (an orphan path or an empty group), it exits 1
+**before touching git** - fix the plan's globs and re-run `resume`. If it fails
+*after* mutation (including a `lint-diff` failure, which runs inside the same
+atomic block), it soft-rewinds the commits back to the pre-recut HEAD - leaving
+all release work in the working tree - and re-raises; git is never left
+half-mutated and uncommitted work is never lost.
+
+### Step 3 - the push gate (agent judgment)
+
+Eyeball the `commits` list and `pr_body_preview`. If good, resume to push:
+
+```bash
+echo '{"approve": true}' | .claude/skills/release-auto/scripts/release.py resume --decision -
+```
+
+Headless: `git push --force-with-lease` (sets upstream on first push), then
+create-or-update the release PR (`chore(release): <X.Y.Z>`, body = the CHANGELOG
+section verbatim - no attribution trailer). If `--skip-review` was set, this wipes
+`.release/` and the release is merge-ready (exit 0). Otherwise it prints
+`SPINE_COMPLETE` and hands off to the review coda.
+
+To abort at either gate: resume with `{"abort": true}`, or run `release.py abort`
+(soft-rewinds any release commits back to the tag - work preserved in the tree -
+and wipes `.release/`).
+
+### Step 4 - review coda (skipped with --skip-review)
+
+Mostly judgment, so it runs as an agent-driven coda *outside* the spine; only the
+Copilot wait is detached so a non-responsive reviewer never blocks.
+
+1. **State → trigger-if-needed → wait** via the shared review script (do **not**
+   use raw `gh pr edit --add-reviewer`). Always run `state` first and **only
+   trigger when it reports state A** (`copilotRequested: false`). Do **not** assume
+   a push auto-requested Copilot - the initial `git push -u` usually does, but a
+   `--force-with-lease` re-push (every coda re-cut) frequently does **not**, so
+   `wait` would poll a never-requested review to timeout. `wait` polls but never
+   triggers; the trigger is your responsibility:
+
+   ```bash
+   python3 .claude/skills/address-pr-review/scripts/pr_review.py state    # A=trigger, B=just wait, C=process, D=clean
+   python3 .claude/skills/address-pr-review/scripts/pr_review.py trigger  # ONLY if state A
+   python3 .claude/skills/address-pr-review/scripts/pr_review.py wait --timeout 480
+   ```
+
+2. **Triage as one bundle against policy.** Read `review-policy.json` (this
+   skill's committed default). For every fresh unresolved thread, propose a
+   disposition - `fix` / `resolve-only` / `skip` - matching `known_false_positives`
+   (e.g. `ubuntu-slim`), `path_ownership` (e.g. `modules/aliases-git/** →
+   resolve-only: upstream-managed`), and `accepted_intentional`. Present the whole
+   bundle to the user in one `AskUserQuestion` to confirm or override inline.
+   **Nothing is auto-dismissed without being shown** - that is what keeps a stale
+   policy from silently over-suppressing. Resolve `fix`/`resolve-only` threads via
+   `pr_review.py resolve <thread-id>`; write actual fixes with `Edit` (never
+   copy the reviewer's suggestion verbatim). Fold review-driven fixes to unshipped
+   code into the existing `Added` bullet - do **not** add a `Fixed` bullet for a
+   bug that never shipped (see **Section reclassification**).
+
+3. **Re-cut + re-push** only if fixes were applied:
+
+   ```bash
+   .claude/skills/release-auto/scripts/release.py recut
+   .claude/skills/release-auto/scripts/release.py push
+   ```
+
+   `recut` reconciles the working tree against the plan. If the covered set is
+   unchanged (pure content re-edits of already-approved files - the common case
+   for a WAM tweak or a shim fix), it recuts **silently, zero agent turns**. If a
+   fix added a new file or touched a new path, it gates (`reconcile` payload,
+   exit 10) - update the plan's globs and re-run `recut`. Cap at 2 fix cycles;
+   after that, tell the user to run `/address-pr-review` manually.
+
+   After the coda `push`, **go back to step 1** - re-run `state`, and trigger
+   again if it reports A (the force-push usually will not have re-requested
+   Copilot). A push does not reliably auto-trigger a fresh review; only an
+   explicit `trigger` on state A does.
+
+4. **Finish** once the review is clean:
+
+   ```bash
+   .claude/skills/release-auto/scripts/release.py push --done
+   ```
+
+   Deletes the safety backup ref, wipes `.release/`. The release is merge-ready.
+
+## Recovery & inspection
+
+- `release.py status` - print the current state JSON.
+- `release.py abort` - soft-rewind any release commits back to the reset target
+  (work preserved in the working tree, never `--hard`) and wipe `.release/`.
+- `resume` refuses if HEAD moved underneath the orchestrator (a manual commit/reset
+  between steps) or the state version mismatches - inspect `git log`, `abort` and
+  `start` fresh if the move was intentional.
+- The safety backup ref (`refs/release-backup/<version>`) records the pre-recut
+  HEAD as a breadcrumb; it is preserved on failure for inspection (`git log
+  refs/release-backup/<version>`) and only deleted on a clean finish.
+
+## Shared scripts (reused unchanged)
+
+This skill owns only the spine (`release.py` + the three JSON contracts). It reuses
+the `/prepare-release` and `/address-pr-review` leaf scripts verbatim:
+
+- `.claude/skills/prepare-release/scripts/extract.py` - CHANGELOG + git-context chunks.
+- `.claude/skills/prepare-release/scripts/cspell_words.py` - `scan` / `add`.
+- `.claude/skills/address-pr-review/scripts/pr_review.py` - `state`/`trigger`/`wait`/`resolve`.
+- `test_stats.py`, `extract_signals.py` - available for the same interstitial checks
+  as `/prepare-release` (test-stat drift, learning extraction) when a release warrants them.
+
+## Bullet style guidelines
+
+For the CHANGELOG entry composed at the phase-1 gate.
+
+- **One sentence; two if the why is non-obvious.** Split into separate bullets rather than write three.
+- **Pattern**: "X now does Y" or "Fixed Z that caused W". Lead with the change.
+- **Backticks for code identifiers**: `function_name`, `file.sh`, `--flag`.
+- **No prose paragraphs, no quoted CI logs, no commit SHAs / PR numbers in the body** - all searchable via git/GitHub.
+- **10-40 words per bullet.** Hard cap at 40.
+- **No "we"** - imperative or third-person.
+- **Section order**: `### Added` → `### Changed` → `### Fixed` → `### Removed` → `### Security` → `### Deprecated`. Skip empty sections (`check_changelog.py` enforces this).
+- **Intro paragraph** only for major (X.0.0) / minor (X.Y.0); patch releases go straight to sections.
+- **Date**: `YYYY-MM-DD`, today.
+
+## Section reclassification (shipped-version timeline)
+
+The CHANGELOG's audience is a user upgrading from `<last-tag>`, not a contributor
+reading commit history. Classify by *"from the perspective of a user on
+`<last-tag>`, what kind of change is this?"* - not by what activity happened during
+the PR. Applies in two spots: the re-run/merge case, and folding review fixes.
+
+| Feature/fix exists in `<last-tag>`? | Bullet describes               | Action                                    |
+| ----------------------------------- | ------------------------------ | ----------------------------------------- |
+| No (introduced this version)        | iteration/refinement/fix on it | **Fold** into the existing `Added` bullet |
+| No (introduced this version)        | a new, additional feature      | new `Added` bullet                        |
+| Yes (already in `<last-tag>`)       | behavior change                | new `Changed` bullet                      |
+| Yes (already in `<last-tag>`)       | bug fix to existing behavior   | new `Fixed` bullet                        |
+
+A bug introduced *and* fixed within this release cycle never reached users - it is
+**not** "Fixed"; the corrected behavior is part of the feature's `Added`
+description. This is the most common merge-case error.
+
+## Anti-patterns
+
+- **Editing `.release/` files by hand mid-run** (except `commit-plan.json`, which the agent authors). State is the driver's; corrupting it breaks `resume`. Use `abort` to restart.
+- **Reasoning about whether to recut.** `recut` reconciles and decides. If nothing changed the covered set it's a silent no-op; just call it after a fix.
+- **Calling `gh pr edit --add-reviewer` directly.** Use `pr_review.py trigger` - the raw call drifts on reviewer login/idempotency.
+- **Copying a reviewer's suggested fix verbatim,** or auto-applying findings without challenge. The reviewer is a different model with limited context; validate against author intent, surface uncertainty to the user.
+- **Adding a `Fixed`/`Changed` bullet for something that never shipped.** Fold into `Added` (see reclassification).
+- **Force-pushing to `main`/`master`/`develop`** - the driver refuses; don't work around it.
+- **Reading the full CHANGELOG.** The `phase1` payload already carries `extract.py`'s chunks.
+- **Tagging the release** - `make release` tags post-merge. Out of scope.
+- **Skipping the review coda by your own judgment.** The only skip is `--skip-review`. New features are the *most* important case to review.
+
+## Retirement
+
+This skill is the strangler-fig replacement for `/prepare-release`. During overlap,
+lessons and fixes apply to **this** skill; `/prepare-release` is maintenance-only.
+
+**Retirement trigger - delete `/prepare-release` when all hold:**
+
+1. **≥ 3 clean releases** shipped through `/release-auto` with no fallback to `/prepare-release`.
+2. **No spine failure** left git half-mutated across those releases (the safety backup ref never had to be used for real recovery).
+3. **Measured token cost** of a full `/release-auto` run is in the tens-of-thousands, not the ~200K that motivated the inversion.
+
+When the trigger fires: `git rm -r .claude/skills/prepare-release`, keeping the
+shared leaf scripts (`extract.py`, `cspell_words.py`, `test_stats.py`,
+`extract_signals.py`) by moving them under `.claude/skills/release-auto/scripts/`
+and updating the paths in this file. Note the removal in the CHANGELOG and
+`design/lessons.md`.
+
+## Example invocations
+
+- `/release-auto 1.16.0` - full orchestrated pipeline with review coda
+- `/release-auto 1.16.0 --skip-review` - spine only, merge-ready at push
+- "run the orchestrated release for 1.16.0" - same as `/release-auto 1.16.0`
+- "the release PR has new Copilot comments" - run Step 4 (coda) again: `pr_review.py` triage → `release.py recut` → `release.py push`

@@ -1,0 +1,48 @@
+{
+  "$comment": [
+    "commit-plan.json - authored by the agent at the phase-1 gate, then executed",
+    "(and re-executed) by release.py recut. Written to .release/commit-plan.json",
+    "(git-ignored). This file is the committed EXAMPLE/template - copy its shape.",
+    "",
+    "Model: glob -> commit, FILE granularity (decision 3). Groups are ordered;",
+    "first-match-wins, so a path claimed by an earlier group's glob lands in that",
+    "commit even if a later group's glob would also match. A file touched by two",
+    "logical changes therefore lands in ONE commit - the CHANGELOG carries the",
+    "feat/fix nuance, not the commit topology.",
+    "",
+    "Pre-validation (release.py) requires: every changed path is claimed by exactly",
+    "one group (no orphans) and every group is non-empty. Put the CHANGELOG riders",
+    "(CHANGELOG.md, project-words.txt, pyproject.toml, uv.lock) in the final",
+    "docs(changelog) group. trailers are stored as structured lines so a re-cut",
+    "never re-types a Codified-Learning heredoc (decision 3)."
+  ],
+  "version": "1.16.0",
+  "groups": [
+    {
+      "globs": [".assets/config/bin/wslview", ".assets/setup/*.ps1"],
+      "prefix": "feat",
+      "message": "feat(provision): MSAL browser-auth shim for headless Linux",
+      "trailers": [
+        "Codified-Learning: provisioning gated on a not-yet-installed module silently no-ops"
+      ]
+    },
+    {
+      "globs": [".assets/setup/setup_common.sh", ".assets/setup/setup_gh_repos.sh"],
+      "prefix": "fix",
+      "message": "fix(setup): reorder pwsh block so make completer registers",
+      "trailers": []
+    },
+    {
+      "globs": [".pre-commit-config.yaml"],
+      "prefix": "chore",
+      "message": "chore(deps): bump hook pins",
+      "trailers": []
+    },
+    {
+      "globs": ["CHANGELOG.md", "project-words.txt", "pyproject.toml", "uv.lock"],
+      "prefix": "docs",
+      "message": "docs(changelog): cut 1.16.0 release notes",
+      "trailers": []
+    }
+  ]
+}
