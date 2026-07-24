@@ -508,3 +508,170 @@ print('OK')
   [ "$status" -eq 0 ]
   [[ "$output" == *OK* ]]
 }
+
+# =============================================================================
+# push guard - refuses when a plan-covered fix was edited but not re-cut
+# =============================================================================
+
+@test "uncommitted_covered_paths is empty after a clean recut" {
+  _seed_plan_and_changes
+  run _py "
+import release, json
+plan = json.load(open('.release/commit-plan.json'))
+state = json.load(open('.release/state.json'))
+release.recut(plan, state)   # commits everything; tree now clean
+stale = release.uncommitted_covered_paths(plan)
+assert stale == [], stale
+print('OK')
+"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *OK* ]]
+}
+
+@test "uncommitted_covered_paths flags a covered edit made after recut" {
+  _seed_plan_and_changes
+  _py "
+import release, json
+plan = json.load(open('.release/commit-plan.json'))
+state = json.load(open('.release/state.json'))
+release.recut(plan, state)
+"
+  # Simulate a review fix left uncommitted (the 'forgot to recut' case).
+  echo "feature v2" >.assets/setup/thing.sh
+  run _py "
+import release, json
+plan = json.load(open('.release/commit-plan.json'))
+stale = release.uncommitted_covered_paths(plan)
+assert '.assets/setup/thing.sh' in stale, stale
+print('OK')
+"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *OK* ]]
+}
+
+@test "uncommitted_covered_paths ignores dirt on paths no plan group claims" {
+  _seed_plan_and_changes
+  _py "
+import release, json
+plan = json.load(open('.release/commit-plan.json'))
+state = json.load(open('.release/state.json'))
+release.recut(plan, state)
+"
+  # An untracked file outside every plan glob is reconcile's concern, not the
+  # push guard's - it must not trip the stale-commit refusal.
+  echo "stray" >unclaimed.txt
+  run _py "
+import release, json
+plan = json.load(open('.release/commit-plan.json'))
+stale = release.uncommitted_covered_paths(plan)
+assert stale == [], stale
+print('OK')
+"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *OK* ]]
+}
+
+# =============================================================================
+# abort - only unwinds THIS run's recut, never a finalized/pushed release
+# =============================================================================
+
+@test "abort rewinds this run's recut commits when a backup ref exists" {
+  _seed_plan_and_changes
+  run _py "
+import release, json, argparse, subprocess
+plan = json.load(open('.release/commit-plan.json'))
+state = json.load(open('.release/state.json'))
+release.recut(plan, state)   # writes refs/release-backup/0.2.0, makes 2 commits
+n = subprocess.run(['git','rev-list','--count','v0.1.0..HEAD'],capture_output=True,text=True).stdout.strip()
+assert n == '2', n
+release.cmd_abort(argparse.Namespace())
+# commits rewound, content preserved in the working tree
+n2 = subprocess.run(['git','rev-list','--count','v0.1.0..HEAD'],capture_output=True,text=True).stdout.strip()
+assert n2 == '0', f'expected rewind to tag, got {n2}'
+assert open('.assets/setup/thing.sh').read().strip() == 'feature', 'work lost!'
+print('OK')
+"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *OK* ]]
+}
+
+@test "abort does NOT unwind already-finalized commits when no backup ref exists" {
+  # Regression for the data-integrity bug: a no-op re-run's abort must never
+  # soft-rewind a prior finalized+pushed release back into the working tree.
+  _seed_plan_and_changes
+  run _py "
+import release, json, argparse, subprocess
+plan = json.load(open('.release/commit-plan.json'))
+state = json.load(open('.release/state.json'))
+release.recut(plan, state)
+release.delete_backup('0.2.0')   # simulate a prior clean finish (ref gone)
+head_before = release.head_sha()
+n_before = subprocess.run(['git','rev-list','--count','v0.1.0..HEAD'],capture_output=True,text=True).stdout.strip()
+assert n_before == '2', n_before
+release.cmd_abort(argparse.Namespace())
+# No backup ref -> commits MUST be left untouched (not rewound).
+assert release.head_sha() == head_before, 'abort unwound finalized commits!'
+n_after = subprocess.run(['git','rev-list','--count','v0.1.0..HEAD'],capture_output=True,text=True).stdout.strip()
+assert n_after == '2', f'commits changed: {n_after}'
+print('OK')
+"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *OK* ]]
+}
+
+# =============================================================================
+# nothing-to-release guard helpers
+# =============================================================================
+
+@test "tree_is_clean detects a dirty vs clean working tree" {
+  _seed_plan_and_changes
+  run _py "
+import release, json
+plan = json.load(open('.release/commit-plan.json'))
+state = json.load(open('.release/state.json'))
+# Seed wrote uncommitted files -> dirty.
+assert release.tree_is_clean() is False, 'expected dirty tree before recut'
+release.recut(plan, state)   # commits everything
+assert release.tree_is_clean() is True, 'expected clean tree after recut'
+print('OK')
+"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *OK* ]]
+}
+
+@test "head_is_published is False without an upstream, True when HEAD==upstream" {
+  # Needs a real tracking branch, so build a clone-based remote here rather than
+  # reuse the shared setup (which has no remote).
+  local root="$TMP/pubtest" bare="$TMP/pub_bare.git"
+  git init -q --bare "$bare"
+  git clone -q "$bare" "$root"
+  cd "$root" || return 1
+  git config user.name Test
+  git config user.email test@example.com
+  git config commit.gpgsign false
+  echo base >base.txt
+  git add base.txt
+  git commit -qm base
+  run _py "
+import release
+# No upstream yet -> unpublished.
+assert release.head_is_published() is False, 'no upstream should be unpublished'
+"
+  [ "$status" -eq 0 ]
+  # Don't hard-code 'master' - the initial branch depends on init.defaultBranch
+  # (can be 'main'). Capture the actual branch name and track that.
+  local branch
+  branch="$(git branch --show-current)"
+  git push -q origin "$branch"
+  git branch --set-upstream-to="origin/$branch"
+  run _py "
+import release, subprocess
+assert release.head_is_published() is True, 'HEAD==upstream should be published'
+open('new.txt','w').write('x')
+subprocess.run(['git','add','-A']); subprocess.run(['git','commit','-qm','ahead'])
+assert release.head_is_published() is False, 'ahead of upstream should be unpublished'
+print('OK')
+"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *OK* ]]
+}
