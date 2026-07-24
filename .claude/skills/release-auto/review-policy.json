@@ -1,0 +1,40 @@
+{
+  "$comment": [
+    "review-policy.json - the committed DEFAULT policy the review coda reads.",
+    "release.py copies it to .release/review-policy.json at coda time; edits made",
+    "there are per-release, edits made here are durable. pr_review triage proposes",
+    "a disposition for EVERY fresh thread against these rules; the agent confirms",
+    "the whole bundle or overrides inline (decision 6). Nothing is auto-dismissed",
+    "WITHOUT being shown - this defuses stale-policy over-suppression.",
+    "",
+    "Dispositions: fix | resolve-only | skip. A rule matches on the thread's path",
+    "(glob), the comment body (substring, case-insensitive), or both."
+  ],
+  "known_false_positives": [
+    {
+      "match_body": "ubuntu-slim",
+      "disposition": "resolve-only",
+      "reason": "ubuntu-slim is a valid GitHub-hosted runner this repo uses intentionally"
+    }
+  ],
+  "path_ownership": [
+    {
+      "match_path": "modules/aliases-git/**",
+      "disposition": "resolve-only",
+      "reason": "aliases-git is managed in the upstream linux-setup-scripts repo; changes land there"
+    },
+    {
+      "match_path": ".assets/config/bin/wslview",
+      "disposition": "skip",
+      "reason": "repo-owned shim installed to ~/.local/bin; overwrite-on-change is intentional, surface any finding for human judgment"
+    }
+  ],
+  "accepted_intentional": [
+    {
+      "match_path": "nix/**",
+      "match_body": "flake.lock",
+      "disposition": "resolve-only",
+      "reason": "flake.lock is intentionally not committed (see design/decisions) - not a missing-file bug"
+    }
+  ]
+}

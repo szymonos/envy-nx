@@ -43,7 +43,7 @@ upgrade: ## Upgrade prek and hooks versions
 .PHONY: test test-unit test-nix test-upgrade-walk
 test: test-unit test-nix ## Run all tests (unit + Docker smoke)
 
-test-unit: ## Run bats + Pester unit tests in parallel (fast, no Docker)
+test-unit: ## Run bats + Pester + pytest unit tests in parallel (fast, no Docker)
 	@printf "\n\033[95;1m== Running unit tests ==\033[0m\n\n"
 	@# Bats: parallelize across files via xargs -P. bats's native -j requires
 	@# GNU parallel which isn't bootstrapped by this repo. Capped at 4 workers
@@ -56,6 +56,8 @@ test-unit: ## Run bats + Pester unit tests in parallel (fast, no Docker)
 	@# single pwsh session (avoids paying ~3s pwsh startup per file). The
 	@# helper script is also reusable from CI / hooks / dev shell.
 	@pwsh -nop -File tests/hooks/pester_parallel.ps1
+	@# Pytest: pure-function tests for skill scripts (testpaths in pyproject).
+	@uv run --frozen pytest -q
 
 test-nix: ## Run Docker smoke test for nix path
 	@printf "\n\033[95;1m== Testing nix path (nix/setup.sh) ==\033[0m\n\n"

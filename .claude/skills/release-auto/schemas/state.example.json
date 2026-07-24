@@ -1,0 +1,40 @@
+{
+  "$comment": [
+    "state.json - written by release.py to .release/state.json (git-ignored),",
+    "version-keyed, wiped on success. Survives soft-reset because .release/ is",
+    "untracked. This committed copy documents the shape; do not edit the live one",
+    "by hand. Field notes:",
+    "",
+    "  version              target release version (X.Y.Z).",
+    "  skip_review          --skip-review was passed; the coda is skipped.",
+    "  last_tag             tag the release is scoped against.",
+    "  reset_target         soft-reset target: last_tag on a first cut, or",
+    "                       <oldest-touched-commit>^ on a re-run/merge.",
+    "  is_rerun             the target ## [version] block pre-existed in CHANGELOG.",
+    "  phase                state-machine cursor: await_phase1 | await_push |",
+    "                       spine_complete.",
+    "  head_sha             HEAD when the last step finished; resume refuses if",
+    "                       HEAD moved underneath the orchestrator (staleness guard).",
+    "  confirmed_covered_set  paths the covered-set delta is measured against;",
+    "                       reconcile gates only when this set changes (decision 5).",
+    "  completed_phases     phase letters recorded for idempotent crash-recovery.",
+    "  decisions            audit log of gate decisions consumed."
+  ],
+  "version": "1.16.0",
+  "skip_review": false,
+  "last_tag": "v1.15.0",
+  "reset_target": "v1.15.0",
+  "is_rerun": false,
+  "phase": "await_push",
+  "head_sha": "0000000000000000000000000000000000000000",
+  "confirmed_covered_set": [
+    ".assets/config/bin/wslview",
+    ".assets/setup/setup_common.sh",
+    "CHANGELOG.md",
+    "project-words.txt",
+    "pyproject.toml",
+    "uv.lock"
+  ],
+  "completed_phases": ["A", "B"],
+  "decisions": [{ "kind": "phase1", "version": "1.16.0" }]
+}
