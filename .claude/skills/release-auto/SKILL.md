@@ -19,7 +19,7 @@ Mechanical steps never reach the agent's context.
 ## When to use
 
 - `/release-auto 1.16.0` - cut 1.16.0 from the current branch, orchestrator-driven
-- `/release-auto 1.16.0 --skip-review` - skip the review coda (urgent hotfix, Copilot offline, already reviewed)
+- `/release-auto 1.16.0 --skip-review` - skip *both* coda review layers, second-opinion (4a) and Copilot PR review (4b) (urgent hotfix, Copilot offline, already reviewed)
 - "cut the release the automated way" / "run the orchestrated release" - same
 
 For the legacy turn-by-turn flow, use `/prepare-release`. See **Retirement** below
@@ -40,13 +40,21 @@ release.py resume  ──► [headless: recut, lint-diff]     ──► GATE pus
    agent: eyeball commits + PR body
 release.py resume  ──► [headless: force-push, PR upsert] ──► SPINE_COMPLETE (exit 0)
    ── review coda (unless --skip-review) ──
-   agent: trigger Copilot, triage vs review-policy.json, apply fixes
+   4a agent: /second-opinion (gpt-5.3-codex) → fold fixes → recut + push
+   4b agent: trigger Copilot PR review, triage vs review-policy.json, apply fixes
 release.py recut   ──► [reconcile + recut + lint-diff]   (silent if no covered-set delta)
 release.py push --done ──► wipes .release/, release ready to merge
 ```
 
 **Exit codes:** `0` = done / step complete, `10` = `DECISION_NEEDED` gate, `1` =
 error (surface it, don't paper over), `2` = usage.
+
+**Invoke the driver bare - never pipe its output.** The `DECISION_NEEDED` payload
+is already compact by design; there is nothing to `| tail` or `| head`, and doing
+so *masks the sentinel exit code* (`$?` becomes the pipe tail's status, not
+`release.py`'s 10). If a step is genuinely verbose and you must pipe, read
+`${PIPESTATUS[0]}`, not `$?`. Run each verb on its own so exit 10 vs 0 vs 1 is
+unambiguous.
 
 **The core primitive at every gate:** the script *proposes as a bundle*, the agent
 *confirms or overrides inline* in one turn. Deterministic work runs silently
@@ -142,7 +150,57 @@ and wipes `.release/`).
 ### Step 4 - review coda (skipped with --skip-review)
 
 Mostly judgment, so it runs as an agent-driven coda *outside* the spine; only the
-Copilot wait is detached so a non-responsive reviewer never blocks.
+Copilot wait is detached so a non-responsive reviewer never blocks. The coda has
+**two review layers**, run in order - `--skip-review` skips **both**:
+
+- **4a - heterogeneous-model review** (`/second-opinion`): a different model
+  family (GitHub Copilot CLI, `gpt-5.3-codex`) reviews the diff at author time,
+  before merge. Catches what a same-model PR review structurally cannot.
+- **4b - Copilot PR review** (`/address-pr-review`): the GitHub Copilot reviewer
+  on the PR itself.
+
+Run 4a first: its fixes fold into the release commits via `recut` (zero-gate if
+they stay within covered paths), so the PR the Copilot reviewer sees in 4b is
+already second-opinion-clean.
+
+#### Step 4a - heterogeneous-model review (`/second-opinion`)
+
+Unlike `/prepare-release` (which runs this *before* its soft-reset and needs a
+`preflight-wip` commit), the spine has **already committed and pushed** every
+release change, so second-opinion's "committed state only" contract is satisfied -
+no WIP commit needed. Review scope is always `<last-tag>..HEAD` (what this release
+introduces over the last tag).
+
+1. **Skip-check + availability.** If `--skip-review` was passed, announce and go
+   to Step 4c. Otherwise run `command -v copilot >/dev/null`; if it fails, log a
+   warning and proceed to Step 4b (never block a release on Copilot-CLI absence).
+   Do not assume it is missing without checking - in VS Code Server it lives at
+   `~/.vscode-server/data/User/globalStorage/github.copilot-chat/copilotCli/copilot`.
+
+2. **Invoke with author intent.** Run the Copilot CLI against the release diff and
+   point it at the freshly-composed CHANGELOG section so it judges against stated
+   intent (per `.claude/skills/second-opinion/SKILL.md`):
+
+   ```bash
+   copilot -p "Read .claude/skills/second-opinion/REVIEW-BRIEF.md AND the '## [<X.Y.Z>]' section of CHANGELOG.md (the author's stated intent), then review the branch's changes since <last-tag>. Run: git diff <last-tag>..HEAD. Dismiss findings that contradict the documented intent unless the code genuinely fails to deliver it (then flag the bullet-vs-code gap). Output findings using the brief's format and severities." \
+     -s --model gpt-5.3-codex --no-custom-instructions --allow-all-tools
+   ```
+
+3. **Challenge every finding.** The reviewer has no project context beyond the
+   brief - it will flag intentional patterns and misread intent. For each: read
+   the flagged code; dismiss with a reason if clearly wrong, fix if clearly right,
+   and surface via `AskUserQuestion` when uncertain - never auto-fix on doubt.
+   Present a summary with a verdict per finding (`fixed` / `dismissed (reason)` /
+   `needs-user-judgment`).
+
+4. **Fold fixes + re-cut.** Apply fixes with `Edit`, fold user-facing changes into
+   the existing CHANGELOG bullet (never a `Fixed` bullet for a bug that never
+   shipped - see **Section reclassification**), then `release.py recut` +
+   `release.py push` (same zero-gate rules as 4b step 3 below). Optionally rerun
+   `/second-opinion` scoped to only the fixed files (cap 1 rerun). On "No
+   findings.", announce and go to Step 4b.
+
+#### Step 4b - Copilot PR review (`/address-pr-review`)
 
 1. **State → trigger-if-needed → wait** via the shared review script (do **not**
    use raw `gh pr edit --add-reviewer`). Always run `state` first and **only
@@ -178,6 +236,21 @@ Copilot wait is detached so a non-responsive reviewer never blocks.
    .claude/skills/release-auto/scripts/release.py push
    ```
 
+   **Let `recut` be the lint gate; never validate a coda fix with bare `make
+   lint`.** The spine commits only through `recut`, which uses `git commit
+   --no-verify` (so `check-changelog` never fires on a release commit) and runs
+   `make lint-diff` *inside* its atomic block - a green `recut` means the full
+   hook suite passed. A bare working-tree `make lint` instead *false-positives*
+   on `check-changelog`: during a release the CHANGELOG entry sits under `##
+   [X.Y.Z]`, so `[Unreleased]` is empty, and a still-uncommitted runtime fix
+   trips "runtime files changed but no `[Unreleased]` entry". `make lint-diff`
+   (`--from-ref main`) runs the same hooks diff-scoped and passes because
+   CHANGELOG.md is in the diff - run it yourself only to double-check before `push
+   --done`. `make test-unit` is a subset (bats/Pester/pytest only) - use it for
+   quick logic checks on the fix, never as the lint gate. If you edit a fix and
+   forget to `recut`, `release.py push` refuses (dirty plan-covered paths would be
+   left unpushed) - run `recut` first.
+
    `recut` reconciles the working tree against the plan. If the covered set is
    unchanged (pure content re-edits of already-approved files - the common case
    for a WAM tweak or a shim fix), it recuts **silently, zero agent turns**. If a
@@ -190,13 +263,15 @@ Copilot wait is detached so a non-responsive reviewer never blocks.
    Copilot). A push does not reliably auto-trigger a fresh review; only an
    explicit `trigger` on state A does.
 
-4. **Finish** once the review is clean:
+#### Step 4c - finish
 
-   ```bash
-   .claude/skills/release-auto/scripts/release.py push --done
-   ```
+Once **both** review layers are clean:
 
-   Deletes the safety backup ref, wipes `.release/`. The release is merge-ready.
+```bash
+.claude/skills/release-auto/scripts/release.py push --done
+```
+
+Deletes the safety backup ref, wipes `.release/`. The release is merge-ready.
 
 ## Recovery & inspection
 
@@ -213,10 +288,12 @@ Copilot wait is detached so a non-responsive reviewer never blocks.
 ## Shared scripts (reused unchanged)
 
 This skill owns only the spine (`release.py` + the three JSON contracts). It reuses
-the `/prepare-release` and `/address-pr-review` leaf scripts verbatim:
+the `/prepare-release`, `/second-opinion`, and `/address-pr-review` leaf skills verbatim:
 
 - `.claude/skills/prepare-release/scripts/extract.py` - CHANGELOG + git-context chunks.
 - `.claude/skills/prepare-release/scripts/cspell_words.py` - `scan` / `add`.
+- `.claude/skills/second-opinion/SKILL.md` + `REVIEW-BRIEF.md` - heterogeneous-model
+  review (Step 4a); the `copilot` CLI invocation and the project review brief.
 - `.claude/skills/address-pr-review/scripts/pr_review.py` - `state`/`trigger`/`wait`/`resolve`.
 - `test_stats.py`, `extract_signals.py` - available for the same interstitial checks
   as `/prepare-release` (test-stat drift, learning extraction) when a release warrants them.
@@ -263,7 +340,7 @@ description. This is the most common merge-case error.
 - **Force-pushing to `main`/`master`/`develop`** - the driver refuses; don't work around it.
 - **Reading the full CHANGELOG.** The `phase1` payload already carries `extract.py`'s chunks.
 - **Tagging the release** - `make release` tags post-merge. Out of scope.
-- **Skipping the review coda by your own judgment.** The only skip is `--skip-review`. New features are the *most* important case to review.
+- **Skipping either review layer by your own judgment.** The only skip is `--skip-review`, and it skips *both* second-opinion (4a) and the Copilot PR review (4b) together - you cannot drop just one. New features are the *most* important case to review.
 
 ## Retirement
 
