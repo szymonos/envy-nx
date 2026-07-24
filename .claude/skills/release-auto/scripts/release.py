@@ -42,6 +42,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path, PurePosixPath
@@ -104,6 +105,29 @@ def last_tag() -> str:
     return git(["describe", "--tags", "--abbrev=0"], check=False)
 
 
+def tree_is_clean() -> bool:
+    """True if the working tree has no tracked-or-untracked changes vs HEAD."""
+    return git(["status", "--porcelain", "-uall"], check=False) == ""
+
+
+def head_is_published() -> bool:
+    """
+    True only if HEAD exactly matches the branch's upstream tracking ref.
+
+    False when there is no upstream (never pushed) OR the two SHAs differ for any
+    reason - local ahead, behind, or diverged. Any mismatch means the local and
+    published states are not identical, so the nothing-to-release guard should not
+    treat this as a finished, published release.
+    """
+    upstream = git(
+        ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], check=False
+    )
+    if not upstream:
+        return False
+    up_sha = git(["rev-parse", "@{u}"], check=False)
+    return bool(up_sha) and up_sha == head_sha()
+
+
 def tracked_and_untracked(base: str) -> list[str]:
     """
     Return every path that differs between ``base`` and the working tree.
@@ -129,6 +153,41 @@ def tracked_and_untracked(base: str) -> list[str]:
         if line.startswith("??"):
             paths.add(line[3:].strip())
     return sorted(paths)
+
+
+def working_tree_dirty_paths() -> list[str]:
+    """
+    Return every path with uncommitted work relative to HEAD.
+
+    Modified, staged, or untracked - i.e. exactly the content a ``recut`` would
+    fold into the release commits. Empty when the tree is clean (a recut just
+    ran). Used by the push guard to refuse pushing stale commits while a fix
+    sits uncommitted.
+    """
+    paths: set[str] = set()
+    # base=HEAD, so this is dirt vs the last commit, not vs the release tag.
+    tracked = git(["diff", "--name-only", "HEAD"], check=False)
+    paths.update(p for p in tracked.splitlines() if p)
+    staged = git(["diff", "--name-only", "--cached", "HEAD"], check=False)
+    paths.update(p for p in staged.splitlines() if p)
+    porcelain = git(["status", "--porcelain", "-uall"], check=False)
+    for line in porcelain.splitlines():
+        if line.startswith("??"):
+            paths.add(line[3:].strip())
+    return sorted(paths)
+
+
+def uncommitted_covered_paths(plan: dict) -> list[str]:
+    """
+    Return dirty paths the plan claims - the push guard's refusal set.
+
+    A non-empty result means a fix was edited but never re-cut, so the pushed
+    commits are stale relative to the working tree. Orphan dirty paths are left
+    out here: ``recut``'s reconcile handles those with a plan-update gate, and
+    the push guard only needs to catch the "forgot to recut" case.
+    """
+    dirty = working_tree_dirty_paths()
+    return [p for p in dirty if match_group(p, plan) is not None]
 
 
 # -- state I/O ----------------------------------------------------------------
@@ -534,6 +593,17 @@ def phase_start(version: str, skip_review: bool) -> int:
     if not tag:
         raise ReleaseError("no git tag found - cannot scope the release")
 
+    # Nothing-to-release guard: a version block already present AND a clean tree
+    # AND HEAD already pushed means this exact release was cut and published in a
+    # prior run. Starting again would re-cut identical commits and re-trigger the
+    # review coda for zero change. Refuse before any mutation (no lint/upgrade).
+    if version_exists(version) and tree_is_clean() and head_is_published():
+        raise ReleaseError(
+            f"release {version} is already cut, committed, and pushed - nothing to "
+            "do. If you have new changes, make them first; to re-open the release "
+            "for edits, add commits/edits and re-run `start`."
+        )
+
     run_make("lint")
     _bump_pyproject(version)
     run_make("upgrade")
@@ -845,13 +915,32 @@ def _gh(args: list[str]) -> None:
         raise ReleaseError(f"gh {' '.join(args)} failed:\n{result.stderr.strip()}")
 
 
+def _wipe_state_dir() -> None:
+    """
+    Remove ``.release/`` entirely - it is wholly driver-owned and git-ignored.
+
+    A full rmtree (not a hand-listed unlink of state/plan/policy) is deliberate:
+    the coda also writes ``decision.json`` here, and any future state file would
+    otherwise be silently left behind, making the "state wiped" report a lie and
+    leaking stale state into the next `start`.
+
+    Guard against a ``.release`` symlink: ``Path.is_dir()`` follows symlinks, so
+    an rmtree gated on it alone could delete an arbitrary target a symlink points
+    at. Unlink the link itself (never its target); only rmtree a *real*
+    directory. ``lstat``-based checks (``is_symlink``) do not follow the link.
+    A stray regular *file* named ``.release`` is also unlinked - otherwise it
+    lingers as stale state and makes the next ``STATE_DIR.mkdir()`` fail.
+    """
+    if STATE_DIR.is_symlink() or STATE_DIR.is_file():
+        STATE_DIR.unlink()
+    elif STATE_DIR.is_dir():
+        shutil.rmtree(STATE_DIR)
+
+
 def _finish(state: dict, message: str) -> int:
     """Delete the safety backup ref, wipe ``.release/``, and report success."""
     delete_backup(state["version"])
-    for f in (STATE_FILE, PLAN_FILE, POLICY_FILE):
-        f.unlink(missing_ok=True)
-    if STATE_DIR.is_dir() and not any(STATE_DIR.iterdir()):
-        STATE_DIR.rmdir()
+    _wipe_state_dir()
     print(message)
     return EXIT_OK
 
@@ -922,6 +1011,15 @@ def cmd_push(args: argparse.Namespace) -> int:
     """Handle ``release.py push`` - coda re-push + PR update (+ optional finish)."""
     state = load_state()
     guard_resume(state)
+    # Guard: a fix edited but not re-cut would be silently left out of the push -
+    # the commits would be stale relative to the working tree. recut is the sole
+    # committer, so any plan-covered dirt here means `recut` was skipped.
+    stale = uncommitted_covered_paths(load_plan())
+    if stale:
+        raise ReleaseError(
+            "uncommitted changes on plan-covered paths would not be pushed - "
+            "run `release.py recut` first:\n  " + "\n  ".join(stale)
+        )
     _do_push()
     _upsert_pr(state["version"])
     state["head_sha"] = head_sha()
@@ -943,28 +1041,39 @@ def cmd_abort(_args: argparse.Namespace) -> int:
     """
     Handle ``release.py abort`` - non-destructively unwind and wipe state.
 
-    Soft-rewinds any recut commits back to the last tag so all release work
-    returns to the working tree uncommitted (NEVER ``reset --hard`` - that would
-    delete a first cut's still-uncommitted work). If no commits were made the
-    working tree is already correct and nothing is touched.
+    Soft-rewinds ONLY the commits *this run's recut* created, back to the reset
+    target, so their content returns to the working tree uncommitted (NEVER
+    ``reset --hard`` - that would delete a first cut's still-uncommitted work).
+
+    The safety backup ref is the authority on whether a rewind is owed: ``recut``
+    writes ``refs/release-backup/<version>`` at the pre-recut HEAD before it
+    commits, and ``_finish`` deletes it on a clean finish. So:
+
+    - backup ref present  -> a recut ran this session and did not finish; rewind
+      to the backup HEAD (exactly the commits recut added), preserving content.
+    - backup ref absent   -> no un-finished recut exists. Any commits since the
+      tag are either the user's own pre-existing work or a *prior finalized and
+      pushed* release (the no-op re-run case). Rewinding them would unwind
+      published history - so touch nothing; just wipe state.
+
+    This is the fix for the data-integrity bug where aborting a no-op re-run
+    soft-rewound an already-pushed release back into the working tree.
     """
     state = load_state()
     version = state["version"]
-    # Rewind to this run's reset target (last tag on a first cut; the pre-touched
-    # commit on a re-run, so earlier commits' content is preserved as an
-    # uncommitted tree) - but never past it.
-    target = state.get("reset_target") or state.get("last_tag", "")
-    if target and git(["rev-list", "--count", f"{target}..HEAD"], check=False) not in (
-        "",
-        "0",
-    ):
-        restore_soft(target)
-        print(f"soft-rewound release commits to {target}; working tree preserved.")
+    backup = backup_ref(version)
+    have_backup = bool(git(["rev-parse", "--verify", "--quiet", backup], check=False))
+    if have_backup:
+        # Rewind exactly to the pre-recut HEAD recorded by this run's recut.
+        restore_soft(backup)
+        print(f"soft-rewound this run's release commits to {backup}; tree preserved.")
+    else:
+        print(
+            "no un-finished recut to unwind (no backup ref) - leaving commits and "
+            "working tree untouched; only wiping .release/ state."
+        )
     delete_backup(version)
-    for f in (STATE_FILE, PLAN_FILE, POLICY_FILE):
-        f.unlink(missing_ok=True)
-    if STATE_DIR.is_dir() and not any(STATE_DIR.iterdir()):
-        STATE_DIR.rmdir()
+    _wipe_state_dir()
     print(f"aborted release {version}; .release/ wiped.")
     return EXIT_OK
 

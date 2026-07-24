@@ -181,3 +181,79 @@ def test_version_exists_empty_block(tmp_path: Path) -> None:
     p = tmp_path / "CHANGELOG.md"
     p.write_text("# Changelog\n\n## [2.0.0] - 2026-07-24\n\n## [1.0.0] - 2026-01-01\n")
     assert release.version_exists("2.0.0", str(p)) is True
+
+
+# -- _wipe_state_dir ----------------------------------------------------------
+
+
+def test_wipe_state_dir_removes_decision_and_all(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    A full wipe removes the coda's decision.json too, not just the trio.
+
+    Regression for the 1.16.1 finalizer bug: _finish/_abort unlinked only
+    state/plan/policy, leaving .release/decision.json behind, so the "state
+    wiped" report lied and stale state leaked into the next `start`.
+    """
+    monkeypatch.chdir(tmp_path)
+    state_dir = tmp_path / ".release"
+    state_dir.mkdir()
+    for name in (
+        "state.json",
+        "commit-plan.json",
+        "review-policy.json",
+        "decision.json",
+    ):
+        (state_dir / name).write_text("{}")
+
+    release._wipe_state_dir()
+
+    assert not state_dir.exists()
+
+
+def test_wipe_state_dir_is_idempotent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Wiping an already-absent .release/ is a no-op, not an error."""
+    monkeypatch.chdir(tmp_path)
+    release._wipe_state_dir()  # must not raise
+    assert not (tmp_path / ".release").exists()
+
+
+def test_wipe_state_dir_symlink_does_not_delete_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    A `.release` symlink is unlinked, never followed into its target.
+
+    is_dir() follows symlinks, so rmtree gated on it alone could delete an
+    arbitrary directory a symlink points at. Only the link must be removed.
+    """
+    monkeypatch.chdir(tmp_path)
+    victim = tmp_path / "victim"
+    victim.mkdir()
+    (victim / "keep.txt").write_text("do not delete me")
+    (tmp_path / ".release").symlink_to(victim)
+
+    release._wipe_state_dir()
+
+    assert not (tmp_path / ".release").exists()  # link removed
+    assert victim.is_dir()  # target untouched
+    assert (victim / "keep.txt").read_text() == "do not delete me"
+
+
+def test_wipe_state_dir_removes_a_stray_regular_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    A regular file named `.release` is unlinked, not silently left behind.
+
+    Otherwise it lingers as stale state and the next STATE_DIR.mkdir() fails.
+    """
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".release").write_text("stray")
+
+    release._wipe_state_dir()
+
+    assert not (tmp_path / ".release").exists()
