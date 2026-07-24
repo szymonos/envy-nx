@@ -5,6 +5,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.15.0] - 2026-07-24
+
+Restores Azure/Graph interactive PowerShell login on headless Linux behind Conditional Access policies that block device-code auth, ported from upstream `linux-setup-scripts`. Also fixes a first-provision make-completer gap and hardens the release tooling.
+
+### Added
+
+- MSAL browser auth for headless Linux. A `wslview` shim (`.assets/config/bin/wslview`) is installed to `~/.local/bin` by `setup_profile_user.ps1` on headless Linux only (Linux AND no real MSAL opener such as `xdg-open`/`microsoft-edge` AND no genuine `wslview` on PATH). MSAL.NET execs `wslview <auth-url>` as its last-resort browser opener; the shim prints the sign-in URL for CTRL+Click and keeps MSAL's localhost redirect listener alive, so `Connect-AzAccount` / `Connect-MgGraph` use the browser auth-code flow instead of device code (blocked by Entra Conditional Access). Desktop Linux with a real opener is left untouched.
+- `-NoVerify` switch across the `aliases-git` commit/push functions (module synced to `1.24.0`), appending `--no-verify` to skip pre-commit/pre-push hooks.
+
+### Changed
+
+- `prepare-release`'s `extract.py` now reports the full release footprint when a branch is cut with uncommitted work: `DIFF_STAT` diffs the last tag against the working tree (committed + staged + unstaged) and a new `UNCOMMITTED` chunk surfaces untracked files. On a clean tree the output is unchanged.
+- Bumped pinned pre-commit hooks (`ruff` `v0.16.0`) and refreshed transitive dependencies (`certifi`, `platformdirs`, `soupsieve`) in `uv.lock`.
+
+### Fixed
+
+- Make completer was never registered on a first `pwsh`-scope provision. `.assets/setup/setup_common.sh` ran `setup_profile_user.ps1` before copying the user-scope PowerShell modules, so the make-completer block (gated on `Register-MakeCompleter` from `do-unix`) found no module on disk and was silently skipped - it only appeared on a re-provision. Reordered the pwsh block to install modules first, then run the profile setup, then install Az (unchanged position, after PSGallery is trusted).
+- `Connect-AzAccount` interactive login on Linux now disables the WAM broker. `.assets/setup/setup_common.sh` runs `Set-AzConfig -EnableLoginByWam 0` (idempotent) after the Az modules install under the `az` scope; the WAM broker (`msalruntime.so`) is non-functional on all Linux, so interactive login must fall through to the browser auth-code flow.
+- `.assets/setup/setup_gh_repos.sh` no longer re-runs `git clone` on already-present repos each rerun, and its summary distinguishes a genuine clone failure (network/DNS) from "already cloned" - it only clones when the target directory is absent and tracks `cloned`/`failed` separately.
+
 ## [1.14.0] - 2026-07-20
 
 ### Added

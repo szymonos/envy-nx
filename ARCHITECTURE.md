@@ -136,7 +136,7 @@ Implications for any change you make:
 | `.assets/setup/setup_common.sh`        | always          | Copilot, zsh plugins, PS modules |
 | `.assets/provision/install_copilot.sh` | called by above | GitHub Copilot CLI               |
 | `.assets/setup/setup_profile_user.zsh` | scope: zsh      | Zsh profile setup                |
-| `.assets/setup/setup_profile_user.ps1` | pwsh available  | certs + local PATH               |
+| `.assets/setup/setup_profile_user.ps1` | pwsh available  | certs, local PATH, MSAL shim     |
 
 **Variable naming convention** (cross-phase globals):
 
