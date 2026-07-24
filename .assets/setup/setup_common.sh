@@ -49,13 +49,10 @@ fi
 
 # -- PowerShell user profile + modules (pwsh scope) ---------------------------
 if command -v pwsh &>/dev/null; then
-  info "setting up PowerShell profile for current user..."
-  if [[ "$update_modules" == "true" ]]; then
-    _io_pwsh_nop "$SCRIPT_ROOT/.assets/setup/setup_profile_user.ps1" -UpdateModules
-  else
-    _io_pwsh_nop "$SCRIPT_ROOT/.assets/setup/setup_profile_user.ps1"
-  fi
-
+  # install PS modules first, so setup_profile_user.ps1 can register completers
+  # gated on module functions (e.g. Register-MakeCompleter in do-unix). Running
+  # the profile setup before the modules are on disk silently skips those blocks
+  # on a first provision - they'd only appear on a re-run.
   info "installing PS modules..."
   modules=('do-common' 'do-unix')
   has_scope az && modules+=(do-az) || true
@@ -72,6 +69,15 @@ if command -v pwsh &>/dev/null; then
   _io_pwsh_nop -c "@(${mods%,}) | .assets/scripts/module_manage.ps1 -CleanUp"
   popd >/dev/null
 
+  info "setting up PowerShell profile for current user..."
+  if [[ "$update_modules" == "true" ]]; then
+    _io_pwsh_nop "$SCRIPT_ROOT/.assets/setup/setup_profile_user.ps1" -UpdateModules
+  else
+    _io_pwsh_nop "$SCRIPT_ROOT/.assets/setup/setup_profile_user.ps1"
+  fi
+
+  # install Az modules last: after setup_profile_user.ps1 has trusted PSGallery
+  # (for unattended Install-PSResource) and after do-common is present.
   if has_scope az; then
     cmnd='if (-not (Get-Module -ListAvailable "Az")) {
   Write-Host "installing Az..."
@@ -80,6 +86,14 @@ if command -v pwsh &>/dev/null; then
 if (-not (Get-Module -ListAvailable "Az.ResourceGraph")) {
   Write-Host "installing Az.ResourceGraph..."
   Install-PSResource Az.ResourceGraph -ErrorAction Stop
+}
+# disable the WAM broker: a Windows feature, non-functional on Linux (msalruntime.so),
+# so interactive Az login must fall through to the browser auth-code flow (wslview
+# shim). Runs here, after Az.Accounts exists. Idempotent - skip if already off.
+# Use a truthy test + numeric 0 for the [bool] param (avoid $false).
+if ((Get-AzConfig -EnableLoginByWam).Value) {
+  Write-Host "disabling WAM login for Az PowerShell..."
+  Set-AzConfig -EnableLoginByWam 0 -Scope CurrentUser -WarningAction SilentlyContinue | Out-Null
 }'
     _io_pwsh_nop -c "$cmnd"
   fi
