@@ -107,6 +107,6 @@ To opt out for a commit that genuinely yields no generalization (and that touche
 
 **Source:** PR #46 (`281a7d6`)
 
-When syncing a vendored PowerShell module (do-common from
+When syncing a vendored PowerShell module (do-common from ps-modules), a renamed/removed public parameter silently breaks first-party callers outside the module - PowerShell only fails at runtime param-binding, not at import. After a module sync, grep the repo for callers of any renamed parameter (e.g. `rg -- '-OldParamName'`) and update them in the same commit.
 
 ---
