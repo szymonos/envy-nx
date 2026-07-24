@@ -5,6 +5,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.16.1] - 2026-07-24
+
+### Fixed
+
+- `nix flake update` no longer hits the unauthenticated GitHub API rate limit (60 req/h) during `nx update`. The flake update phase now passes a GitHub token to `nix` via the `NIX_CONFIG` env var (keeping the secret off the command line), sourcing it from `GITHUB_TOKEN` (CI/headless) or `gh auth token` (interactive sessions). Falls back silently to unauthenticated if neither is available.
+- `codify_learnings` now captures multi-line `Codified-Learning:` trailers in full, joining continuation lines into one paragraph until a blank line, the next trailer, or end of message. Previously only the first line survived, silently truncating codified lessons.
+- `run_bats` now strips inherited `GIT_*` env vars before spawning bats, so tests that create temp git repos no longer inherit `make lint`'s scratch `GIT_INDEX_FILE` and corrupt their commits.
+- `/release-auto` wipes its whole `.release/` state dir on finish (previously left `decision.json` behind), refuses `push` when a plan-covered fix was edited but not re-cut, refuses `start` when the version is already cut and pushed (nothing to do), and no longer lets `abort` unwind an already-finalized, pushed release.
+- `/release-auto` review coda now runs the heterogeneous-model `/second-opinion` pass (Step 4a) before the Copilot PR review, restoring the two-layer review its design specified; `--skip-review` skips both.
+
 ## [1.16.0] - 2026-07-24
 
 Adds `/release-auto`, an orchestrator-driven successor to `/prepare-release` that inverts control: a stateful Python driver runs the deterministic release spine headless and calls the agent only at a few batched decision gates, cutting the token cost of a release.

@@ -99,7 +99,7 @@ wheels = [
 
 [[package]]
 name = "envy-nx"
-version = "1.16.0"
+version = "1.16.1"
 source = { virtual = "." }
 
 [package.dev-dependencies]
