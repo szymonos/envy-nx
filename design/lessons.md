@@ -54,6 +54,7 @@ To opt out for a commit that genuinely yields no generalization (and that touche
 <!-- Tags populate as entries land via the post-merge workflow -->
 
 - **cache-staleness** - [L-002](#l-002---2026-05-23---cache-staleness)
+- **general** - [L-003](#l-003---2026-07-24---general)
 - **meta** - [L-000](#l-000---2026-05-23---meta)
 - **render-heuristics** - [L-001](#l-001---2026-05-23---render-heuristics)
 
@@ -99,5 +100,13 @@ To opt out for a commit that genuinely yields no generalization (and that touche
 **Why it matters:** The failure fires on every interactive prompt, not on an explicit command - users see a cryptic error on every keystroke with no obvious trigger. The same `ModuleAnalysisCache-*` / `StartupProfileData-*` staleness pattern affects pwsh. Any new tool that caches shell-init with embedded store paths will hit the same class of bug.
 
 **How to apply:** After any operation that removes Nix store paths (`nix store gc`, `nix profile remove`), sweep shell-init caches that may embed those paths. The sweep lives in `_nx_clear_stale_caches` (called by `nx upgrade` / `nx gc`) and `_phase_post_install_clear_stale_caches` (called after `nix store gc` during setup). When adding a new tool with shell-init caching, add its cache glob to both sweep functions.
+
+---
+
+## L-003 - 2026-07-24 - general
+
+**Source:** PR #49 (`aed13db`)
+
+invert control for expensive multi-step agent runbooks - a stateful driver runs the deterministic spine and gates to the agent only for judgment, so mechanical re-runs (re-cut after a fix) cost zero agent turns
 
 ---
