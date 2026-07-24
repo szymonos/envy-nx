@@ -91,6 +91,8 @@ minisign
 mkdocs
 mktemp
 modularizes
+msal
+msalruntime
 mtimes
 multishells
 namerefs
@@ -114,6 +116,7 @@ pdca
 pipefail
 pipestatus
 pkgs
+platformdirs
 powerline
 prek
 pscustomobject
@@ -139,6 +142,7 @@ shellcheck
 shfmt
 sigstore
 sonoma
+soupsieve
 sourceable
 stdlib
 storeutl
@@ -171,3 +175,4 @@ worktrees
 wslconfig
 wslg
 wslpath
+wslview
