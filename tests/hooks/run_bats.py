@@ -121,6 +121,17 @@ def main(argv: list[str] | None = None) -> int:
         "NIX_ENV_TLS_PROBE_URL",
         "NIX_ENV_OVERLAY_DIR",
         "GIT_TERMINAL_PROMPT",
+        # `make lint`/`lint-diff` run prek under an exported GIT_INDEX_FILE (a
+        # disposable scratch index, see Makefile PREK_RUN). That path points at
+        # the OUTER repo's index and would leak into the temp git repos these
+        # bats tests create, corrupting their commits ("invalid object ... Error
+        # building trees"). Strip the whole GIT_* index/dir/worktree set so each
+        # test's `git init` gets a pristine environment. GIT_TERMINAL_PROMPT is
+        # re-set below on purpose.
+        "GIT_INDEX_FILE",
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_OBJECT_DIRECTORY",
     ):
         env.pop(var, None)
     # Defense-in-depth: block any code path that might still want to talk to GH.
