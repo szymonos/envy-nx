@@ -123,6 +123,7 @@ pscustomobject
 pymdown
 pypi
 pyproject
+pytest
 readarray
 redef
 reexeced
