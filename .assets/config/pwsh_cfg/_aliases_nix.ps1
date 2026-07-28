@@ -68,6 +68,21 @@ if (Test-Path "$_nb/pwsh" -PathType Leaf) {
 if (Test-Path "$_nb/kubecolor" -PathType Leaf) {
     Set-Alias -Name kubectl -Value kubecolor
 }
+# Toggle the kubernetes context segment in the prompt (oh-my-posh only). Flips
+# the segment on/off for the current session; applies on the next prompt render.
+# Matches the 'k8s' segment alias in .assets/config/omp_cfg/*.omp.json and the
+# bash/zsh `ktog` in .assets/config/shell_cfg/aliases_kubectl.sh. Repo-scoped
+# here (not in the vendored aliases-kubectl module, which `nx update` overwrites
+# from upstream ps-modules) because it needs oh-my-posh. Gated on POSH_SESSION_ID,
+# which oh-my-posh's shell init sets only when it is the active prompt (a bare
+# binary check would pass under starship too). See .claude/rules/cross-shell-parity.md.
+function ktog {
+    if ($env:POSH_SESSION_ID -and (Get-Command oh-my-posh -CommandType Application -ErrorAction SilentlyContinue)) {
+        oh-my-posh toggle k8s
+    } else {
+        Write-Error 'ktog needs oh-my-posh as the active prompt.'
+    }
+}
 
 Remove-Variable _nb
 #endregion
@@ -193,6 +208,20 @@ function _NxProfileRegenerate {
         '    if ([IO.Directory]::Exists($nixPath) -and $nixPath -notin $env:PATH.Split([IO.Path]::PathSeparator)) {'
         '        [Environment]::SetEnvironmentVariable(''PATH'', [string]::Join([IO.Path]::PathSeparator, $nixPath, $env:PATH))'
         '    }'
+        '}'
+        '# Keep ~/.local/bin ahead of ~/.nix-profile/bin so user-managed shims (e.g.'
+        '# the kubectl version symlink from Set-KubectlLocal) shadow the nix package.'
+        '# The base profile prepends ~/.local/bin, but the nix:path prepend above then'
+        '# lands ~/.nix-profile/bin in front of it. bash/zsh avoid this because the'
+        '# login shell pre-populates ~/.nix-profile/bin, so their idempotent PATH guard'
+        '# skips re-prepending it ahead of ~/.local/bin; PowerShell has no login hook,'
+        '# so re-front ~/.local/bin here. See .claude/rules/cross-shell-parity.md.'
+        '$localBin = [IO.Path]::Combine([Environment]::GetFolderPath(''UserProfile''), ''.local'', ''bin'')'
+        'if ([IO.Directory]::Exists($localBin)) {'
+        '    $parts = [System.Collections.Generic.List[string]]$env:PATH.Split([IO.Path]::PathSeparator)'
+        '    [void]$parts.Remove($localBin)'
+        '    $parts.Insert(0, $localBin)'
+        '    [Environment]::SetEnvironmentVariable(''PATH'', [string]::Join([IO.Path]::PathSeparator, $parts))'
         '}'
         'foreach ($psUserDir in @(''.local/share/powershell/Scripts'', ''.local/share/powershell/Modules'')) {'
         '    $abs = [IO.Path]::Combine([Environment]::GetFolderPath(''UserProfile''), $psUserDir)'

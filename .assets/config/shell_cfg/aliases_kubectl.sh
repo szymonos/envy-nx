@@ -805,3 +805,20 @@ alias kgdepwowidesln='kubectl get deployment --watch -o=wide --show-labels --nam
 alias kgwslowiden='kubectl get --watch --show-labels -o=wide --namespace'
 alias kgpowslowiden='kubectl get pods --watch --show-labels -o=wide --namespace'
 alias kgdepwslowiden='kubectl get deployment --watch --show-labels -o=wide --namespace'
+
+# Toggle the kubernetes context segment in the prompt (oh-my-posh only).
+# Flips the segment on/off for the current shell session; applies on the next
+# prompt render (no per-keystroke redraw). Matches the "k8s" segment alias set
+# in .assets/config/omp_cfg/*.omp.json. Wraps `oh-my-posh toggle`, which has no
+# starship equivalent, so this is intentionally oh-my-posh-scoped. Gated on
+# POSH_SESSION_ID, which oh-my-posh's shell init sets only when it is the active
+# prompt (a bare binary-on-PATH check would pass under starship too). Shared by
+# bash and zsh - both source this file. See .claude/rules/cross-shell-parity.md.
+function ktog() {
+  if [ -n "$POSH_SESSION_ID" ] && command -v oh-my-posh >/dev/null 2>&1; then
+    oh-my-posh toggle k8s
+  else
+    printf '\e[31;1mktog needs oh-my-posh as the active prompt.\e[0m\n' >&2
+    return 1
+  fi
+}
