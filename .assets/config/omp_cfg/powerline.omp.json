@@ -83,6 +83,7 @@
     {
       "segments": [
         {
+          "alias": "k8s",
           "foreground": "#2E6CE6",
           "options": {
             "parse_kubeconfig": true
