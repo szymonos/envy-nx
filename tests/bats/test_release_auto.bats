@@ -119,7 +119,7 @@ import release, json, subprocess
 plan = json.load(open('.release/commit-plan.json'))
 state = json.load(open('.release/state.json'))
 rec = release.reconcile(plan, state)
-assert rec['has_delta'] is False, rec
+assert rec['blocked'] is False, rec
 subj = release.recut(plan, state)
 n = subprocess.run(['git','rev-list','--count','v0.1.0..HEAD'],capture_output=True,text=True).stdout.strip()
 assert n == '2', n
@@ -133,7 +133,7 @@ print('OK')
 # reconcile - covered-set delta detection
 # =============================================================================
 
-@test "reconcile gates on a new covered path" {
+@test "reconcile does NOT block on a new covered path the plan already claims" {
   _seed_plan_and_changes
   run _py "
 import release, json
@@ -141,8 +141,9 @@ plan = json.load(open('.release/commit-plan.json'))
 state = json.load(open('.release/state.json'))
 state['confirmed_covered_set'] = ['.assets/setup/thing.sh']
 rec = release.reconcile(plan, state)
-# CHANGELOG.md is covered but not yet confirmed -> delta.
-assert rec['has_delta'] is True, rec
+# CHANGELOG.md is covered by a plan glob but not yet confirmed: reported as
+# new_covered context, but NOT a block - the plan can execute as-is.
+assert rec['blocked'] is False, rec
 assert 'CHANGELOG.md' in rec['new_covered'], rec
 print('OK')
 "
@@ -150,7 +151,7 @@ print('OK')
   [[ "$output" == *OK* ]]
 }
 
-@test "reconcile flags an orphan path" {
+@test "reconcile blocks on an orphan path no group claims" {
   _seed_plan_and_changes
   echo "stray" >stray.txt # matches no glob
   run _py "
@@ -159,26 +160,48 @@ plan = json.load(open('.release/commit-plan.json'))
 state = json.load(open('.release/state.json'))
 rec = release.reconcile(plan, state)
 assert 'stray.txt' in rec['orphans'], rec
-assert rec['has_delta'] is True, rec
+assert rec['blocked'] is True, rec
 print('OK')
 "
   [ "$status" -eq 0 ]
   [[ "$output" == *OK* ]]
 }
 
-@test "reconcile gates when a previously-covered path is dropped" {
+@test "reconcile blocks when a plan group would be empty" {
   _seed_plan_and_changes
   run _py "
 import release, json
 plan = json.load(open('.release/commit-plan.json'))
+# Add a group whose glob matches nothing in the tree.
+plan['groups'].append({'globs': ['does/not/exist.sh'], 'prefix': 'fix', 'message': 'fix: ghost'})
+json.dump(plan, open('.release/commit-plan.json','w'))
 state = json.load(open('.release/state.json'))
-# CHANGELOG.md was confirmed but is no longer in the tree (e.g. a fix reverted it).
-import os
+rec = release.reconcile(plan, state)
+assert rec['blocked'] is True, rec
+assert any('ghost' in e for e in rec['empty_groups']), rec
+print('OK')
+"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *OK* ]]
+}
+
+@test "reconcile does NOT block on a dropped path once the plan drops its group" {
+  # Regression: reverting a change mid-coda used to dead-end. The dropped path
+  # is reported as context, but with no orphan/empty-group the plan executes.
+  _seed_plan_and_changes
+  run _py "
+import release, json, os
+plan = json.load(open('.release/commit-plan.json'))
+state = json.load(open('.release/state.json'))
+# CHANGELOG.md was confirmed but is reverted out of the tree, and the agent has
+# updated the plan to no longer reference it (its group is removed).
 os.remove('CHANGELOG.md')
+plan['groups'] = [g for g in plan['groups'] if 'CHANGELOG.md' not in g['globs']]
+json.dump(plan, open('.release/commit-plan.json','w'))
 state['confirmed_covered_set'] = ['.assets/setup/thing.sh', 'CHANGELOG.md']
 rec = release.reconcile(plan, state)
 assert 'CHANGELOG.md' in rec['dropped'], rec
-assert rec['has_delta'] is True, rec
+assert rec['blocked'] is False, rec
 print('OK')
 "
   [ "$status" -eq 0 ]
@@ -193,9 +216,77 @@ plan = json.load(open('.release/commit-plan.json'))
 state = json.load(open('.release/state.json'))
 state['confirmed_covered_set'] = ['.assets/setup/thing.sh', 'CHANGELOG.md']
 rec = release.reconcile(plan, state)
-assert rec['has_delta'] is False, rec
+assert rec['blocked'] is False, rec
 assert rec['new_covered'] == [], rec
 assert rec['orphans'] == [], rec
+print('OK')
+"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *OK* ]]
+}
+
+# =============================================================================
+# cmd_recut - command-level coda orchestration (gate / re-seed / advisory)
+# =============================================================================
+# These exercise the wiring reconcile()+recut() do not: the gate decision, the
+# confirmed_covered_set re-seed, and the advisory reconciled payload. run_make is
+# stubbed so lint-diff never shells out inside the isolated temp repo.
+
+@test "cmd_recut proceeds and re-seeds confirmed_covered_set on a clean plan" {
+  _seed_plan_and_changes
+  run _py "
+import release, json, argparse
+release.run_make = lambda *a, **k: ''  # stub lint-diff
+# A prior recut confirmed only the feature file; CHANGELOG.md is newly covered
+# by an existing glob (advisory new_covered, must NOT gate).
+state = json.load(open('.release/state.json'))
+state['confirmed_covered_set'] = ['.assets/setup/thing.sh']
+json.dump(state, open('.release/state.json','w'))
+rc = release.cmd_recut(argparse.Namespace())
+assert rc == release.EXIT_OK, rc
+after = json.load(open('.release/state.json'))
+# re-seeded to the full covered set actually cut
+assert after['confirmed_covered_set'] == sorted(['.assets/setup/thing.sh','CHANGELOG.md']), after
+print('OK')
+"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *OK* ]]
+}
+
+@test "cmd_recut gates (exit 10) on an orphan path instead of dead-ending" {
+  _seed_plan_and_changes
+  echo "stray" >stray.txt # no glob claims it
+  run _py "
+import release, json, argparse
+release.run_make = lambda *a, **k: ''
+rc = release.cmd_recut(argparse.Namespace())
+assert rc == release.EXIT_GATE, rc
+print('OK')
+"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *OK* ]]
+}
+
+@test "cmd_recut does NOT gate when a previously-confirmed path is dropped" {
+  # Regression for the mid-coda revert dead-end. A path confirmed by a prior cut
+  # is no longer in the tree's changed universe (a review reverted it) and its
+  # plan group is gone. The old covered-set-delta gate would report `dropped` and
+  # block forever, because the coda path never re-seeds confirmed_covered_set.
+  # cmd_recut must now proceed: no orphan, no empty group -> executable plan.
+  _seed_plan_and_changes
+  run _py "
+import release, json, argparse
+release.run_make = lambda *a, **k: ''
+# State claims a third path that this run's plan does NOT cover and that is not
+# in the tree - exactly a stale 'dropped' entry from a reverted fix.
+state = json.load(open('.release/state.json'))
+state['confirmed_covered_set'] = ['.assets/setup/thing.sh', 'CHANGELOG.md', 'gone.sh']
+json.dump(state, open('.release/state.json','w'))
+rc = release.cmd_recut(argparse.Namespace())
+assert rc == release.EXIT_OK, rc  # proceeds despite the dropped 'gone.sh'
+after = json.load(open('.release/state.json'))
+# re-seeded to what was actually cut - the stale 'gone.sh' is gone.
+assert after['confirmed_covered_set'] == sorted(['.assets/setup/thing.sh','CHANGELOG.md']), after
 print('OK')
 "
   [ "$status" -eq 0 ]
@@ -621,6 +712,60 @@ assert release.head_sha() == head_before, 'abort unwound finalized commits!'
 n_after = subprocess.run(['git','rev-list','--count','v0.1.0..HEAD'],capture_output=True,text=True).stdout.strip()
 assert n_after == '2', f'commits changed: {n_after}'
 print('OK')
+"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *OK* ]]
+}
+
+@test "abort does NOT rewind when the backup ref is not an ancestor of HEAD" {
+  # Regression for the cross-cycle orphan bug: a backup ref left over from a
+  # divergent, already-shipped cycle points at a commit that is NOT an ancestor
+  # of HEAD. Soft-resetting to it would move the branch onto foreign history and
+  # stage a bogus diff. abort must leave commits/tree untouched and only wipe.
+  _seed_plan_and_changes
+  run _py "
+import release, json, argparse, subprocess
+
+def sh(*a):
+    return subprocess.run(['git',*a],capture_output=True,text=True).stdout.strip()
+
+# Fabricate an orphaned backup ref on a divergent commit (not reachable from HEAD).
+sh('checkout','-q','-b','divergent','v0.1.0')
+open('orphan.txt','w').write('orphan')
+sh('add','orphan.txt'); sh('commit','-qm','docs(changelog): abandoned recut')
+orphan_sha = release.head_sha()
+sh('checkout','-q','-')                          # back to the working branch
+sh('update-ref','refs/release-backup/0.2.0',orphan_sha)
+assert release._is_ancestor(orphan_sha,'HEAD') is False, 'setup: orphan must be divergent'
+
+head_before = release.head_sha()
+release.cmd_abort(argparse.Namespace())
+# Non-ancestor backup -> HEAD MUST be untouched (no reset onto foreign history).
+assert release.head_sha() == head_before, 'abort reset onto divergent history!'
+import os
+assert not os.path.isdir('.release'), 'state not wiped'
+print('OK')
+"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *OK* ]]
+}
+
+@test "start refuses with shipped-aware guidance when leftover state is already tagged" {
+  # Regression for the orphaned-state blocker: state left behind by a shipped
+  # cycle (coda never ran `push --done`) must not read as "in progress". When the
+  # leftover version is already a git tag, start points at `abort`, not `resume`.
+  _seed_plan_and_changes # seeds .release/state.json @ 0.2.0
+  git tag v0.2.0         # simulate 0.2.0 already shipped
+  run _py "
+import release, argparse
+try:
+    release.cmd_start(argparse.Namespace(version='0.3.0', skip_review=False))
+    assert False, 'start should have refused'
+except release.ReleaseError as e:
+    msg = str(e)
+    assert 'already tagged' in msg, msg
+    assert 'abort' in msg, msg
+    print('OK')
 "
   [ "$status" -eq 0 ]
   [[ "$output" == *OK* ]]

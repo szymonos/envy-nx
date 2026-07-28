@@ -100,6 +100,18 @@ def current_branch() -> str:
     return git(["rev-parse", "--abbrev-ref", "HEAD"], check=False)
 
 
+def tag_exists(version: str) -> bool:
+    """
+    Return True if ``v<version>`` is an existing git tag (i.e. shipped).
+
+    Used to recognize orphaned ``.release/`` state left behind by an
+    already-released cycle - the one unambiguous "this state is garbage" signal.
+    """
+    return bool(
+        git(["rev-parse", "--verify", "--quiet", f"refs/tags/v{version}"], check=False)
+    )
+
+
 def last_tag() -> str:
     """Return the most recent tag reachable from HEAD, or empty if none."""
     return git(["describe", "--tags", "--abbrev=0"], check=False)
@@ -337,30 +349,46 @@ def prevalidate(plan: dict, base: str) -> dict[int, list[str]]:
 
 def reconcile(plan: dict, state: dict) -> dict:
     """
-    Set-diff the working tree against the plan; report a covered-set delta.
+    Set-diff the working tree against the plan; decide whether ``recut`` may run.
 
-    Gates whenever the covered set changed vs ``confirmed_covered_set``: a new
-    path, a newly-touched covered path, an orphan, or a *dropped* path - one that
-    was covered before but is no longer touched (e.g. a fix reverted a file). A
-    dropped path can leave its plan group empty, so gating for a plan update here
-    is cleaner than letting ``recut`` pre-validation fail with an empty-commit
-    error. Pure content re-edits of already-approved files leave the set unchanged
-    and pass silently - this is what makes review-driven fixes cost zero gates.
+    A coda ``recut`` must gate iff the plan cannot currently execute - i.e. the
+    changed-path universe (``tracked_and_untracked(reset_target)``) has an
+    *orphan* (a changed path no group claims) or a group would be *empty* (none of
+    the changed paths match its globs - a group whose globs only match unchanged
+    files still commits nothing). Those are exactly the two conditions
+    ``prevalidate`` would raise on, surfaced here as a plan-update gate so the
+    agent fixes the globs before any git mutation.
+
+    The covered-set delta vs ``confirmed_covered_set`` (``new_covered`` /
+    ``dropped``) is reported for context but is **not**, on its own, a gate.
+    Earlier this gated directly, which dead-ended two real flows: after the agent
+    updated the plan to claim a new file it stayed ``new_covered`` and re-gated
+    forever; and reverting a covered file mid-coda left a ``dropped`` delta that
+    ``recut`` could never clear because the coda path never re-seeds
+    ``confirmed_covered_set``. Gating on the actual executability conditions
+    instead means a plan that matches the tree always proceeds - whether paths
+    were added, dropped, or only re-edited (the zero-gate review-fix path).
     """
     base = state["reset_target"]
     universe = tracked_and_untracked(base)
     assigned, orphans = assign_paths(universe, plan)
     covered = sorted(p for ps in assigned.values() for p in ps)
+    empty_groups = [
+        f"[{i}] {g['message']}"
+        for i, g in enumerate(plan["groups"])
+        if not assigned.get(i)
+    ]
     confirmed = set(state.get("confirmed_covered_set", []))
     new_covered = sorted(set(covered) - confirmed)
     dropped = sorted(confirmed - set(covered))
-    delta = bool(new_covered or orphans or dropped)
+    # Gate only on non-executability; the set-delta is advisory context.
     return {
         "covered": covered,
         "orphans": orphans,
+        "empty_groups": empty_groups,
         "new_covered": new_covered,
         "dropped": dropped,
-        "has_delta": delta,
+        "blocked": bool(orphans or empty_groups),
     }
 
 
@@ -952,8 +980,22 @@ def cmd_start(args: argparse.Namespace) -> int:
     """Handle ``release.py start``."""
     if STATE_FILE.is_file():
         existing = load_state()
+        existing_version = existing["version"]
+        if tag_exists(existing_version):
+            # Orphaned state from an already-shipped cycle (e.g. the coda never
+            # ran `push --done`, so `.release/` was never wiped). `abort` is
+            # ancestor-guarded: it rewinds at most this run's own un-finished
+            # recut commits (preserved in the working tree) and never the shipped
+            # release - typically nothing, since a shipped cycle's backup ref is
+            # not an ancestor of the current HEAD.
+            raise ReleaseError(
+                f"leftover .release/ state is from v{existing_version}, which is "
+                "already tagged (shipped). Run `release.py abort` to clear it - "
+                "ancestor-guarded, so it will not rewind the shipped release "
+                "(any un-finished recut commits are preserved in the tree)."
+            )
         raise ReleaseError(
-            f"a release for {existing['version']} is already in progress "
+            f"a release for {existing_version} is already in progress "
             f"(phase {existing['phase']}). Run `release.py status`, `resume`, or "
             "`abort` first."
         )
@@ -977,33 +1019,50 @@ def cmd_recut(_args: argparse.Namespace) -> int:
     """
     Handle ``release.py recut`` - the coda re-cut verb.
 
-    Reconcile against the plan; gate if the covered set changed, otherwise recut
-    silently and validate with lint-diff. This is the zero-agent-turn path for
-    review-driven fixes (decision 3/5).
+    Reconcile against the plan; gate only when the plan cannot execute against the
+    changed-path universe (an unclaimed orphan or an empty group). Otherwise recut
+    silently, re-seed ``confirmed_covered_set``, and validate with lint-diff -
+    reporting any advisory ``new_covered``/``dropped`` delta without gating. This
+    is the zero-agent-turn path for review-driven fixes (decision 3/5).
     """
     state = load_state()
     guard_resume(state)
     plan = load_plan()
     rec = reconcile(plan, state)
-    if rec["has_delta"]:
+    if rec["blocked"]:
+        # The plan cannot execute against the current changed-path universe: an
+        # orphan path no group claims, or a group none of the changed paths match
+        # (its globs may still match unchanged files). Gate for a plan fix before
+        # any git mutation.
         return emit_gate(
             "reconcile",
             {
-                "new_covered": rec["new_covered"],
                 "orphans": rec["orphans"],
+                "empty_groups": rec["empty_groups"],
+                "new_covered": rec["new_covered"],
                 "dropped": rec["dropped"],
                 "instructions": (
-                    "The working tree changed the covered set. Update "
-                    ".release/commit-plan.json to claim any orphan/new paths, then "
-                    "re-run `release.py recut`."
+                    "The commit-plan does not match the working tree. Add globs "
+                    "for any orphan paths, and remove or repoint any group listed "
+                    "in empty_groups, then re-run `release.py recut`."
                 ),
             },
             ["update-plan-and-rerun", "abort"],
         )
     subjects = recut(plan, state, validate=lambda: run_make("lint-diff"))
+    # Re-seed the confirmed covered set so state tracks what was actually cut.
+    # Without this, a later reconcile would keep reporting a stale new/dropped
+    # delta for paths this recut already reconciled.
+    state["confirmed_covered_set"] = rec["covered"]
     state["head_sha"] = head_sha()
     save_state(state)
-    print(json.dumps({"recut": subjects}, indent=2))
+    result = {"recut": subjects}
+    if rec["new_covered"] or rec["dropped"]:
+        result["reconciled"] = {
+            "new_covered": rec["new_covered"],
+            "dropped": rec["dropped"],
+        }
+    print(json.dumps(result, indent=2))
     return EXIT_OK
 
 
@@ -1047,26 +1106,40 @@ def cmd_abort(_args: argparse.Namespace) -> int:
 
     The safety backup ref is the authority on whether a rewind is owed: ``recut``
     writes ``refs/release-backup/<version>`` at the pre-recut HEAD before it
-    commits, and ``_finish`` deletes it on a clean finish. So:
+    commits, and ``_finish`` deletes it on a clean finish. A rewind is owed only
+    when the backup ref both *exists* and is an *ancestor of HEAD*:
 
-    - backup ref present  -> a recut ran this session and did not finish; rewind
-      to the backup HEAD (exactly the commits recut added), preserving content.
-    - backup ref absent   -> no un-finished recut exists. Any commits since the
-      tag are either the user's own pre-existing work or a *prior finalized and
-      pushed* release (the no-op re-run case). Rewinding them would unwind
-      published history - so touch nothing; just wipe state.
+    - backup present AND ancestor of HEAD -> a recut ran this session and did not
+      finish; rewind to the backup HEAD (exactly the commits recut added),
+      preserving content.
+    - backup present but NOT an ancestor  -> an orphaned backup from a divergent,
+      already-shipped cycle (e.g. the state left over when 1.16.0 shipped as a
+      *different* merged commit than its abandoned recut). Soft-resetting to it
+      would move the branch onto foreign history and stage a bogus diff - so
+      touch nothing; just wipe state.
+    - backup absent -> no un-finished recut exists. Any commits since the tag are
+      the user's own work or a prior finalized/pushed release; rewinding them
+      would unwind published history - touch nothing; wipe state.
 
-    This is the fix for the data-integrity bug where aborting a no-op re-run
-    soft-rewound an already-pushed release back into the working tree.
+    This is the fix for two data-integrity bugs: aborting a no-op re-run
+    soft-rewound an already-pushed release (the absent-ref case), and aborting
+    against a cross-cycle orphaned backup reset onto divergent history (the
+    non-ancestor case).
     """
     state = load_state()
     version = state["version"]
     backup = backup_ref(version)
     have_backup = bool(git(["rev-parse", "--verify", "--quiet", backup], check=False))
-    if have_backup:
+    if have_backup and _is_ancestor(backup, "HEAD"):
         # Rewind exactly to the pre-recut HEAD recorded by this run's recut.
         restore_soft(backup)
         print(f"soft-rewound this run's release commits to {backup}; tree preserved.")
+    elif have_backup:
+        print(
+            f"backup ref {backup} is not an ancestor of HEAD (orphaned state from a "
+            "divergent/shipped cycle) - leaving commits and working tree untouched; "
+            "only wiping .release/ state."
+        )
     else:
         print(
             "no un-finished recut to unwind (no backup ref) - leaving commits and "
