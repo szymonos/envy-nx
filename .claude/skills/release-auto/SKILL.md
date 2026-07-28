@@ -42,7 +42,7 @@ release.py resume  ──► [headless: force-push, PR upsert] ──► SPINE_C
    ── review coda (unless --skip-review) ──
    4a agent: /second-opinion (gpt-5.3-codex) → fold fixes → recut + push
    4b agent: trigger Copilot PR review, triage vs review-policy.json, apply fixes
-release.py recut   ──► [reconcile + recut + lint-diff]   (silent if no covered-set delta)
+release.py recut   ──► [reconcile + recut + lint-diff]   (silent unless the plan can't execute)
 release.py push --done ──► wipes .release/, release ready to merge
 ```
 
@@ -75,7 +75,9 @@ prints `DECISION_NEEDED` with a `phase1` payload (extract chunks, cspell finding
 
 If it exits 1, read the error and stop - a failed `make lint`/`make upgrade` must
 be fixed before the release proceeds. If a release is already in progress it tells
-you to `status`/`resume`/`abort` first.
+you to `status`/`resume`/`abort` first; if the leftover state is from an
+already-shipped (tagged) version it says so explicitly and points at `abort` (see
+**Recovery & inspection**) - just run `release.py abort` and re-`start`.
 
 ### Step 2 - the phase-1 gate (agent judgment)
 
@@ -251,12 +253,17 @@ introduces over the last tag).
    forget to `recut`, `release.py push` refuses (dirty plan-covered paths would be
    left unpushed) - run `recut` first.
 
-   `recut` reconciles the working tree against the plan. If the covered set is
-   unchanged (pure content re-edits of already-approved files - the common case
-   for a WAM tweak or a shim fix), it recuts **silently, zero agent turns**. If a
-   fix added a new file or touched a new path, it gates (`reconcile` payload,
-   exit 10) - update the plan's globs and re-run `recut`. Cap at 2 fix cycles;
-   after that, tell the user to run `/address-pr-review` manually.
+   `recut` reconciles the working tree against the plan and gates **only when the
+   plan cannot execute** - an `orphan` path no group's globs claim, or an
+   `empty_groups` entry whose globs now match nothing (e.g. a fix reverted the
+   only file a group covered). Fix the plan's globs (add a glob for an orphan;
+   remove or repoint an empty group) and re-run `recut`. Everything else recuts
+   **silently, zero agent turns** - pure content re-edits of already-approved
+   files (a WAM tweak, a shim fix), a new file the plan's globs *already* claim,
+   or a reverted file whose group you dropped. The `reconcile` payload also
+   reports `new_covered`/`dropped` for context, but those are advisory and never
+   gate on their own (a matched plan always proceeds). Cap at 2 fix cycles; after
+   that, tell the user to run `/address-pr-review` manually.
 
    After the coda `push`, **go back to step 1** - re-run `state`, and trigger
    again if it reports A (the force-push usually will not have re-requested
@@ -277,7 +284,17 @@ Deletes the safety backup ref, wipes `.release/`. The release is merge-ready.
 
 - `release.py status` - print the current state JSON.
 - `release.py abort` - soft-rewind any release commits back to the reset target
-  (work preserved in the working tree, never `--hard`) and wipe `.release/`.
+  (work preserved in the working tree, never `--hard`) and wipe `.release/`. The
+  rewind only fires when the safety backup ref is an **ancestor of HEAD** (this
+  run's un-finished recut); an orphaned backup from a divergent/shipped cycle, or
+  no backup at all, wipes state without touching any commits.
+- **Orphaned state from an already-shipped cycle:** if the coda never ran `push
+  --done` (or a run was interrupted after the tag shipped), `.release/` is left
+  behind. `start` detects this - when the leftover state's version is already a
+  git tag it refuses with `state is from v<X> which is already tagged (shipped);
+  run release.py abort to clear it` (not the generic "in progress" message). Run
+  `release.py abort`; it is ancestor-guarded, so it safely wipes the stale state
+  without rewinding the shipped release or any of your current work.
 - `resume` refuses if HEAD moved underneath the orchestrator (a manual commit/reset
   between steps) or the state version mismatches - inspect `git log`, `abort` and
   `start` fresh if the move was intentional.
@@ -333,7 +350,7 @@ description. This is the most common merge-case error.
 ## Anti-patterns
 
 - **Editing `.release/` files by hand mid-run** (except `commit-plan.json`, which the agent authors). State is the driver's; corrupting it breaks `resume`. Use `abort` to restart.
-- **Reasoning about whether to recut.** `recut` reconciles and decides. If nothing changed the covered set it's a silent no-op; just call it after a fix.
+- **Reasoning about whether to recut.** `recut` reconciles and decides. It's a silent no-op unless the plan can't execute against the tree (orphan path or empty group); just call it after a fix - including after *reverting* one, as long as you also drop the now-unused plan group.
 - **Calling `gh pr edit --add-reviewer` directly.** Use `pr_review.py trigger` - the raw call drifts on reviewer login/idempotency.
 - **Copying a reviewer's suggested fix verbatim,** or auto-applying findings without challenge. The reviewer is a different model with limited context; validate against author intent, surface uncertainty to the user.
 - **Adding a `Fixed`/`Changed` bullet for something that never shipped.** Fold into `Added` (see reclassification).
