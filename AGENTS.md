@@ -69,7 +69,7 @@ All `lint*` targets accept `HOOK=<id>` to run a single hook - seconds instead of
 
 ## Global Renames and Pattern Changes
 
-Before fixing a pattern globally, run `rg <pattern> .` or `git grep <pattern>` first to find **all** occurrences - don't start editing until the full scope is known. For bulk renames across multiple files, use `sed -i` instead of editing files one by one. Verify with another grep afterwards.
+Before fixing a pattern globally, run `git grep <pattern>` first to find **all** occurrences - don't start editing until the full scope is known. Prefer `git grep` here: it searches only tracked files, which is exactly the scope of a rename, and uses grep-compatible syntax. `rg <pattern>` also works (recursive by default - no `-r` needed; beware that in ripgrep `-r` is `--replace=TEXT`, so `rg -rn` rewrites every match to `n` instead of searching). For bulk renames across multiple files, use `sed -i` instead of editing files one by one. Verify with another search afterwards.
 
 ## Transitional code
 
