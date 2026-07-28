@@ -68,6 +68,7 @@ isatty
 jamf
 keytimeout
 koalaman
+ktog
 kubecolor
 kubectx
 kubelogin
