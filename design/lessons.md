@@ -54,7 +54,7 @@ To opt out for a commit that genuinely yields no generalization (and that touche
 <!-- Tags populate as entries land via the post-merge workflow -->
 
 - **cache-staleness** - [L-002](#l-002---2026-05-23---cache-staleness)
-- **general** - [L-003](#l-003---2026-07-24---general)
+- **general** - [L-003](#l-003---2026-07-24---general), [L-004](#l-004---2026-07-28---general)
 - **meta** - [L-000](#l-000---2026-05-23---meta)
 - **render-heuristics** - [L-001](#l-001---2026-05-23---render-heuristics)
 
@@ -108,5 +108,13 @@ To opt out for a commit that genuinely yields no generalization (and that touche
 **Source:** PR #46 (`281a7d6`)
 
 When syncing a vendored PowerShell module (do-common from ps-modules), a renamed/removed public parameter silently breaks first-party callers outside the module - PowerShell only fails at runtime param-binding, not at import. After a module sync, grep the repo for callers of any renamed parameter (e.g. `rg -- '-OldParamName'`) and update them in the same commit.
+
+---
+
+## L-004 - 2026-07-28 - general
+
+**Source:** PR #54 (`c647098`)
+
+a reconcile/plan-sync gate should fire on the actual non-executable conditions (unclaimed orphan, empty group), not on a covered-set delta proxy; gating on the delta dead-ends every flow that legitimately changes the set (claim a new path, revert a covered one) because the acknowledgment never clears the delta
 
 ---
