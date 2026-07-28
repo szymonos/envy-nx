@@ -5,6 +5,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.17.0] - 2026-07-28
+
+Adds `ktog`, a cross-shell toggle for the kubernetes prompt segment, hardens CI by pinning the third-party Nix installer action to an immutable commit SHA, and hardens the PowerShell `kubectl` version manager (checksum-verified atomic downloads plus correct `~/.local/bin` PATH precedence).
+
+### Added
+
+- `ktog` toggles the kubernetes context segment in the oh-my-posh prompt on/off for the current shell session, applying on the next prompt render (no per-keystroke redraw). Available in bash/zsh (`aliases_kubectl.sh`) and PowerShell (`_aliases_nix.ps1`); guarded on oh-my-posh being the active prompt. Kept repo-scoped rather than in the vendored `aliases-kubectl` module, which `nx update` overwrites from upstream `ps-modules`.
+- The four `omp_cfg/*.omp.json` themes now give the `kubectl` segment the `k8s` alias that `ktog` targets. `ktog` wraps `oh-my-posh toggle`, which has no starship equivalent, so it is intentionally oh-my-posh-scoped.
+
+### Changed
+
+- CI workflows pin `DeterminateSystems/nix-installer-action` to an immutable commit SHA (`v22`) instead of the mutable `@main` tag, closing a supply-chain gap where a compromised upstream `main` could run in CI.
+- Bumped the pinned `markdownlint-cli2` pre-commit hook to `v0.23.2`.
+- `Set-KubectlLocal` now downloads the server-matched `kubectl` via the new `Invoke-KubectlDownload`, which verifies the binary against the official SHA256 checksum, streams to a temp file with progress and a request timeout, and moves it into place atomically. A stalled, interrupted, or corrupted download can no longer hang the terminal or replace a good binary with a partial one.
+
+### Fixed
+
+- `/release-auto` `abort` now rewinds release commits only when its safety backup ref is an ancestor of HEAD, so aborting against an orphaned backup from a divergent or already-shipped cycle no longer resets the branch onto foreign history. `start` also refuses when leftover `.release/` state is from an already-tagged version, pointing at `abort` to clear it safely.
+- `/release-auto` coda `recut` now gates only when the commit-plan genuinely cannot execute (an unclaimed orphan path or a group whose globs match nothing), instead of on any covered-set delta. Reverting a change mid-coda, or adding a file the plan already claims, no longer dead-ends the reconcile gate; the set-delta is reported as advisory context and `confirmed_covered_set` is re-seeded after each recut.
+- PowerShell now keeps `~/.local/bin` ahead of `~/.nix-profile/bin` on `$PATH`, matching bash/zsh. The nix-managed profile's `nix:path` region re-fronts `~/.local/bin` after prepending the nix profile dirs, so user-managed shims (e.g. the `kubectl` version symlink from `Set-KubectlLocal`) shadow the nix package instead of losing to the latest nix `kubectl`. bash/zsh already got this ordering for free from the login shell pre-populating `~/.nix-profile/bin`; PowerShell has no login hook, so the ordering was inverted. Takes effect on the next `nx profile regenerate`.
+
 ## [1.16.1] - 2026-07-24
 
 ### Fixed
