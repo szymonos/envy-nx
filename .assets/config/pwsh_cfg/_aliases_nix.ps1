@@ -557,7 +557,7 @@ Register-ArgumentCompleter -CommandName nx -Native -ScriptBlock {
             elseif ($tokens[1].Value -eq 'profile') { 'doctor', 'regenerate', 'uninstall', 'help' }
             elseif ($tokens[1].Value -eq 'self') { 'update', 'path', 'help' }
             elseif ($tokens[1].Value -eq 'setup') {
-                '--az', '--bun', '--conda', '--docker', '--gcloud', '--k8s-base', '--k8s-dev', '--k8s-ext', '--nodejs', '--pwsh', '--python', '--rice', '--shell', '--terraform', '--zsh', '--all', '--upgrade', '--allow-unfree', '--unattended', '--skip-repo-update', '--update-modules', '--omp-theme', '--starship-theme', '--remove', '--help'
+                '--az', '--bun', '--conda', '--docker', '--gcloud', '--k8s-base', '--k8s-dev', '--k8s-ext', '--nodejs', '--pwsh', '--python', '--rice', '--shell', '--terraform', '--zsh', '--all', '--upgrade', '--allow-unfree', '--unattended', '--register-ssh-key', '--skip-repo-update', '--update-modules', '--omp-theme', '--starship-theme', '--remove', '--help'
             }
             elseif ($tokens[1].Value -eq 'doctor') {
                 '--strict', '--json'
@@ -603,7 +603,7 @@ Register-ArgumentCompleter -CommandName nx -Native -ScriptBlock {
                                         $scopeNames
                     }
                     default {
-                        '--az', '--bun', '--conda', '--docker', '--gcloud', '--k8s-base', '--k8s-dev', '--k8s-ext', '--nodejs', '--pwsh', '--python', '--rice', '--shell', '--terraform', '--zsh', '--all', '--upgrade', '--allow-unfree', '--unattended', '--skip-repo-update', '--update-modules', '--omp-theme', '--starship-theme', '--remove', '--help'
+                        '--az', '--bun', '--conda', '--docker', '--gcloud', '--k8s-base', '--k8s-dev', '--k8s-ext', '--nodejs', '--pwsh', '--python', '--rice', '--shell', '--terraform', '--zsh', '--all', '--upgrade', '--allow-unfree', '--unattended', '--register-ssh-key', '--skip-repo-update', '--update-modules', '--omp-theme', '--starship-theme', '--remove', '--help'
                     }
                 }
             }
