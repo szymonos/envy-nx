@@ -115,6 +115,16 @@ nix/setup.sh on macOS (no root available)
 
 The callers (`linux_setup.sh`, `wsl_setup.ps1`) handle the system-wide installs with `sudo`. They pass all scope flags through to `nix/setup.sh`, which decides whether to install or skip the nix scope based on platform detection. This keeps the decision centralized - a new entry point does not need to know which scopes are system-prefer.
 
+### Why macOS keeps its BSD userland (no GNU coreutils by default)
+
+**The objection:** "Nix installing GNU coreutils everywhere gives a consistent userland across macOS and Linux. Consistency is good - keep it."
+
+macOS ships a complete BSD userland (`df`, `ls`, `cp`, `find`, `awk`, `date`, ...). `nix/setup.sh` prepends `~/.nix-profile/bin` to PATH so nix tools win - which is correct for *additive* tools (ripgrep, eza, bat, fzf) that have no system equivalent. It is wrong for `coreutils`, `findutils`, and `gawk`, which reimplement the core userland with divergent flags and output formats. Installing them in the always-on base means `which df` resolves to GNU `df`, and every existing macOS script that relied on BSD behavior silently changes semantics.
+
+This also contradicted the project's own stance: it writes nix-path scripts to bash 3.2 + BSD `sed`/`grep` *because macOS is BSD* - then shipped a GNU userland that shadowed those same BSD tools for the user's scripts. It even grew a latent dependency on the injected tools: `nix/configure/omp.sh` used `readlink -f` (GNU-only), which only worked on macOS because the shadowing masked it.
+
+On Linux and in minimal containers the calculus reverses: the base may be BusyBox or stripped down, so guaranteeing a full GNU coreutils is a genuine benefit. So the decision is a platform split - `base.nix` adds the trio only off-Darwin (`lib.optionals (!stdenv.isDarwin)`, mirroring `docker.nix`). A macOS user who deliberately wants GNU tools opts in with `nx install coreutils findutils gawk`, which is exactly how a macOS developer already reasons about them (the Homebrew `coreutils` formula is a conscious `g`-prefixed choice for the same reason). Standard userland utilities should never be silently overridden (decision 0009).
+
 ### Why two Linux entry points (`linux_setup.sh` and `nix/setup.sh`)
 
 **The objection:** "Three setup entry points (`nix/setup.sh`, `linux_setup.sh`, `wsl/wsl_setup.ps1`) is one too many. Collapse `linux_setup.sh` into a `--system-prep` phase inside `setup.sh` so there's a single entry point on Linux."

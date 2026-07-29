@@ -55,7 +55,17 @@ if [[ -n "$omp_theme" ]]; then
     theme_src="$SCRIPT_ROOT/.assets/config/omp_cfg/${omp_theme}.omp.json"
   else
     omp_bin="$(command -v oh-my-posh)"
-    omp_store_path="$(dirname "$(dirname "$(readlink -f "$omp_bin")")")"
+    # resolve the symlink chain without GNU `readlink -f` (BSD readlink lacks -f;
+    # on macOS the GNU coreutils that provided it are no longer installed)
+    omp_real="$omp_bin"
+    while [ -L "$omp_real" ]; do
+      _link="$(readlink "$omp_real")"
+      case "$_link" in
+      /*) omp_real="$_link" ;;
+      *) omp_real="$(dirname "$omp_real")/$_link" ;;
+      esac
+    done
+    omp_store_path="$(dirname "$(dirname "$omp_real")")"
     nix_theme_dir="$omp_store_path/share/oh-my-posh/themes"
     if [[ -f "$nix_theme_dir/${omp_theme}.omp.json" ]]; then
       theme_src="$nix_theme_dir/${omp_theme}.omp.json"
