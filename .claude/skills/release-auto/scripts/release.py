@@ -63,7 +63,9 @@ EXIT_GATE = 10
 CHANGELOG_RIDERS = ("CHANGELOG.md", "project-words.txt", "pyproject.toml", "uv.lock")
 
 SECTION_HEADER_RE = re.compile(r"^## \[([^\]]+)\](?:\s*-\s*(\S+))?\s*$")
-SHARED = Path(".claude/skills/prepare-release/scripts")
+# Shared leaf scripts (extract.py, cspell_words.py, test_stats.py,
+# extract_signals.py) - absorbed from the retired /prepare-release skill.
+SHARED = Path(".claude/skills/release-auto/scripts")
 # Committed default review policy, seeded into .release/ for the coda to edit.
 DEFAULT_POLICY = Path(".claude/skills/release-auto/review-policy.json")
 
@@ -153,9 +155,12 @@ def tracked_and_untracked(base: str) -> list[str]:
     # staged in the index but no longer differ in the working tree; `--cached`
     # compares base->index. Union of the two covers committed + staged + unstaged
     # tracked changes regardless of where a given change currently sits.
-    tracked = git(["diff", "--name-only", base], check=False)
+    # `--no-renames` so a rename surfaces as BOTH its delete (source) and add
+    # (destination) paths; otherwise the collapsed source path escapes every
+    # group's globs and its removal is never staged (a moved file left duplicated).
+    tracked = git(["diff", "--no-renames", "--name-only", base], check=False)
     paths.update(p for p in tracked.splitlines() if p)
-    staged = git(["diff", "--name-only", "--cached", base], check=False)
+    staged = git(["diff", "--no-renames", "--name-only", "--cached", base], check=False)
     paths.update(p for p in staged.splitlines() if p)
     # -uall expands untracked directories into individual file paths; without it
     # git reports a wholly-untracked dir as a single `?? dir/` entry that no glob
@@ -178,9 +183,11 @@ def working_tree_dirty_paths() -> list[str]:
     """
     paths: set[str] = set()
     # base=HEAD, so this is dirt vs the last commit, not vs the release tag.
-    tracked = git(["diff", "--name-only", "HEAD"], check=False)
+    tracked = git(["diff", "--no-renames", "--name-only", "HEAD"], check=False)
     paths.update(p for p in tracked.splitlines() if p)
-    staged = git(["diff", "--name-only", "--cached", "HEAD"], check=False)
+    staged = git(
+        ["diff", "--no-renames", "--name-only", "--cached", "HEAD"], check=False
+    )
     paths.update(p for p in staged.splitlines() if p)
     porcelain = git(["status", "--porcelain", "-uall"], check=False)
     for line in porcelain.splitlines():
@@ -607,7 +614,7 @@ def read_decision(src: str) -> dict:
 # -- phases -------------------------------------------------------------------
 
 
-def phase_start(version: str, skip_review: bool) -> int:
+def phase_start(version: str, skip_review: bool, reopen: bool = False) -> int:
     """
     Run the headless pre-gate work and stop at the phase-1 gate.
 
@@ -625,16 +632,25 @@ def phase_start(version: str, skip_review: bool) -> int:
     # AND HEAD already pushed means this exact release was cut and published in a
     # prior run. Starting again would re-cut identical commits and re-trigger the
     # review coda for zero change. Refuse before any mutation (no lint/upgrade).
-    if version_exists(version) and tree_is_clean() and head_is_published():
+    if (
+        not reopen
+        and version_exists(version)
+        and tree_is_clean()
+        and head_is_published()
+    ):
         raise ReleaseError(
             f"release {version} is already cut, committed, and pushed - nothing to "
-            "do. If you have new changes, make them first; to re-open the release "
-            "for edits, add commits/edits and re-run `start`."
+            "do. If you have new changes, make them first; to re-cut/consolidate the "
+            "already-pushed commits (e.g. fold coda follow-ups), re-run "
+            "`start --reopen`."
         )
 
     run_make("lint")
-    _bump_pyproject(version)
-    run_make("upgrade")
+    if not reopen:
+        # --reopen freezes the release payload: skip the version bump and dependency
+        # upgrade so a consolidation re-cut never re-resolves deps or alters content.
+        _bump_pyproject(version)
+        run_make("upgrade")
 
     is_rerun = version_exists(version)
     state = {
@@ -901,6 +917,13 @@ def _do_push() -> None:
     branch = current_branch()
     if not branch or branch == "HEAD":
         raise ReleaseError("detached HEAD - cannot push a release without a branch.")
+    if head_is_published():
+        # The branch is already in sync with origin - e.g. pushed out-of-band
+        # because this tool cannot push to a guarded remote. Skip the push so the
+        # caller still runs _upsert_pr() + finalize instead of aborting on a
+        # rejected push (which would strand the PR-body sync and state wipe).
+        print("branch already in sync with origin - skipping push")
+        return
     upstream = git(
         ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], check=False
     )
@@ -999,7 +1022,7 @@ def cmd_start(args: argparse.Namespace) -> int:
             f"(phase {existing['phase']}). Run `release.py status`, `resume`, or "
             "`abort` first."
         )
-    return phase_start(args.version, args.skip_review)
+    return phase_start(args.version, args.skip_review, args.reopen)
 
 
 def cmd_resume(args: argparse.Namespace) -> int:
@@ -1165,6 +1188,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_start.add_argument("--version", required=True, help="Target version, e.g. 1.16.0")
     p_start.add_argument(
         "--skip-review", action="store_true", help="Skip the review coda"
+    )
+    p_start.add_argument(
+        "--reopen",
+        action="store_true",
+        help="Re-cut/consolidate an already-pushed release (skips bump + upgrade)",
     )
     p_start.set_defaults(func=cmd_start)
 

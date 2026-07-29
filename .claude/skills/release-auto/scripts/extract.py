@@ -1,6 +1,6 @@
 #!/usr/bin/env -S uv run python3
 """
-Extract CHANGELOG sections + git context for the /prepare-release skill.
+Extract CHANGELOG sections + git context for the /release-auto skill.
 
 Avoids the agent having to Read the full CHANGELOG.md (often 100+ KB). Emits
 only the sections needed to compose a new release: the [Unreleased] body, the
@@ -22,8 +22,8 @@ report ``[none]`` for such a branch and hide the entire release. So:
                      are visible at a glance.
 
 Usage:
-    .claude/skills/prepare-release/scripts/extract.py --version 1.7.3
-    python3 .claude/skills/prepare-release/scripts/extract.py --version 1.7.3
+    .claude/skills/release-auto/scripts/extract.py --version 1.7.3
+    python3 .claude/skills/release-auto/scripts/extract.py --version 1.7.3
 """
 
 from __future__ import annotations
@@ -71,9 +71,9 @@ def run_git(args: list[str]) -> str:
 
 
 def main() -> int:
-    """Parse args, read the CHANGELOG, emit chunks for /prepare-release."""
+    """Parse args, read the CHANGELOG, emit chunks for /release-auto."""
     parser = argparse.ArgumentParser(
-        description="Extract CHANGELOG sections + git context for /prepare-release"
+        description="Extract CHANGELOG sections + git context for /release-auto"
     )
     parser.add_argument(
         "--version", required=True, help="Target release version, e.g. 1.7.3"
