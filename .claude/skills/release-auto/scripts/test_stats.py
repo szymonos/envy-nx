@@ -4,7 +4,7 @@ test_stats.py - count current bats/Pester suites and report drift in docs.
 
 Stat callouts in docs (`docs/standards.md` total counters, `docs/index.md`
 quick-facts table, `ARCHITECTURE.md` test-coverage paragraphs, etc.) go stale
-the moment a test file is added or an `It` block lands. The /prepare-release
+the moment a test file is added or an `It` block lands. The /release-auto
 skill calls this helper in Phase 1.7 to detect drift before the CHANGELOG is
 composed - so any necessary doc edits land in the same release.
 
@@ -30,8 +30,8 @@ Both subcommands run from the repo root (resolved via `git rev-parse
 
 Usage
 -----
-    .claude/skills/prepare-release/scripts/test_stats.py scan
-    .claude/skills/prepare-release/scripts/test_stats.py audit
+    .claude/skills/release-auto/scripts/test_stats.py scan
+    .claude/skills/release-auto/scripts/test_stats.py audit
 """
 
 from __future__ import annotations

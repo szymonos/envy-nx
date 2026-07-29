@@ -11,19 +11,18 @@ driver, `scripts/release.py`, owns the **deterministic spine**; the agent is a
 **decision oracle** called only at batched gates. Tagging is **out of scope** -
 `make release` handles it post-merge.
 
-This skill is the inverted-control successor to `/prepare-release`. Where that
-skill is a ~10K-token runbook the agent interprets turn-by-turn, here the agent
-runs `release.py`, reads a `DECISION_NEEDED` payload, decides, and re-invokes.
-Mechanical steps never reach the agent's context.
+This skill uses inverted control: instead of the agent interpreting a turn-by-turn
+runbook, it runs `release.py`, reads a `DECISION_NEEDED` payload, decides, and
+re-invokes. Mechanical steps never reach the agent's context. It replaced - and
+absorbed the shared leaf scripts of - the now-retired `/prepare-release` skill
+(see **History**).
 
 ## When to use
 
 - `/release-auto 1.16.0` - cut 1.16.0 from the current branch, orchestrator-driven
 - `/release-auto 1.16.0 --skip-review` - skip *both* coda review layers, second-opinion (4a) and Copilot PR review (4b) (urgent hotfix, Copilot offline, already reviewed)
+- `/release-auto 1.16.0 --reopen` - re-cut/consolidate an already-cut+pushed release with no new changes (e.g. fold coda follow-up commits back into clean per-group commits). Freezes content: skips the version bump + `make upgrade`. See **Recovery & inspection**.
 - "cut the release the automated way" / "run the orchestrated release" - same
-
-For the legacy turn-by-turn flow, use `/prepare-release`. See **Retirement** below
-for when this skill replaces it outright.
 
 ## Prerequisites
 
@@ -283,6 +282,13 @@ Deletes the safety backup ref, wipes `.release/`. The release is merge-ready.
 ## Recovery & inspection
 
 - `release.py status` - print the current state JSON.
+- `release.py start --reopen --version <X.Y.Z>` - re-cut an already-cut+pushed
+  release that has **no new changes**. Skips the "nothing to do" guard and the
+  version bump + `make upgrade` (content frozen), then runs the normal
+  phase-1 → recut → push flow. Use to fold coda follow-up commits (made outside the
+  spine, or after `.release/` was wiped) back into clean per-group commits. The
+  recut rewrites the pushed branch, so the push is a force-push. Requires `.release/`
+  to be absent (wipe a stale run with `abort` first).
 - `release.py abort` - soft-rewind any release commits back to the reset target
   (work preserved in the working tree, never `--hard`) and wipe `.release/`. The
   rewind only fires when the safety backup ref is an **ancestor of HEAD** (this
@@ -302,18 +308,21 @@ Deletes the safety backup ref, wipes `.release/`. The release is merge-ready.
   HEAD as a breadcrumb; it is preserved on failure for inspection (`git log
   refs/release-backup/<version>`) and only deleted on a clean finish.
 
-## Shared scripts (reused unchanged)
+## Scripts
 
-This skill owns only the spine (`release.py` + the three JSON contracts). It reuses
-the `/prepare-release`, `/second-opinion`, and `/address-pr-review` leaf skills verbatim:
+The spine (`release.py` + the three JSON contracts) plus the leaf scripts absorbed
+from the retired `/prepare-release` skill, all under `scripts/`:
 
-- `.claude/skills/prepare-release/scripts/extract.py` - CHANGELOG + git-context chunks.
-- `.claude/skills/prepare-release/scripts/cspell_words.py` - `scan` / `add`.
+- `scripts/extract.py` - CHANGELOG + git-context chunks.
+- `scripts/cspell_words.py` - `scan` / `add`.
+- `scripts/test_stats.py`, `scripts/extract_signals.py` - interstitial checks
+  (test-stat drift, learning extraction) when a release warrants them.
+
+It also drives two sibling skills, used verbatim:
+
 - `.claude/skills/second-opinion/SKILL.md` + `REVIEW-BRIEF.md` - heterogeneous-model
   review (Step 4a); the `copilot` CLI invocation and the project review brief.
 - `.claude/skills/address-pr-review/scripts/pr_review.py` - `state`/`trigger`/`wait`/`resolve`.
-- `test_stats.py`, `extract_signals.py` - available for the same interstitial checks
-  as `/prepare-release` (test-stat drift, learning extraction) when a release warrants them.
 
 ## Bullet style guidelines
 
@@ -359,22 +368,13 @@ description. This is the most common merge-case error.
 - **Tagging the release** - `make release` tags post-merge. Out of scope.
 - **Skipping either review layer by your own judgment.** The only skip is `--skip-review`, and it skips *both* second-opinion (4a) and the Copilot PR review (4b) together - you cannot drop just one. New features are the *most* important case to review.
 
-## Retirement
+## History
 
-This skill is the strangler-fig replacement for `/prepare-release`. During overlap,
-lessons and fixes apply to **this** skill; `/prepare-release` is maintenance-only.
-
-**Retirement trigger - delete `/prepare-release` when all hold:**
-
-1. **≥ 3 clean releases** shipped through `/release-auto` with no fallback to `/prepare-release`.
-2. **No spine failure** left git half-mutated across those releases (the safety backup ref never had to be used for real recovery).
-3. **Measured token cost** of a full `/release-auto` run is in the tens-of-thousands, not the ~200K that motivated the inversion.
-
-When the trigger fires: `git rm -r .claude/skills/prepare-release`, keeping the
-shared leaf scripts (`extract.py`, `cspell_words.py`, `test_stats.py`,
-`extract_signals.py`) by moving them under `.claude/skills/release-auto/scripts/`
-and updating the paths in this file. Note the removal in the CHANGELOG and
-`design/lessons.md`.
+`/release-auto` replaced `/prepare-release` (a ~10K-token turn-by-turn runbook) with
+inverted control to cut release token cost. `/prepare-release` has been **retired
+and removed**; its shared leaf scripts (`extract.py`, `cspell_words.py`,
+`test_stats.py`, `extract_signals.py`) now live under `scripts/` here and are
+invoked via the `SHARED` constant in `release.py`.
 
 ## Example invocations
 

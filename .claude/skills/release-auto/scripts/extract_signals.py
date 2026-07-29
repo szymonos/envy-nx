@@ -1,6 +1,6 @@
 #!/usr/bin/env -S uv run python3
 """
-Bundled helpers for /prepare-release.
+Bundled helpers for /release-auto.
 
 Subcommands: signals, architecture, preflight-wip.
 """
