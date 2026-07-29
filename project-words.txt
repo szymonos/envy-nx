@@ -46,6 +46,7 @@ euid
 execvpe
 fastfetch
 fileno
+findutils
 fixability
 fixcertpy
 fnm
@@ -126,6 +127,7 @@ pypi
 pyproject
 pytest
 readarray
+readlink
 redef
 reexeced
 regenerable
@@ -146,6 +148,7 @@ sigstore
 sonoma
 soupsieve
 sourceable
+stdenv
 stdlib
 storeutl
 subshell
@@ -165,6 +168,7 @@ unioned
 unsets
 unvalidated
 upserts
+userland
 vdisk
 venv
 versinfo
