@@ -14,16 +14,17 @@ Universal, cross-platform system configuration and developer environment setup. 
 
 Three knowledge layers beyond this file. Read on demand, not upfront:
 
-| Layer                                            | When to read                                         | What it answers         |
-| ------------------------------------------------ | ---------------------------------------------------- | ----------------------- |
-| [`ARCHITECTURE.md`](ARCHITECTURE.md)             | Modifying phases, scopes, nx CLI, hooks, constraints | How things connect      |
-| [`design/decisions/`](design/decisions/INDEX.md) | Questioning why the project uses approach A over B   | Why things are this way |
-| [`design/lessons.md`](design/lessons.md)         | Fixing bugs in shell-init, caching, profiles         | What went wrong before  |
+| Layer                                            | When to read                                                            | What it answers         |
+| ------------------------------------------------ | ----------------------------------------------------------------------- | ----------------------- |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md)             | Reasoning about or modifying phases, scopes, nx CLI, hooks, constraints | How things connect      |
+| [`design/decisions/`](design/decisions/INDEX.md) | Questioning why the project uses approach A over B                      | Why things are this way |
+| [`design/lessons.md`](design/lessons.md)         | Fixing bugs in shell-init, caching, profiles                            | What went wrong before  |
 
 ## Architecture
 
-`ARCHITECTURE.md` is the single source of truth for file classification, call tree, constraints, runtime layout, pre-commit hooks, and step-by-step recipes. **Read it first** when the task touches any of:
+`ARCHITECTURE.md` is the single source of truth for file classification, call tree, constraints, runtime layout, pre-commit hooks, and step-by-step recipes. **Read it first** when the task touches any of the below. "Touches" includes *reasoning about* a subsystem, not only editing it: if you are analyzing, triaging, debugging, or answering how something behaves, read the relevant section **before your first factual claim** - even if you will not change a single file.
 
+- Analyzing, triaging, or answering how a subsystem behaves (macOS-vs-Linux behavior, PATH ordering, scope/package layering, cert flow) -> read the matching section below before asserting anything
 - Adding/modifying a scope, `nx` verb, family file, doctor check, flag, completer, or pre-commit hook -> use the recipes in section 6
 - Anything under `nix/lib/phases/`, `nix/configure/`, or the `phase_*` orchestration -> section 3a
 - Files sourced into the user's shell (`.assets/config/shell_cfg/*`, `.assets/lib/nx*.sh`, `.assets/lib/profile_block.sh`) -> zsh-compat rules in section 7.3
@@ -32,7 +33,7 @@ Three knowledge layers beyond this file. Read on demand, not upfront:
 - A pre-commit hook fires that you don't recognize -> section 8 explains each one
 - A constraint feels arbitrary (`set -eo pipefail` without `-u`, no `flake.lock` in repo, atomic file install) -> section 5
 
-Skip reading it for typo fixes, doc-only edits, and conversational questions.
+Skip reading it only for typo fixes, doc-only edits with no architectural claims, and questions unrelated to how the system works (e.g. "what's the release command?"). Discussing or grilling a design doc that concerns scopes, PATH, phases, certs, or macOS behavior is **not** a "conversational question" - read the relevant section first.
 
 **Scope system**: users select feature sets (e.g., `shell`, `python`, `k8s_base`, `pwsh`). Scope logic and dependency resolution are in `.assets/lib/scopes.sh`; canonical definitions in `.assets/lib/scopes.json`. The Nix path uses the same scope names with package lists in `nix/scopes/*.nix`.
 
