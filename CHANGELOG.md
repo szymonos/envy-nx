@@ -5,6 +5,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.18.0] - 2026-07-29
+
+Aligns macOS with its native BSD userland (no more GNU coreutils shadowing system tools), makes GitHub SSH-key registration opt-in, and fixes two latent macOS issues surfaced along the way. Also consolidates release tooling on `/release-auto` and retires `/prepare-release`.
+
+### Added
+
+- `--register-ssh-key` (and `NX_REGISTER_SSH_KEY=1`) opt into registering the generated SSH key with GitHub. Registration is otherwise skipped, so a pre-existing narrow-scope token no longer triggers a device-code prompt mid-install.
+- `/release-auto --reopen` re-cuts an already-cut-and-pushed release with no new changes, folding review-coda follow-up commits into clean per-group commits; it skips the version bump and `make upgrade` so the release payload stays frozen.
+- `make mkdocs-build` builds the docs with `mkdocs build --strict`, catching broken links and other strict-mode failures before they ship.
+
+### Changed
+
+- On macOS the always-installed base no longer includes GNU `coreutils`, `findutils`, or `gawk`. These reimplement macOS's BSD userland with different flags/output and, because `~/.nix-profile/bin` is prepended to `PATH`, silently shadowed the system tools every macOS script relies on. Linux/containers still get them; macOS users who want GNU tools opt in with `nx install coreutils findutils gawk`. See [decision 0009](design/decisions/0009-macos-bsd-userland.md).
+- GitHub SSH-key registration during setup is now opt-in (previously automatic). The local `~/.ssh/id_ed25519` key is still generated and `known_hosts` is still populated.
+
+### Fixed
+
+- `nix/configure/gh.sh` no longer launches an interactive `gh auth refresh` device-code flow under `--unattended` or without a TTY, which could hang automated/CI installs when the existing token lacked the `admin:public_key` scope.
+- `nix/configure/omp.sh` resolves the oh-my-posh store path without GNU-only `readlink -f`, which would otherwise break on macOS once GNU coreutils is no longer installed.
+
+### Removed
+
+- The `/prepare-release` skill, superseded by `/release-auto`. Its shared leaf scripts (`extract.py`, `cspell_words.py`, `test_stats.py`, `extract_signals.py`) moved to `.claude/skills/release-auto/scripts/`.
+
 ## [1.17.0] - 2026-07-28
 
 Adds `ktog`, a cross-shell toggle for the kubernetes prompt segment, hardens CI by pinning the third-party Nix installer action to an immutable commit SHA, and hardens the PowerShell `kubectl` version manager (checksum-verified atomic downloads plus correct `~/.local/bin` PATH precedence).
