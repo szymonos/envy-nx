@@ -14,3 +14,4 @@ New decisions are created by the [`grill-with-docs`](../../.claude/skills/grill-
 | 0006 | Nix, not Homebrew                | `nix/**`, `.assets/lib/scopes.*`                          | [0006](0006-nix-not-homebrew.md)    |
 | 0007 | Bash end-to-end, not Python      | `nix/setup.sh`, `.assets/lib/nx*.sh`                      | [0007](0007-bash-not-python.md)     |
 | 0008 | Unfree packages opt-in           | `nix/flake.nix`, `.assets/lib/nx.sh`                      | [0008](0008-unfree-opt-in.md)       |
+| 0009 | macOS keeps its BSD userland     | `nix/scopes/base.nix`, macOS nix-path scripts             | [0009](0009-macos-bsd-userland.md)  |
