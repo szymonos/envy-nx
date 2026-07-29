@@ -4,6 +4,8 @@ Universal, cross-platform developer environment provisioning with Nix. One comma
 
 ## Quick start
 
+First run takes roughly 5-15 minutes, depending on the machine and selected scopes.
+
 ```bash
 # macOS / Linux (git)
 git clone https://github.com/szymonos/envy-nx.git
@@ -15,6 +17,8 @@ curl -LO https://github.com/szymonos/envy-nx/releases/latest/download/envy-nx.ta
 tar xzf envy-nx.tar.gz && cd envy-nx-*/
 nix/setup.sh --shell --python --pwsh
 ```
+
+> **Private forks:** release assets on a private repo aren't anonymously downloadable, so the `curl` tarball command 404s. Use `git clone` (authenticated) or `gh release download` instead.
 
 ```powershell
 # WSL (from PowerShell on Windows host)

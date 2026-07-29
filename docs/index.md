@@ -158,6 +158,8 @@ See [Architecture](architecture.md) for phase details, package composition, and 
 
 ## Getting started
 
+First run takes roughly 5-15 minutes, depending on the machine and selected scopes.
+
 === "macOS / Linux (tarball)"
 
     No git required:
@@ -169,6 +171,10 @@ See [Architecture](architecture.md) for phase details, package composition, and 
     ```
 
     On macOS, Nix is installed automatically via the [Determinate Systems](https://determinate.systems/) installer if not already present.
+
+    !!! note "Private forks"
+
+        Release assets on a private repo aren't anonymously downloadable, so the `curl` command above 404s there. Use the **git** tab (authenticated) or `gh release download` instead.
 
 === "macOS / Linux (git)"
 
