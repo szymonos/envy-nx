@@ -89,9 +89,11 @@ test-upgrade-walk: ## Cross-version upgrade walk in Docker (slow, ~20+ min). WAL
 		$(CLEANUP_ROOT_CERT); \
 		exit $$rc
 
-.PHONY: mkdocs-serve slides-update-check
+.PHONY: mkdocs-serve mkdocs-build slides-update-check
 mkdocs-serve: ## Serve mkdocs documentation with live reload
 	uv run --group docs --frozen mkdocs serve --livereload
+mkdocs-build: ## Build mkdocs documentation with strict validation
+	uv run --group docs --frozen mkdocs build --strict
 slides-update-check:  ## Compare pinned reveal.js version against the latest upstream release
 	@local_pin=$$(grep -oE 'reveal\.js@[^/"]+' docs/slides/index.html 2>/dev/null \
 		| head -1 | sed 's/^reveal\.js@//' || echo unknown); \
