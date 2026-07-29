@@ -40,7 +40,7 @@ function _nx_completions() {
       [ -n "$_scopes" ] && while IFS= read -r line; do COMPREPLY+=("$line"); done < <(compgen -W "$_scopes" -- "$cur")
       ;;
     *)
-      while IFS= read -r line; do COMPREPLY+=("$line"); done < <(compgen -W "--az --bun --conda --docker --gcloud --k8s-base --k8s-dev --k8s-ext --nodejs --pwsh --python --rice --shell --terraform --zsh --all --upgrade --allow-unfree --unattended --skip-repo-update --update-modules --omp-theme --starship-theme --remove --help -h" -- "$cur")
+      while IFS= read -r line; do COMPREPLY+=("$line"); done < <(compgen -W "--az --bun --conda --docker --gcloud --k8s-base --k8s-dev --k8s-ext --nodejs --pwsh --python --rice --shell --terraform --zsh --all --upgrade --allow-unfree --unattended --register-ssh-key --skip-repo-update --update-modules --omp-theme --starship-theme --remove --help -h" -- "$cur")
       ;;
     esac
   elif [ "$COMP_CWORD" -ge 2 ] && [ "${COMP_WORDS[1]}" = "doctor" ]; then

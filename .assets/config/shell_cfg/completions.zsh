@@ -171,6 +171,7 @@ function _nx() {
         '--upgrade:upgrade all packages'
         '--allow-unfree:allow unfree packages'
         '--unattended:skip interactive steps'
+        '--register-ssh-key:register the generated SSH key with GitHub (opt-in)'
         '--skip-repo-update:skip the git fetch + fast-forward of the source repo'
         '--update-modules:update PowerShell modules'
         '--omp-theme:oh-my-posh theme name'

@@ -120,6 +120,7 @@
         { "long": "--upgrade", "summary": "upgrade all packages" },
         { "long": "--allow-unfree", "summary": "allow unfree packages" },
         { "long": "--unattended", "summary": "skip interactive steps" },
+        { "long": "--register-ssh-key", "summary": "register the generated SSH key with GitHub (opt-in)" },
         { "long": "--skip-repo-update", "summary": "skip the git fetch + fast-forward of the source repo" },
         { "long": "--update-modules", "summary": "update PowerShell modules" },
         { "long": "--omp-theme", "summary": "oh-my-posh theme name", "takes_value": true, "value_completer": "theme_omp" },

@@ -447,6 +447,7 @@ Options:
   --omp-theme <name>        Install oh-my-posh with theme (base, nerd, powerline, ...)
   --starship-theme <name>   Install starship with theme (base, nerd)
   --unattended              Skip all interactive steps (gh auth, SSH key, git config)
+  --register-ssh-key        Register the generated SSH key with GitHub (opt-in)
   --skip-repo-update        Skip the git fetch + fast-forward of the source repo
   --update-modules          Update installed PowerShell modules
   -h, --help                Show this help
@@ -511,6 +512,10 @@ phase_bootstrap_parse_args() {
       ;;
     --unattended)
       unattended="true"
+      ;;
+    --register-ssh-key)
+      # gh.sh runs as a child process and reads this env var
+      export NX_REGISTER_SSH_KEY=1
       ;;
     --skip-repo-update)
       # consumed earlier by phase_bootstrap_refresh_repo; accept here so
