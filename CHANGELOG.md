@@ -5,6 +5,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.18.1] - 2026-07-29
+
+### Changed
+
+- Deduplicated internal shell helpers (no behavior change): the invoking-shell detection ladder in `nx_doctor.sh` (`_detect_invoking_shell`), the `pip show` → certifi-path parse repeated 3× in `functions.sh` `fixcertpy` (`_certifi_from_show`), and the two identical PEM-bundle serial-extraction loops in `certs.sh` (`_cert_bundle_serials`).
+
+### Removed
+
+- Dead-code cleanup: removed unreferenced files (benchmark toys `cmd_bench.ps1`/`cmd_bench_compare.ps1`/`term_bench.{ps1,sh}`, orphaned `set_ulimits.sh`/`set_authorized_keys.sh`/`enforce_ssh_git_protocol.sh`, and the superseded legacy PowerShell config `profile.ps1`/`_aliases_linux.ps1`/`_aliases_common.ps1`, fully absorbed into `profile_nix.ps1`/`_aliases_nix.ps1`), the unused `_with_timeout` helper in `.assets/lib/helpers.sh` (zero callers; `nx_doctor` uses `_dr_timeout_cmd`), and a dead `sh.in` glob token in `.editorconfig`.
+- Consolidated the duplicated managed-env-block renderer: the legacy zsh-setup copy `.assets/lib/env_block.sh` is removed and `setup_profile_user.zsh` now sources `nx_profile.sh` directly, leaving a single `_nx_render_env_block` definition instead of two hand-synced copies (rendered output byte-identical).
+
 ## [1.18.0] - 2026-07-29
 
 Aligns macOS with its native BSD userland (no more GNU coreutils shadowing system tools), makes GitHub SSH-key registration opt-in, and fixes two latent macOS issues surfaced along the way. Also consolidates release tooling on `/release-auto` and retires `/prepare-release`.
