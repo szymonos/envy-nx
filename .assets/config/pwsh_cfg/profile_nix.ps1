@@ -1,6 +1,5 @@
 # PowerShell base profile for Nix-managed environments.
 # Dot-sourced from $PROFILE.CurrentUserAllHosts by nix/configure/profiles.ps1.
-# For the legacy (AllUsers) equivalent, see profile.ps1.
 
 #region startup settings
 # import posh-git module for git autocompletion.
