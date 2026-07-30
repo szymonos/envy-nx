@@ -234,8 +234,8 @@ _check_scope_bins_in_profile() {
   fi
 }
 
-# Resolve the rc file matching the invoking shell. Used by both shell_profile
-# and shell_config_files so the choice stays consistent.
+# Detect the invoking shell name (echoes "zsh" or a bash-family name). Used to
+# resolve the matching rc file and to label the doctor log header.
 #
 # Resolution order:
 #   1. NX_INVOKING_SHELL env var - set by the `nx` shell wrapper from
@@ -246,7 +246,7 @@ _check_scope_bins_in_profile() {
 #   3. Basename of $SHELL - the user's login shell. Best available signal
 #      for direct `bash nx_doctor.sh` invocations from any terminal.
 #   4. Final fallback: bash.
-_invoking_rc() {
+_detect_invoking_shell() {
   local _shell="${NX_INVOKING_SHELL:-}"
   if [ -z "$_shell" ]; then
     if [ -n "${ZSH_VERSION:-}" ]; then
@@ -257,7 +257,13 @@ _invoking_rc() {
       _shell="bash"
     fi
   fi
-  case "$_shell" in
+  echo "$_shell"
+}
+
+# Resolve the rc file matching the invoking shell. Used by both shell_profile
+# and shell_config_files so the choice stays consistent.
+_invoking_rc() {
+  case "$(_detect_invoking_shell)" in
   zsh) echo "$HOME/.zshrc" ;;
   *) echo "$HOME/.bashrc" ;;
   esac
@@ -717,16 +723,7 @@ else
   # context useful when sharing the log: invocation time, host, invoking shell
   # (so the reader can see which rc file the shell_profile check audited),
   # and the resolved nix-env / dev-env directories.
-  _log_shell="${NX_INVOKING_SHELL:-}"
-  if [ -z "$_log_shell" ]; then
-    if [ -n "${ZSH_VERSION:-}" ]; then
-      _log_shell="zsh"
-    elif [ -n "${SHELL:-}" ]; then
-      _log_shell="$(basename "$SHELL")"
-    else
-      _log_shell="bash"
-    fi
-  fi
+  _log_shell="$(_detect_invoking_shell)"
   _log_date="$(date -u +'%Y-%m-%dT%H:%M:%SZ' 2>/dev/null)" || _log_date="unknown"
   _log_host="$(uname -nsr 2>/dev/null)" || _log_host="unknown"
   if mkdir -p "$(dirname "$_dr_log_path")" 2>/dev/null; then

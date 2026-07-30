@@ -125,6 +125,32 @@ build_ca_bundle() {
 #
 # No-op when <src_dir> is empty/missing or openssl is unavailable.
 # Idempotent: re-running once everything is merged is silent.
+
+# Extract the space-delimited serial list (" s1 s2 ") already present in a PEM
+# bundle, for cross-run dedup. PEM-walk (not `openssl storeutl -text`): storeutl
+# emits `<decimal> (0x<lowercase-hex>)`, which can't substring-match the
+# uppercase-hex format `openssl x509 -serial` produces (the format used by every
+# other path here and the WSL fork's ConvertTo-PEM headers). Walking PEM blocks
+# normalizes the format end-to-end so dedup works.
+_cert_bundle_serials() {
+  local _bundle="$1" _serials=" " _current="" line _ser
+  if [ -f "$_bundle" ]; then
+    while IFS= read -r line; do
+      if [[ "$line" == "-----BEGIN CERTIFICATE-----" ]]; then
+        _current="$line"
+      elif [[ "$line" == "-----END CERTIFICATE-----" ]]; then
+        _current+=$'\n'"$line"
+        _ser=$(openssl x509 -noout -serial <<<"$_current" 2>/dev/null | cut -d= -f2)
+        [ -n "$_ser" ] && _serials+="$_ser "
+        _current=""
+      elif [[ -n "$_current" ]]; then
+        _current+=$'\n'"$line"
+      fi
+    done <"$_bundle"
+  fi
+  printf '%s' "$_serials"
+}
+
 merge_local_certs() {
   local src_dir="${1:-}"
   [ -n "$src_dir" ] || return 0
@@ -148,29 +174,9 @@ merge_local_certs() {
   local cert_bundle="$HOME/.config/certs/ca-custom.crt"
   mkdir -p "$HOME/.config/certs"
 
-  # PEM-walk (not `openssl storeutl -text`): storeutl emits
-  # `<decimal> (0x<lowercase-hex>)`, which can't substring-match the
-  # uppercase-hex format `openssl x509 -serial` produces -- the format used
-  # by every other path here (cert_intercept, our per-cert append below,
-  # the WSL fork's ConvertTo-PEM headers). Walking PEM blocks normalizes
-  # the format end-to-end so cross-run dedup actually works.
-  local _existing_serials=" "
-  if [ -f "$cert_bundle" ]; then
-    local _current=""
-    while IFS= read -r line; do
-      if [[ "$line" == "-----BEGIN CERTIFICATE-----" ]]; then
-        _current="$line"
-      elif [[ "$line" == "-----END CERTIFICATE-----" ]]; then
-        _current+=$'\n'"$line"
-        local _ser
-        _ser=$(openssl x509 -noout -serial <<<"$_current" 2>/dev/null | cut -d= -f2)
-        [ -n "$_ser" ] && _existing_serials+="$_ser "
-        _current=""
-      elif [[ -n "$_current" ]]; then
-        _current+=$'\n'"$line"
-      fi
-    done <"$cert_bundle"
-  fi
+  # serials already in the bundle (space-delimited, for cross-run dedup)
+  local _existing_serials
+  _existing_serials="$(_cert_bundle_serials "$cert_bundle")"
 
   local added=0 skipped=0 src_cert serial header pem
   # find instead of glob: empty dir doesn't error, and zsh nomatch can't bite.
@@ -229,28 +235,9 @@ cert_intercept() {
   # ensure cert directory exists
   mkdir -p "$HOME/.config/certs"
 
-  # PEM-walk (not `openssl storeutl -text`): storeutl emits
-  # `<decimal> (0x<lowercase-hex>)`, which can't substring-match the
-  # uppercase-hex format `openssl x509 -serial` produces (used for new
-  # candidates below + by the WSL fork's ConvertTo-PEM headers). Walking
-  # PEM blocks keeps the format normalized end-to-end.
-  local _existing_serials=" "
-  if [ -f "$cert_bundle" ]; then
-    local current_pem=""
-    while IFS= read -r line; do
-      if [[ "$line" == "-----BEGIN CERTIFICATE-----" ]]; then
-        current_pem="$line"
-      elif [[ "$line" == "-----END CERTIFICATE-----" ]]; then
-        current_pem+=$'\n'"$line"
-        local ser
-        ser=$(openssl x509 -noout -serial <<<"$current_pem" 2>/dev/null | cut -d= -f2)
-        [ -n "$ser" ] && _existing_serials+="$ser "
-        current_pem=""
-      elif [[ -n "$current_pem" ]]; then
-        current_pem+=$'\n'"$line"
-      fi
-    done <"$cert_bundle"
-  fi
+  # serials already in the bundle (space-delimited, for cross-run dedup)
+  local _existing_serials
+  _existing_serials="$(_cert_bundle_serials "$cert_bundle")"
 
   for uri in "${uris[@]}"; do
     printf '\e[36mintercepting certificates from %s...\e[0m\n' "$uri" >&2

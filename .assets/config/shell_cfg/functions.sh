@@ -46,6 +46,16 @@ function sysinfo() {
 # set alias
 alias gsi='sysinfo'
 
+# Extract the certifi cacert.pem path from `pip show -f certifi` output.
+# Echoes "<Location>/<relative cacert.pem>", or nothing if not found.
+function _certifi_from_show() {
+  local _show="$1" _loc _cacert
+  _loc=$(printf '%s\n' "$_show" | sed -n 's/^Location: //p')
+  [ -n "$_loc" ] || return 0
+  _cacert=$(printf '%s\n' "$_show" | grep -oE '[^[:space:]]+cacert\.pem$')
+  [ -n "$_cacert" ] && printf '%s\n' "${_loc}/${_cacert}"
+}
+
 # *Function for fixing Python SSL certificate issues by adding custom certificates to certifi's cacert.pem
 # Usage: fixcertpy [path ...]
 #   If paths are provided, patches only those cacert.pem files.
@@ -117,38 +127,23 @@ function fixcertpy() {
   else
     # auto-discover Python certifi bundles
     type pip &>/dev/null || return 1
-    local SHOW location cacert
+    local SHOW cacert
     # check venv certifi
     if . .venv/bin/activate 2>/dev/null; then
       SHOW=""
       { [ -x "$HOME/.local/bin/uv" ] || [ -x "$HOME/.nix-profile/bin/uv" ]; } && SHOW=$(uv pip show -f certifi 2>/dev/null) || true
       [ -n "$SHOW" ] || SHOW=$(pip show -f certifi 2>/dev/null) || true
-      if [ -n "$SHOW" ]; then
-        location=$(echo "$SHOW" | sed -n 's/^Location: //p')
-        if [ -n "$location" ]; then
-          cacert=$(echo "$SHOW" | grep -oE '[^[:space:]]+cacert\.pem$')
-          [ -n "$cacert" ] && certifi_paths+=("${location}/${cacert}")
-        fi
-      fi
+      cacert=$(_certifi_from_show "$SHOW")
+      [ -n "$cacert" ] && certifi_paths+=("$cacert")
     fi
     # check pip certifi
     SHOW=$(pip show -f certifi 2>/dev/null) || true
-    if [ -n "$SHOW" ]; then
-      location=$(echo "$SHOW" | sed -n 's/^Location: //p')
-      if [ -n "$location" ]; then
-        cacert=$(echo "$SHOW" | grep -oE '[^[:space:]]+cacert\.pem$')
-        [ -n "$cacert" ] && certifi_paths+=("${location}/${cacert}")
-      fi
-    fi
+    cacert=$(_certifi_from_show "$SHOW")
+    [ -n "$cacert" ] && certifi_paths+=("$cacert")
     # check pip's own cacert.pem
     SHOW=$(pip show -f pip 2>/dev/null) || true
-    if [ -n "$SHOW" ]; then
-      location=$(echo "$SHOW" | sed -n 's/^Location: //p')
-      if [ -n "$location" ]; then
-        cacert=$(echo "$SHOW" | grep -oE '[^[:space:]]+cacert\.pem$')
-        [ -n "$cacert" ] && certifi_paths+=("${location}/${cacert}")
-      fi
-    fi
+    cacert=$(_certifi_from_show "$SHOW")
+    [ -n "$cacert" ] && certifi_paths+=("$cacert")
   fi
 
   # exit if no target bundles found
