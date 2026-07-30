@@ -11,7 +11,6 @@
         "nix/lib/phases/nix_profile.sh",
         "nix/configure/nodejs.sh",
         ".assets/lib/nx_profile.sh",
-        ".assets/lib/env_block.sh",
         ".assets/lib/nx_doctor.sh",
         ".assets/setup/setup_profile_user.ps1",
         "wsl/wsl_certs_add.ps1"

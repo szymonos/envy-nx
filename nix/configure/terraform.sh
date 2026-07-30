@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Post-install terraform configuration: use tfswitch to install the latest
-# terraform binary to ~/.local/bin (already in PATH via env_block.sh).
+# terraform binary to ~/.local/bin (already in PATH via the nx-managed env block).
 : '
 nix/configure/terraform.sh
 '
