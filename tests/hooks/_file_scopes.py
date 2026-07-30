@@ -51,8 +51,6 @@ INTERACTIVE_SHELL: tuple[str, ...] = (
     ".assets/lib/helpers.sh",
     # certs.sh is sourced from $HOME/.config/shell/certs.sh in functions.sh
     ".assets/lib/certs.sh",
-    # env_block.sh is sourced by nx_profile.sh
-    ".assets/lib/env_block.sh",
 )
 
 # Alias for the alias-builtins hook. Reuses INTERACTIVE_SHELL as-is today;

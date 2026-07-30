@@ -15,13 +15,9 @@ nx profile regenerate --dry-run --shell bash   # rendered blocks to stdout
 # `_nx_profile_regenerate` is also called directly from nix/configure/profiles.sh
 # (sourcing nx.sh transitively brings this file in).
 
-# NOTE: this function is ~95% byte-identical to `render_env_block` in
-# .assets/lib/env_block.sh (only structural difference: the `function `
-# keyword). The legacy zsh setup path uses the env_block.sh copy. Any change
-# to the rendered :certs / :gcloud / :aliases sections here MUST be mirrored
-# to env_block.sh byte-for-byte, or zsh-only installs (legacy path) drift
-# from bash-managed installs (nix path). Consolidation is tracked in
-# design/follow-ups (cycle 2026-05-13).
+# Single definition of the managed env block, shared by both the nx runtime
+# (sourced via nx.sh) and the legacy zsh setup path (setup_profile_user.zsh
+# sources this file directly and calls _nx_render_env_block).
 #
 # The :local path section is always emitted. The runtime `case` guard makes
 # the addition idempotent: if $HOME/.local/bin is already on PATH (from user

@@ -23,7 +23,7 @@ from typing import NamedTuple
 # awk / BSD sed before nix-installed bash 5 is on PATH. Past gaps in this
 # list let real bugs ship - the v1.10.2 BSD-awk wipe (`awk -v VAR=$multi`
 # in profile_block.sh) was a tracked nix-path file but cousin files
-# (env_block.sh, nx_profile.sh, nx_doctor.sh, helpers.sh, certs.sh,
+# (nx_profile.sh, nx_doctor.sh, helpers.sh, certs.sh,
 # install_record.sh, setup_log.sh, vscode.sh, the nix/lib/ phase library,
 # nix/uninstall.sh) were not. Keep this list in sync with the table in
 # ARCHITECTURE.md §12.1; `.assets/lib/*.sh` covers every file in that
