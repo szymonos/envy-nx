@@ -137,7 +137,11 @@ function _nx_render_nix_block() {
     "$HOME/.nix-profile/etc/profile.d/nix.sh" \
     /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh; do
     if [ -f "$nix_profile" ]; then
-      printf '. %s\n' "$nix_profile"
+      # Runtime guard, not just render-time: on Coder the profile symlink can
+      # be absent when .bashrc/.zshrc is sourced early in workspace boot (before
+      # entrypoint.sh reinstalls the nix profile), so re-check existence at
+      # source time to avoid a "No such file" error during the boot race.
+      printf '[ -f "%s" ] && . "%s"\n' "$nix_profile" "$nix_profile"
       break
     fi
   done

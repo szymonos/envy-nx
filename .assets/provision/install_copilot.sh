@@ -15,10 +15,13 @@ if ! [[ "$PATH" =~ $HOME/.local/bin: ]]; then
 fi
 export PATH
 
+# Announce on stdout (not stderr): _io_run captures stderr and only surfaces it
+# on failure, so a stderr label would be swallowed on the normal success path,
+# leaving the tool's own "Checking for updates..." output unattributed in logs.
 if [ -x "$HOME/.local/bin/copilot" ]; then
-  printf "\e[92mupdating \e[1mcopilot-cli\e[22m\e[0m\n" >&2
+  printf "\e[92mupdating \e[1mcopilot-cli\e[22m\e[0m\n"
   copilot update
 else
-  printf "\e[92minstalling \e[1mcopilot-cli\e[22m\e[0m\n" >&2
+  printf "\e[92minstalling \e[1mcopilot-cli\e[22m\e[0m\n"
   curl -fsSL https://gh.io/copilot-install | bash
 fi

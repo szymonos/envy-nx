@@ -38,12 +38,15 @@ GCLOUD_BIN="$GCLOUD_HOME/bin/gcloud"
 if [ -x "$GCLOUD_BIN" ]; then
   ver="$("$GCLOUD_BIN" version 2>/dev/null | sed -En 's/Google Cloud SDK ([0-9.]+).*/\1/p' | head -n1 || true)"
   if [ "$unattended" = "true" ]; then
+    # stdout, not stderr: install_gcloud.sh runs via _io_run (nix path), which
+    # captures stderr and only replays it on failure -- a stderr status line
+    # would be swallowed on the normal success path.
     printf '\e[96mgcloud v%s already installed at %s; updating components...\e[0m\n' \
-      "${ver:-?}" "$GCLOUD_HOME" >&2
+      "${ver:-?}" "$GCLOUD_HOME"
     CLOUDSDK_CORE_DISABLE_PROMPTS=1 "$GCLOUD_BIN" components update --quiet >&2
   else
     printf '\e[32mgcloud v%s already installed at %s; skipping (use `gcloud components update` to refresh).\e[0m\n' \
-      "${ver:-?}" "$GCLOUD_HOME" >&2
+      "${ver:-?}" "$GCLOUD_HOME"
   fi
   if [ "$with_gke" = "true" ] && ! [ -x "$GCLOUD_HOME/bin/gke-gcloud-auth-plugin" ]; then
     _io_step "installing gke-gcloud-auth-plugin component"
@@ -106,7 +109,7 @@ mkdir -p "$cache_dir"
 tmp_dir="$(mktemp -d "$HOME/.gcloud-install.XXXXXX")"
 trap 'rm -rf "$tmp_dir"' EXIT
 
-printf '\e[96minstalling Google Cloud CLI v%s (%s/%s)...\e[0m\n' "$ver" "$os" "$arch" >&2
+printf '\e[96minstalling Google Cloud CLI v%s (%s/%s)...\e[0m\n' "$ver" "$os" "$arch"
 
 _io_step "downloading $archive"
 if ! download_file --uri "$url" --target_dir "$cache_dir"; then
@@ -142,4 +145,4 @@ if [ "$fix_certify" = "true" ]; then
   "$SCRIPT_ROOT/.assets/fix/fix_gcloud_certs.sh"
 fi
 
-printf '\e[32mInstalled Google Cloud CLI v%s at %s.\e[0m\n' "$ver" "$GCLOUD_HOME" >&2
+printf '\e[32mInstalled Google Cloud CLI v%s at %s.\e[0m\n' "$ver" "$GCLOUD_HOME"
