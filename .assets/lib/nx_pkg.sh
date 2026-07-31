@@ -49,6 +49,13 @@ function _nx_pkg_install() {
   [ ${#filtered[@]} -eq 0 ] && return 0
   current="$(_nx_read_pkgs)"
   _before="$(cat "$_NX_PKG_FILE" 2>/dev/null)"
+  # Abort before mutating packages.nix if the backup could not be made - else a
+  # later rollback would see an empty backup and rm the existing manifest.
+  local _backup
+  _backup="$(_nx_backup_pkgs)" || {
+    printf "\e[31mcould not back up %s - aborting install to protect the manifest\e[0m\n" "$_NX_PKG_FILE" >&2
+    return 1
+  }
   {
     [ -n "$current" ] && printf '%s\n' "$current"
     for p in "${filtered[@]}"; do
@@ -60,7 +67,11 @@ function _nx_pkg_install() {
       fi
     done
   } | _nx_write_pkgs
-  [ "$(cat "$_NX_PKG_FILE" 2>/dev/null)" != "$_before" ] && _nx_apply
+  if [ "$(cat "$_NX_PKG_FILE" 2>/dev/null)" != "$_before" ]; then
+    _nx_apply_or_rollback "$_backup"
+  else
+    [ -n "$_backup" ] && command rm -f "$_backup"
+  fi
 }
 
 function _nx_pkg_remove() {
@@ -83,6 +94,13 @@ function _nx_pkg_remove() {
     return 0
   fi
   _before="$(cat "$_NX_PKG_FILE" 2>/dev/null)"
+  # Abort before mutating packages.nix if the backup could not be made - else a
+  # later rollback would see an empty backup and rm the existing manifest.
+  local _backup
+  _backup="$(_nx_backup_pkgs)" || {
+    printf "\e[31mcould not back up %s - aborting remove to protect the manifest\e[0m\n" "$_NX_PKG_FILE" >&2
+    return 1
+  }
   local remove_pattern=" ${filtered_args[*]} "
   {
     while IFS= read -r p; do
@@ -98,7 +116,11 @@ function _nx_pkg_remove() {
       printf "\e[33m%s is not installed - skipping\e[0m\n" "$p" >&2
     fi
   done
-  [ "$(cat "$_NX_PKG_FILE" 2>/dev/null)" != "$_before" ] && _nx_apply
+  if [ "$(cat "$_NX_PKG_FILE" 2>/dev/null)" != "$_before" ]; then
+    _nx_apply_or_rollback "$_backup"
+  else
+    [ -n "$_backup" ] && command rm -f "$_backup"
+  fi
 }
 
 function _nx_pkg_upgrade() {

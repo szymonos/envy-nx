@@ -628,6 +628,82 @@ EOF
   [[ "$output" == *"APPLY_CALLED"* ]]
 }
 
+# -- install/remove: transactional rollback on apply failure ------------------
+# Guards the partial-install divergence: packages.nix is written BEFORE the slow
+# `nix profile upgrade`, so a failed/cancelled apply must roll the manifest back
+# so the declared state matches the profile (else every later upgrade re-fails on
+# a name-valid but unbuildable package).
+
+@test "install rolls back packages.nix (removed) when apply fails and file was absent" {
+  _nx_validate_pkg() { return 0; }
+  _nx_apply() { return 1; } # simulate build/download failure
+  cat >"$ENV_DIR/scopes/base.nix" <<'EOF'
+{ pkgs }: with pkgs; [ git ]
+EOF
+  cat >"$ENV_DIR/config.nix" <<'EOF'
+{ isInit = false; scopes = []; }
+EOF
+  [ ! -f "$ENV_DIR/packages.nix" ]
+  run nx install ripgrep
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"rolled back"* ]]
+  # manifest is back to its pre-install state (absent) - not left ahead of the profile
+  [ ! -f "$ENV_DIR/packages.nix" ]
+}
+
+@test "install rolls back packages.nix to prior content when apply fails" {
+  _nx_validate_pkg() { return 0; }
+  _nx_apply() { return 1; }
+  cat >"$ENV_DIR/scopes/base.nix" <<'EOF'
+{ pkgs }: with pkgs; [ git ]
+EOF
+  cat >"$ENV_DIR/config.nix" <<'EOF'
+{ isInit = false; scopes = []; }
+EOF
+  printf 'fd\n' | _nx_write_pkgs
+  run nx install ripgrep
+  [ "$status" -eq 1 ]
+  # ripgrep must NOT persist; fd (the pre-existing extra) must remain
+  run _nx_read_pkgs
+  [[ "$output" == *"fd"* ]]
+  [[ "$output" != *"ripgrep"* ]]
+}
+
+@test "install keeps change and leaves no .bak files when apply succeeds" {
+  _nx_validate_pkg() { return 0; }
+  _nx_apply() { printf 'APPLY_CALLED\n'; }
+  cat >"$ENV_DIR/scopes/base.nix" <<'EOF'
+{ pkgs }: with pkgs; [ git ]
+EOF
+  cat >"$ENV_DIR/config.nix" <<'EOF'
+{ isInit = false; scopes = []; }
+EOF
+  run nx install ripgrep
+  [[ "$output" == *"APPLY_CALLED"* ]]
+  run _nx_read_pkgs
+  [[ "$output" == *"ripgrep"* ]]
+  # no leftover backup temp files in the env dir
+  run find "$ENV_DIR" -maxdepth 1 -name 'packages.nix.bak.*'
+  [ -z "$output" ]
+}
+
+@test "remove rolls back packages.nix when apply fails" {
+  _nx_apply() { return 1; }
+  cat >"$ENV_DIR/scopes/base.nix" <<'EOF'
+{ pkgs }: with pkgs; [ git ]
+EOF
+  cat >"$ENV_DIR/config.nix" <<'EOF'
+{ isInit = false; scopes = []; }
+EOF
+  printf 'ripgrep\nfd\n' | _nx_write_pkgs
+  run nx remove ripgrep
+  [ "$status" -eq 1 ]
+  # both packages must survive the failed removal
+  run _nx_read_pkgs
+  [[ "$output" == *"ripgrep"* ]]
+  [[ "$output" == *"fd"* ]]
+}
+
 # -- search -------------------------------------------------------------------
 
 @test "search without query shows usage" {

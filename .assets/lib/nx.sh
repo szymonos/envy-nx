@@ -56,6 +56,84 @@ function _nx_apply() {
   printf "\e[32mdone.\e[0m\n"
 }
 
+# Snapshot the current packages.nix to an adjacent temp file so a failed or
+# interrupted apply can roll it back. stdout: backup path ("" if no file yet,
+# in which case rollback means "remove packages.nix"). Same-directory temp so
+# the rollback mv is atomic (same filesystem).
+#
+# Exit status is the safety contract: 0 means "safe to proceed" (either no file
+# to back up, or the backup was made), non-zero means "backup FAILED while the
+# manifest exists". Callers MUST abort on non-zero and NOT mutate packages.nix -
+# otherwise a later rollback would see an empty backup path, interpret it as
+# "file was absent", and rm the user's real manifest. mktemp/cp failures clean
+# up any partial temp and return 1 rather than masquerading as the no-file case.
+function _nx_backup_pkgs() {
+  [ -f "$_NX_PKG_FILE" ] || return 0
+  local _b
+  _b="$(mktemp "${_NX_PKG_FILE}.bak.XXXXXX")" || return 1
+  if ! command cp "$_NX_PKG_FILE" "$_b"; then
+    command rm -f "$_b"
+    return 1
+  fi
+  printf '%s\n' "$_b"
+}
+
+# Restore packages.nix from a backup made by _nx_backup_pkgs. Empty/missing
+# backup means the file did not exist before the aborted change -> remove it.
+# `command` bypasses any user `alias mv/rm` shadow (this file is sourced into
+# the interactive shell), matching _nx_write_pkgs.
+function _nx_restore_pkgs() {
+  if [ -n "${1:-}" ] && [ -f "$1" ]; then
+    command mv "$1" "$_NX_PKG_FILE"
+  else
+    command rm -f "$_NX_PKG_FILE"
+  fi
+}
+
+# Transactional apply: packages.nix is committed to disk BEFORE the slow,
+# cancellable `nix profile upgrade`, so a Ctrl-C or a build failure (e.g. a
+# name-valid but unbuildable package - `nix install` validates the name exists
+# in nixpkgs, not that it builds) would otherwise leave packages.nix listing a
+# package the profile never got. flake.nix rebuilds the whole buildEnv from
+# packages.nix, so every later `nx upgrade` / `nix/setup.sh` would then re-hit
+# the same failure until the name is removed by hand. Roll the manifest back on
+# either signal or non-zero apply so the declared state matches the profile.
+#
+# $1 is the backup path from _nx_backup_pkgs. On success the backup is removed.
+function _nx_apply_or_rollback() {
+  local _backup="${1:-}"
+  # Run-once guard. A signal (Ctrl-C) delivered while _nx_apply is on the stack
+  # runs the trap, but in bash `return` from a trap fired during a nested call
+  # does NOT reliably abort this function - the post-`if` failure branch below
+  # can still execute. Both paths gate on _rolled so the rollback and its
+  # message happen exactly once, and the failure branch never re-runs
+  # _nx_restore_pkgs against an already-moved backup (which would rm the file).
+  local _rolled=0 _interrupted=0
+  # Single-quoted: $_backup / $_rolled resolve when the signal fires, in this
+  # function's dynamic scope (the locals are live because _nx_apply is on the
+  # stack), not at trap-install time. Reset to default after; an interactive
+  # shell effectively never has a user INT/TERM handler worth preserving.
+  # _interrupted records that a signal fired: in bash the trap's own `return 130`
+  # does not reliably abort this function in the nested-call case, so the
+  # fall-through below returns 130 (128+SIGINT) explicitly instead of the
+  # plain-failure 1. (zsh returns from the trap directly with rc 0 - a cosmetic
+  # exit-code difference; the rollback itself is correct in both shells.)
+  trap '[ "$_rolled" = 1 ] || { _rolled=1; _nx_restore_pkgs "$_backup"; printf "\e[33mrolled back %s (interrupted before apply finished)\e[0m\n" "$_NX_PKG_FILE" >&2; }; _interrupted=1; trap - INT TERM; return 130' INT TERM
+  if _nx_apply; then
+    trap - INT TERM
+    [ -n "$_backup" ] && command rm -f "$_backup"
+    return 0
+  fi
+  trap - INT TERM
+  if [ "$_rolled" != 1 ]; then
+    _rolled=1
+    _nx_restore_pkgs "$_backup"
+    printf "\e[33mrolled back %s (apply failed - declared state kept in sync with the profile)\e[0m\n" "$_NX_PKG_FILE" >&2
+  fi
+  [ "$_interrupted" = 1 ] && return 130
+  return 1
+}
+
 # Clear caches that embed absolute /nix/store/<hash>-<pkg>/... paths and go
 # stale after `nix profile upgrade` + `nix store gc` GCs the old store path:
 #
