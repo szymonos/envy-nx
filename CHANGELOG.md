@@ -5,6 +5,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.18.2] - 2026-07-31
+
+### Fixed
+
+- Shell-init no longer errors on Coder workspace boot: the nix-profile dot-source line rendered into `.bashrc`/`.zshrc` by `_nx_render_nix_block` (`.assets/lib/nx_profile.sh`) now carries a runtime `[ -f ... ] &&` guard, matching its sibling source lines. Previously the existence check happened only at render time, so an early login shell sourced during workspace bring-up (before `entrypoint.sh` reinstalls the nix profile) hit a "No such file" error. pwsh is unaffected — its `nix:path` region builds PATH directly and never dot-sources `profile.d/nix.sh`.
+- Install/configure status labels are now attributed in setup logs. Scripts routed through `_io_run` (which captures stderr and only replays it on failure) were printing their "installing"/"updating"/"already installed" announcements to stderr, so on the normal success path the labels were swallowed while the tools' own stdout chatter (e.g. Copilot's "Checking for updates...") appeared unattributed. Moved those human-facing labels to stdout in `install_copilot.sh`, `install_gcloud.sh`, and `nix/configure/terraform.sh` (matching the `install_docker.sh` convention). Genuine error lines stay on stderr, where `_io_run` correctly surfaces them on failure.
+- `nx install`/`nx remove` are now transactional: `packages.nix` is rolled back if the subsequent `nix profile upgrade` fails or is interrupted (Ctrl-C). Previously the manifest was committed to disk before the slow apply, so a cancelled or failing build left `packages.nix` listing a package the profile never received — and because `flake.nix` rebuilds the whole environment from `packages.nix`, a name-valid-but-unbuildable package would then make every later `nx upgrade` and `nix/setup.sh` run fail until the name was removed by hand. A signal/failure now restores the prior manifest so declared state stays in sync with the profile.
+
 ## [1.18.1] - 2026-07-29
 
 ### Changed
