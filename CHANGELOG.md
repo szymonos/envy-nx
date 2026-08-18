@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.18.3] - 2026-08-18
+
+### Fixed
+
+- PowerShell module install no longer stalls on an interactive "Untrusted repository" prompt during unattended provisioning: `module_manage.ps1`'s `Install-PSResource` fallback for required modules not vendored under `modules/` (e.g. do-az's `Az.Accounts` deps) hit PSGallery before it was trusted. The fallback now passes `-TrustRepository`.
+
 ## [1.18.2] - 2026-07-31
 
 ### Fixed
