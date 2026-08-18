@@ -118,7 +118,12 @@ process {
                         if (Test-Path $localModManifest) {
                             & $PSCommandPath $mod -CleanUp:$CleanUp
                         } else {
-                            Install-PSResource $mod -WarningAction SilentlyContinue
+                            # -TrustRepository: required-module deps are pulled from
+                            # PSGallery, which setup_common.sh installs before
+                            # setup_profile_user.ps1 permanently trusts it. Without this
+                            # the install stops for an interactive "Untrusted repository"
+                            # prompt and stalls unattended provisioning.
+                            Install-PSResource $mod -TrustRepository -WarningAction SilentlyContinue
                         }
                     }
                 }
