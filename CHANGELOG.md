@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.18.4] - 2026-08-19
+
+### Fixed
+
+- `wsl/wsl_install.ps1`'s `-FixNetwork` switch is now forwarded to the delegated `wsl_setup.ps1` call. Previously the parameter was accepted and documented but never appended to the built command string, so passing `-FixNetwork` silently had no effect.
+
 ## [1.18.3] - 2026-08-18
 
 ### Fixed
