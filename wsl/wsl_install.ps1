@@ -173,6 +173,7 @@ process {
         $sb.Append(" -Repos @($reposStr)") | Out-Null
     }
     if ($PSBoundParameters.AddCertificate) { $sb.Append(' -AddCertificate') | Out-Null }
+    if ($PSBoundParameters.FixNetwork) { $sb.Append(' -FixNetwork') | Out-Null }
     if ($PSBoundParameters.WebDownload) { $sb.Append(' -WebDownload') | Out-Null }
     $sb.Append(" -OmpTheme 'base'") | Out-Null
     $sb.Append(' -SkipRepoUpdate') | Out-Null
