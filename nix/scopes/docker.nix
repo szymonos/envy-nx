@@ -9,7 +9,7 @@
 # here; functional verification belongs in `nix/configure/docker.sh` and the
 # bats tests under `tests/bats/test_docker_configure.bats`.
 # bins: (external-installer)
-{ pkgs }: with pkgs; lib.optionals stdenv.isDarwin [
+{ pkgs }: with pkgs; lib.optionals stdenv.hostPlatform.isDarwin [
   colima
   docker-client
   docker-compose
