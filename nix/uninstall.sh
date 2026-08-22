@@ -127,6 +127,10 @@ BLOCK_MARKER="nix:managed"
 # so users who never ran `nx profile regenerate` after upgrading still get
 # their nix block cleaned up. Safe to delete after the next major release.
 BLOCK_MARKER_LEGACY="nix-env managed"
+# Login-shell shim written to ~/.bash_profile on macOS only (see
+# _nx_profile_regenerate). Removing it on every platform is free - manage_block
+# remove is a no-op when the marker is absent.
+BLOCK_MARKER_BASH_PROFILE="nix:bash_profile"
 
 printf "\n\e[95;1m>> nix-env uninstaller\e[0m\n\n"
 
@@ -146,12 +150,19 @@ run_phase1() {
   # (the <= 1.4.x name). Removing both covers users who upgraded but never
   # ran `nx profile regenerate` to migrate.
   info "removing managed blocks from shell profiles..."
+  # Recorded before the removal below strips it: an empty ~/.bash_profile is
+  # only ours to delete if it actually carried the shim.
+  local bp_had_shim=false
+  if [[ -f "$HOME/.bash_profile" ]] &&
+    grep -q "# >>> $BLOCK_MARKER_BASH_PROFILE >>>" "$HOME/.bash_profile" 2>/dev/null; then
+    bp_had_shim=true
+  fi
   if [[ -f "$LIB/profile_block.sh" ]]; then
     # shellcheck source=../.assets/lib/profile_block.sh
     source "$LIB/profile_block.sh"
-    for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
+    for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.bash_profile"; do
       [[ -f "$rc" ]] || continue
-      for marker in "$BLOCK_MARKER" "$BLOCK_MARKER_LEGACY"; do
+      for marker in "$BLOCK_MARKER" "$BLOCK_MARKER_LEGACY" "$BLOCK_MARKER_BASH_PROFILE"; do
         if [[ "$DRY_RUN" == "true" ]]; then
           if manage_block "$rc" "$marker" inspect >/dev/null 2>&1; then
             printf "\e[90m  would remove '%s' block from %s\e[0m\n" "$marker" "$rc"
@@ -166,9 +177,9 @@ run_phase1() {
     done
   else
     warn "profile_block.sh not found - falling back to manual block removal"
-    for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
+    for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.bash_profile"; do
       [[ -f "$rc" ]] || continue
-      for marker in "$BLOCK_MARKER" "$BLOCK_MARKER_LEGACY"; do
+      for marker in "$BLOCK_MARKER" "$BLOCK_MARKER_LEGACY" "$BLOCK_MARKER_BASH_PROFILE"; do
         if grep -q "# >>> $marker >>>" "$rc" 2>/dev/null; then
           if [[ "$DRY_RUN" == "true" ]]; then
             printf "\e[90m  would remove '%s' block from %s\e[0m\n" "$marker" "$rc"
@@ -186,6 +197,17 @@ run_phase1() {
         fi
       done
     done
+  fi
+
+  # Drop ~/.bash_profile when the shim removed above was its only content -
+  # regenerate created the file on macOS, so leaving an empty one behind would
+  # be litter. A file with the user's own content is left alone, and so is one
+  # that never carried the shim - on macOS bash reads the first of
+  # .bash_profile/.bash_login/.profile, so an empty .bash_profile is a
+  # deliberate way to suppress .profile and must survive an uninstall.
+  if [[ "$bp_had_shim" == "true" && "$DRY_RUN" != "true" ]] &&
+    [[ -f "$HOME/.bash_profile" && ! -s "$HOME/.bash_profile" ]]; then
+    rm -f "$HOME/.bash_profile" && removed "$HOME/.bash_profile (empty after cleanup)"
   fi
 
   # 1b. Remove legacy oh-my-posh/starship init lines outside managed block
