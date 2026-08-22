@@ -1,0 +1,120 @@
+# Smoke test for the `.assets/scripts/linux_setup.sh` entry point.
+#
+# Dockerfile.test-nix covers `nix/setup.sh` on a host where Nix is already
+# installed. linux_setup.sh IS the system-prep path - it runs install_base.sh,
+# install_nix.sh and the jq bootstrap itself, all as root via sudo, before it
+# delegates to nix/setup.sh - so testing it needs a host with none of that.
+#
+# ubuntu:24.04 is the fixture precisely because it has no jq. install_base.sh
+# deliberately does not install jq either (it is an always-nix package), so a
+# regression in the bootstrap ordering fails this build at the `source
+# scopes.sh` line rather than reaching a user.
+FROM ubuntu:24.04
+
+# avoid warnings by switching to noninteractive
+ENV DEBIAN_FRONTEND=noninteractive
+
+# copy repo into the container
+COPY . /home/ubuntu/source/lss
+
+# Stage 1: ONLY the prerequisites linux_setup.sh genuinely assumes (as root).
+#
+# Deliberately NOT installed here - linux_setup.sh must provision them itself,
+# and preinstalling any of them would hide the bug this image exists to catch:
+#   jq          - must arrive via the nix bootstrap
+#   nix         - install_nix.sh's job
+#   curl, tar, build tools - install_base.sh's job
+#   /nix, nix.conf - install_nix.sh's job (contrast Dockerfile.test-nix, which
+#                    prepares all of this because it starts after that step)
+#
+# sudo IS preinstalled: linux_setup.sh invokes every provisioner as
+# `sudo .assets/provision/...`, so it cannot be the thing that installs sudo.
+# ca-certificates is needed for apt itself to reach https mirrors.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates sudo \
+    # install intercepted MITM root cert if present
+    && if [ -f /home/ubuntu/source/lss/.assets/certs/ca-cert-root.crt ]; then \
+        cp /home/ubuntu/source/lss/.assets/certs/ca-cert-root.crt /usr/local/share/ca-certificates/ \
+        && update-ca-certificates; \
+    fi \
+    # linux_setup.sh refuses to run as root and shells out via sudo, so the
+    # ubuntu user (uid 1000, already present in the base image) needs
+    # passwordless sudo - the image has no tty to answer a password prompt.
+    && echo 'ubuntu ALL=(ALL) NOPASSWD:ALL' >/etc/sudoers.d/90-ubuntu-nopasswd \
+    && chmod 0440 /etc/sudoers.d/90-ubuntu-nopasswd \
+    # change ownership to the ubuntu user
+    && chown -R ubuntu:ubuntu /home/ubuntu/source \
+    #
+    # clean up
+    && apt-get autoremove -y \
+    && apt-get clean -y \
+    && rm -rf /var/lib/apt/lists/*
+
+# Guard the premise. If a future base image or install_base.sh arm starts
+# shipping jq, this image silently stops testing the bootstrap. Fail loudly.
+RUN set -e \
+    && echo "=== Asserting the fixture really has no jq ===" \
+    && if command -v jq >/dev/null 2>&1; then \
+        echo "FIXTURE BROKEN: jq is preinstalled, so this image no longer tests the bootstrap" >&2; \
+        exit 1; \
+    fi \
+    && echo "=== jq absent, as required ==="
+
+# Stage 2: run the real entry point as the unprivileged user.
+USER ubuntu
+WORKDIR /home/ubuntu/source/lss
+SHELL ["/bin/bash", "-c"]
+
+# Each scope here buys a distinct code path, so none is decoration:
+#   zsh         - a root-scope optional installer, so install_zsh.sh runs and
+#                 the tolerant `|| note_optional_failure` path gets its success
+#                 case. A failure there shows up as status=partial.
+#   oh_my_posh  - has no `--oh-my-posh` flag in nix/setup.sh, so it covers the
+#                 scope-to-flag translation. `--omp_theme` alone would NOT: it
+#                 is only appended to the delegation args and never adds the
+#                 scope, so the flag loop would not see it.
+# --omp_theme is passed as well so the `--omp-theme <theme>` forwarding is
+# exercised alongside the scope that must NOT be forwarded.
+RUN .assets/scripts/linux_setup.sh --scope "shell zsh oh_my_posh" --omp_theme base --unattended true
+
+# Verify the bootstrap actually happened and the run completed.
+RUN set -e \
+    && export PATH="$HOME/.nix-profile/bin:$PATH" \
+    && echo "=== Verifying jq arrived via the nix bootstrap ===" \
+    && command -v jq \
+    && case "$(command -v jq)" in \
+        /nix/store/*|"$HOME"/.nix-profile/*) echo "jq came from nix, as expected" ;; \
+        *) echo "jq resolved to $(command -v jq) - expected a nix path" >&2; exit 1 ;; \
+    esac \
+    #
+    && echo "=== Verifying key binaries on PATH ===" \
+    && command -v git \
+    && command -v rg \
+    && command -v zsh \
+    && command -v oh-my-posh \
+    && echo "=== Binary checks passed ===" \
+    #
+    # The provenance record is the machine-readable statement that the whole
+    # script ran. status must be "success": "partial" means an optional scope
+    # failed and was tolerated, which on a supported distro is a regression.
+    && echo "=== Verifying install.json ===" \
+    && test -f "$HOME/.config/dev-env/install.json" \
+    && jq -e '.entry_point == "linux"' "$HOME/.config/dev-env/install.json" \
+    && jq -e '.status == "success"' "$HOME/.config/dev-env/install.json" \
+    && jq -e '.phase == "complete"' "$HOME/.config/dev-env/install.json" \
+    && echo "=== install.json checks passed ==="
+
+# Second run. The first one installs the prompt, so check_distro.sh now
+# auto-detects oh_my_posh from ~/.nix-profile/bin and adds the scope without
+# anyone asking for it - the state-dependent path a pristine container can
+# never reach on a first run, and the one real machines take on every re-run.
+# Cheap: packages are already realized, so this mostly re-applies config.
+RUN .assets/scripts/linux_setup.sh --scope "shell zsh" --unattended true \
+    && export PATH="$HOME/.nix-profile/bin:$PATH" \
+    && echo "=== Verifying the re-run still completed ===" \
+    && jq -e '.status == "success"' "$HOME/.config/dev-env/install.json" \
+    && jq -e '.phase == "complete"' "$HOME/.config/dev-env/install.json" \
+    && echo "=== re-run checks passed ==="
+
+ENTRYPOINT [ "/bin/bash" ]

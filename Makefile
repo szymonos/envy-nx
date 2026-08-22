@@ -40,8 +40,8 @@ upgrade: ## Upgrade prek and hooks versions
 	uv sync --all-groups --upgrade --compile-bytecode
 	uv run prek autoupdate
 
-.PHONY: test test-unit test-nix test-upgrade-walk
-test: test-unit test-nix ## Run all tests (unit + Docker smoke)
+.PHONY: test test-unit test-nix test-linux-setup test-upgrade-walk
+test: test-unit test-nix test-linux-setup ## Run all tests (unit + Docker smoke)
 
 test-unit: ## Run bats + Pester + pytest unit tests in parallel (fast, no Docker)
 	@printf "\n\033[95;1m== Running unit tests ==\033[0m\n\n"
@@ -65,9 +65,23 @@ test-nix: ## Run Docker smoke test for nix path
 		docker build --no-cache \
 			-f .assets/docker/Dockerfile.test-nix \
 			--output type=image,name=lss-test-nix,unpack=false . \
-		&& printf "\n\033[32;1m>> Nix test PASSED\033[0m\n\n" \
-		&& docker rmi lss-test-nix >/dev/null 2>&1; \
-		$(CLEANUP_ROOT_CERT)
+		&& printf "\n\033[32;1m>> Nix test PASSED\033[0m\n\n"; \
+		rc=$$?; \
+		docker rmi lss-test-nix >/dev/null 2>&1 || true; \
+		$(CLEANUP_ROOT_CERT); \
+		exit $$rc
+
+test-linux-setup: ## Run Docker smoke test for the linux_setup.sh entry point (jq-less host)
+	@printf "\n\033[95;1m== Testing linux path (linux_setup.sh, no preinstalled jq) ==\033[0m\n\n"
+	@$(ENSURE_ROOT_CERT) && \
+		docker build --no-cache \
+			-f .assets/docker/Dockerfile.test-linux-setup \
+			--output type=image,name=lss-test-linux-setup,unpack=false . \
+		&& printf "\n\033[32;1m>> linux_setup.sh test PASSED\033[0m\n\n"; \
+		rc=$$?; \
+		docker rmi lss-test-linux-setup >/dev/null 2>&1 || true; \
+		$(CLEANUP_ROOT_CERT); \
+		exit $$rc
 
 test-upgrade-walk: ## Cross-version upgrade walk in Docker (slow, ~20+ min). WALK_FLOOR / WALK_VERSIONS / TARGET_REF env vars supported.
 	@printf "\n\033[95;1m== Cross-version upgrade walk (Docker) ==\033[0m\n\n"
