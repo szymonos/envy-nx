@@ -72,6 +72,26 @@ All `lint*` targets accept `HOOK=<id>` to run a single hook - seconds instead of
 
 Before fixing a pattern globally, run `git grep <pattern>` first to find **all** occurrences - don't start editing until the full scope is known. Prefer `git grep` here: it searches only tracked files, which is exactly the scope of a rename, and uses grep-compatible syntax. `rg <pattern>` also works (recursive by default - no `-r` needed; beware that in ripgrep `-r` is `--replace=TEXT`, so `rg -rn` rewrites every match to `n` instead of searching). For bulk renames across multiple files, use `sed -i` instead of editing files one by one. Verify with another search afterwards.
 
+## Code comments
+
+**IMPORTANT**: A comment must make sense to a reader who has never seen a previous version of the file. Apply that test before writing one - if a line only means something next to the diff, it belongs in the commit message or the CHANGELOG, not the file.
+
+- **Keep**: non-obvious behavior of an external command, constraints that aren't visible locally (bash 3.2, BSD sed), and dead ends already tried and rejected.
+- **Drop**: what changed, what the code was before, what it is "no longer", why the new shape beats the old one, and restatements of what the code plainly does.
+- A comment block longer than the code it describes means cut the comment, not that the code is subtle.
+
+```bash
+# Drop - only means anything with the old version on screen:
+# The repo-add is inside the guard, not before it: add-apt-repository writes
+# the source file and only then runs its own `apt update`, so on a release the
+# PPA has no build for it exits non-zero with the source already on disk.
+# Left outside, `set -e` would kill the script before the cleanup.
+
+# Keep - the durable reason, for someone reading the file cold:
+# add-apt-repository writes the source before it can fail, so it stays
+# inside the cleanup guard.
+```
+
 ## Transitional code
 
 When adding migration shims, compatibility guards, or legacy-cleanup code that should be removed after users have had time to upgrade, add an entry to [`design/cleanup_queue.md`](design/cleanup_queue.md) and annotate the code with `# CLEANUP: CQ-NNN`. This keeps deferred removals grep-able and prevents transitional paths from becoming permanent.
