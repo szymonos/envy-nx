@@ -296,6 +296,19 @@ run_phase1() {
     done
   fi
 
+  # 1k. Remove shell caches that embed absolute /nix/store paths. oh-my-posh
+  # keys its init cache on (config, shell) only, so the cached file keeps
+  # pointing at a store path that phase 2 is about to delete; the pwsh caches
+  # break PSResourceGet the same way. All regenerate on next shell launch.
+  # See _nx_clear_stale_caches in .assets/lib/nx.sh for the failure mode.
+  info "removing stale shell caches..."
+  _rm "$HOME/.cache/oh-my-posh"
+  for cache in "$HOME/.cache/powershell/ModuleAnalysisCache-"* \
+    "$HOME/.cache/powershell/StartupProfileData-"*; do
+    [[ -e "$cache" ]] || continue
+    _rm "$cache"
+  done
+
   ok "phase 1 complete - nix-env environment removed"
 }
 
