@@ -21,7 +21,7 @@ repos:
         name: Validate scope definitions consistency
         entry: python3 -m tests.hooks.validate_scopes
         language: system
-        files: (\.assets/lib/scopes\.json|nix/scopes/.*\.nix)
+        files: (\.assets/lib/scopes\.json|nix/scopes/.*\.nix|nix/lib/phases/bootstrap\.sh)
         pass_filenames: false
       - id: check-bash32
         name: Check nix-path scripts for bash 3.2 / BSD compatibility
@@ -49,6 +49,19 @@ repos:
         # entry there. (Future: gen_pre_commit_scopes.py will codegen this.)
         files: (\.assets/config/shell_cfg/(aliases_git|aliases_kubectl|aliases_nix|functions)\.sh$|\.assets/lib/(nx|nx_pkg|nx_scope|nx_profile|nx_lifecycle|nx_doctor|profile_block|helpers|certs|env_block)\.sh$)
         types: [file]
+      - id: check-distro-case-arm
+        name: Require a `*)` arm on distro case statements
+        entry: python3 -m tests.hooks.check_distro_case_arm
+        language: system
+        # Deliberately every shell file in the repo: the hook scopes by CONTENT
+        # (the file must detect a distro id). A directory filter would let a
+        # distro-aware installer outside these trees escape the hook entirely.
+        files: \.(sh|zsh|bash)$
+      - id: check-curl-tls
+        name: Require `--proto '=https' --tlsv1.2` on curl/wget fetches
+        entry: python3 -m tests.hooks.check_curl_tls
+        language: system
+        files: ^(\.assets/|nix/).*\.(sh|zsh|bash)$
       - id: check-md-html-tags
         name: Forbid unbalanced tag-like '<...' in mkdocs-published Markdown
         entry: python3 -m tests.hooks.check_md_html_tags
@@ -84,6 +97,11 @@ repos:
         language: system
         stages: [commit-msg]
         always_run: true
+      - id: check-skills
+        name: validate Claude Skills frontmatter (spec compliance)
+        entry: tests/hooks/check_skills.py
+        language: script
+        files: ^\.(claude|github)/skills/[^/]+/SKILL\.md$
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
@@ -95,7 +113,7 @@ repos:
       - id: trailing-whitespace
         exclude: \.md$
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.3
+    rev: v0.16.4
     hooks:
       - id: ruff-check
         types_or: [python, pyi]
@@ -115,6 +133,17 @@ repos:
     hooks:
       - id: cspell
         files: \.md$
+        # Upstream's default args include `--gitignore`, which resolves each
+        # path against .gitignore. Agent worktrees live under /.claude/worktrees/
+        # (gitignored), so inside one cspell checks ZERO files and reports
+        # Passed. pre-commit only passes tracked files, so --gitignore filters
+        # nothing we want anyway.
+        # `--files` must stay last: pre-commit appends the paths after it.
+        args:
+          - --no-must-find-files
+          - --no-progress
+          - --no-summary
+          - --files
       - id: cspell
         name: check commit message spelling
         args:
@@ -128,7 +157,7 @@ repos:
       - id: shfmt
         exclude: \.zsh$
   - repo: https://github.com/shellcheck-py/shellcheck-py
-    rev: v0.11.0.1
+    rev: v0.11.0.1-1
     hooks:
       - id: shellcheck
         args: ["--severity=warning"]
