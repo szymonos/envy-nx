@@ -310,6 +310,8 @@ function _nx_profile_regenerate() {
   # base has had a chance to run regenerate at least once.
   local _legacy_nix_marker="nix-env managed"
   local _legacy_env_marker="managed env"
+  local _bp_marker="nix:bash_profile"
+  local _bp="$HOME/.bash_profile"
   local _rc _shell _tmp
 
   for _rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
@@ -331,7 +333,7 @@ function _nx_profile_regenerate() {
       manage_block "$_rc" "$_legacy_env_marker" remove
       _migrated=true
     fi
-    [ "$_migrated" = true ] && printf "\e[33mMigrated legacy marker names in %s\e[0m\n" "${_rc/#$HOME/\~}"
+    [ "$_migrated" = true ] && printf "\e[33mMigrated legacy marker names in %s\e[0m\n" "${_rc/#$HOME/~}"
 
     # render and upsert env block (always includes :local path; the runtime
     # case-guard inside the block handles dedup if PATH already has it).
@@ -346,8 +348,26 @@ function _nx_profile_regenerate() {
     manage_block "$_rc" "$_nix_marker" upsert "$_tmp"
     rm -f "$_tmp"
 
-    printf "\e[32mRegenerated %s\e[0m\n" "${_rc/#$HOME/\~}"
+    printf "\e[32mRegenerated %s\e[0m\n" "${_rc/#$HOME/~}"
   done
+
+  # bash reads ~/.bashrc only for interactive non-login shells. macOS Terminal
+  # starts bash as a *login* shell, which reads ~/.bash_profile instead, and
+  # macOS ships no default ~/.bash_profile - so the blocks above render but are
+  # never sourced. Most Linux distros ship the shim already, hence Darwin-only.
+  # zsh needs no equivalent: it reads ~/.zshrc for every interactive shell,
+  # login or not. pwsh has a single $PROFILE with no login/interactive split.
+  # Skipped when the user's own ~/.bash_profile already pulls in ~/.bashrc, so
+  # we never make it source twice. The pattern matches a sourcing statement, not
+  # any mention: a file whose only reference is a comment still needs the shim.
+  if [ "$(uname -s)" = "Darwin" ] &&
+    ! grep -qE '^[^#]*(\.|source)[[:space:]][^#]*\.bashrc' "$_bp" 2>/dev/null; then
+    _tmp="$(mktemp)"
+    printf '%s\n' '[ -f "$HOME/.bashrc" ] && . "$HOME/.bashrc"' >"$_tmp"
+    manage_block "$_bp" "$_bp_marker" upsert "$_tmp"
+    rm -f "$_tmp"
+    printf "\e[32mRegenerated %s\e[0m\n" "${_bp/#$HOME/~}"
+  fi
 }
 
 # Hoisted helpers for _nx_profile_dispatch. Defining functions inside the
@@ -356,7 +376,7 @@ function _nx_profile_regenerate() {
 # appears). Keep them at module scope so they are defined exactly once at
 # source time.
 
-function _pb_short() { printf '%s' "${1/#$HOME/\~}"; }
+function _pb_short() { printf '%s' "${1/#$HOME/~}"; }
 
 # _pb_count_either <rc> <new_marker> <legacy_marker>
 # Combined count: legacy markers count toward the new-marker total so a
@@ -396,6 +416,7 @@ function _nx_profile_dispatch() {
   # removes both. Safe to delete after the next major release.
   local _pb_legacy_marker="nix-env managed"
   local _pb_legacy_env_marker="managed env"
+  local _pb_bp_marker="nix:bash_profile"
   local _pb_rc_files=("$HOME/.bashrc" "$HOME/.zshrc")
 
   local _pb_lib_path
@@ -430,6 +451,17 @@ function _nx_profile_dispatch() {
       manage_block "$_pb_rc" "$_pb_legacy_env_marker" remove
       printf "\e[32mRemoved managed blocks from %s\e[0m\n" "$(_pb_short "$_pb_rc")"
     done
+    # ~/.bash_profile carries only the login-shell shim and is kept out of
+    # _pb_rc_files so the doctor arm doesn't flag it for missing env/nix blocks.
+    if [ -f "$HOME/.bash_profile" ] &&
+      manage_block "$HOME/.bash_profile" "$_pb_bp_marker" inspect >/dev/null 2>&1; then
+      manage_block "$HOME/.bash_profile" "$_pb_bp_marker" remove
+      # Only delete once the shim is confirmed to have been ours: an empty
+      # ~/.bash_profile is meaningful on macOS, where bash reads the first of
+      # .bash_profile/.bash_login/.profile, so an empty one suppresses .profile.
+      [ -s "$HOME/.bash_profile" ] || rm -f "$HOME/.bash_profile"
+      printf "\e[32mRemoved managed blocks from %s\e[0m\n" "$(_pb_short "$HOME/.bash_profile")"
+    fi
     printf "\e[96mProfile blocks removed. Sourced files in ~/.config/shell/ are untouched.\e[0m\n"
     ;;
   regenerate)

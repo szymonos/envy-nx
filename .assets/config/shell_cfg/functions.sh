@@ -157,7 +157,7 @@ function fixcertpy() {
   local _added_serials=" "
   local certifi pem serial CERT
   for certifi in "${certifi_paths[@]}"; do
-    echo "${certifi//$HOME/\~}" >&2
+    echo "${certifi//$HOME/~}" >&2
     for pem in "${cert_pems[@]}"; do
       serial=$(openssl x509 -noout -serial -nameopt RFC2253 <<<"$pem" 2>/dev/null | cut -d= -f2)
       [ -n "$serial" ] || continue

@@ -92,6 +92,22 @@ alias gs='git status'
 RC
 }
 
+# Force `uname -s` to report a given kernel so the Darwin-only ~/.bash_profile
+# shim can be exercised on Linux CI. Other flags fall through to the real uname.
+_stub_uname() {
+  # Resolve the real uname before the stub shadows it - the path is not always
+  # /usr/bin/uname (Alpine ships /bin/uname and has no /usr/bin at all).
+  local real
+  rm -f "$TEST_DIR/bin/uname"
+  real="$(command -v uname)"
+  cat >"$TEST_DIR/bin/uname" <<EOF
+#!/bin/sh
+[ "\$1" = "-s" ] && { echo '$1'; exit 0; }
+exec "$real" "\$@"
+EOF
+  chmod +x "$TEST_DIR/bin/uname"
+}
+
 # ---------------------------------------------------------------------------
 # nx profile doctor
 # ---------------------------------------------------------------------------
@@ -139,6 +155,58 @@ RC
 # ---------------------------------------------------------------------------
 # nx profile regenerate
 # ---------------------------------------------------------------------------
+
+@test "profile regenerate writes a ~/.bash_profile shim on macOS" {
+  # macOS Terminal runs bash as a login shell, which reads ~/.bash_profile and
+  # never ~/.bashrc, and macOS ships no default ~/.bash_profile - so without
+  # this shim every managed block is rendered but never sourced.
+  _stub_uname Darwin
+  printf '# user content\n' >"$HOME/.bashrc"
+  nx profile regenerate
+  [ -f "$HOME/.bash_profile" ]
+  grep -q '# >>> nix:bash_profile >>>' "$HOME/.bash_profile"
+  grep -q '\.bashrc' "$HOME/.bash_profile"
+}
+
+@test "profile regenerate writes no ~/.bash_profile on Linux" {
+  # Distros ship a .bash_profile that already sources .bashrc; adding our own
+  # would shadow theirs.
+  _stub_uname Linux
+  printf '# user content\n' >"$HOME/.bashrc"
+  nx profile regenerate
+  [ ! -f "$HOME/.bash_profile" ]
+}
+
+@test "profile regenerate leaves a ~/.bash_profile that already sources .bashrc alone" {
+  _stub_uname Darwin
+  printf '# user content\n' >"$HOME/.bashrc"
+  printf 'source ~/.bashrc\n' >"$HOME/.bash_profile"
+  nx profile regenerate
+  run grep -c '\.bashrc' "$HOME/.bash_profile"
+  [ "$output" -eq 1 ]
+  run grep -q 'nix:bash_profile' "$HOME/.bash_profile"
+  [ "$status" -ne 0 ]
+}
+
+@test "a ~/.bash_profile only mentioning .bashrc in a comment still gets the shim" {
+  # The guard must match a sourcing statement, not any mention - otherwise a
+  # stray comment silently leaves login bash without the managed blocks.
+  _stub_uname Darwin
+  printf '# user content\n' >"$HOME/.bashrc"
+  printf '# I used to source ~/.bashrc from here\nexport MINE=1\n' >"$HOME/.bash_profile"
+  nx profile regenerate
+  grep -q '# >>> nix:bash_profile >>>' "$HOME/.bash_profile"
+  grep -q 'export MINE=1' "$HOME/.bash_profile"
+}
+
+@test "profile regenerate is idempotent for the ~/.bash_profile shim" {
+  _stub_uname Darwin
+  printf '# user content\n' >"$HOME/.bashrc"
+  nx profile regenerate
+  nx profile regenerate
+  run grep -c '# >>> nix:bash_profile >>>' "$HOME/.bash_profile"
+  [ "$output" -eq 1 ]
+}
 
 @test "profile regenerate preserves user content outside managed blocks" {
   _write_legacy_bashrc
@@ -255,6 +323,42 @@ RC
   nx profile uninstall
   grep -q "alias ll='ls -la'" "$HOME/.bashrc"
   grep -q "alias gs='git status'" "$HOME/.bashrc"
+}
+
+@test "profile uninstall drops a ~/.bash_profile that held only the shim" {
+  _stub_uname Darwin
+  printf '# user content\n' >"$HOME/.bashrc"
+  nx profile regenerate
+  [ -f "$HOME/.bash_profile" ]
+  run nx profile uninstall
+  [ "$status" -eq 0 ]
+  [ ! -f "$HOME/.bash_profile" ]
+}
+
+@test "profile uninstall keeps an empty ~/.bash_profile it never wrote" {
+  # An empty ~/.bash_profile is deliberate on macOS: bash reads the first of
+  # .bash_profile/.bash_login/.profile, so an empty one suppresses .profile.
+  printf '# user content\n' >"$HOME/.bashrc"
+  : >"$HOME/.bash_profile"
+  run nx profile uninstall
+  [ "$status" -eq 0 ]
+  [ -f "$HOME/.bash_profile" ]
+}
+
+@test "profile uninstall keeps a ~/.bash_profile that has user content" {
+  _stub_uname Darwin
+  printf '# user content\n' >"$HOME/.bashrc"
+  printf 'export MINE=1\n' >"$HOME/.bash_profile"
+  # regenerate skips files already naming .bashrc, so seed the shim directly
+  # to prove removal leaves the surrounding content intact.
+  printf '# >>> nix:bash_profile >>>\n. "$HOME/.bashrc"\n# <<< nix:bash_profile <<<\n' \
+    >>"$HOME/.bash_profile"
+  run nx profile uninstall
+  [ "$status" -eq 0 ]
+  [ -f "$HOME/.bash_profile" ]
+  grep -q 'export MINE=1' "$HOME/.bash_profile"
+  run grep -c 'nix:bash_profile' "$HOME/.bash_profile"
+  [ "$output" -eq 0 ]
 }
 
 @test "profile uninstall is a no-op on rc without managed block" {

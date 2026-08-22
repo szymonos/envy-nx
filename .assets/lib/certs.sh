@@ -166,7 +166,7 @@ merge_local_certs() {
     local _cert_count
     _cert_count=$(find "$src_dir" -maxdepth 1 -type f -name '*.crt' 2>/dev/null | wc -l | tr -d ' ')
     printf '\e[31;1mopenssl unavailable; %s local cert(s) in %s were SKIPPED.\e[0m\n' \
-      "${_cert_count:-?}" "${src_dir/#$HOME/\~}" >&2
+      "${_cert_count:-?}" "${src_dir/#$HOME/~}" >&2
     printf '\e[31m  Install openssl (it ships with the cert tooling) and re-run.\e[0m\n' >&2
     return 0
   }
@@ -200,7 +200,7 @@ merge_local_certs() {
   done < <(find "$src_dir" -maxdepth 1 -type f -name '*.crt' 2>/dev/null | sort)
 
   if [ $added -gt 0 ]; then
-    printf '\e[34mmerged %d local certificate(s) into %s\e[0m\n' "$added" "${cert_bundle/$HOME/\~}" >&2
+    printf '\e[34mmerged %d local certificate(s) into %s\e[0m\n' "$added" "${cert_bundle/$HOME/~}" >&2
   fi
   if [ $skipped -gt 0 ]; then
     printf '\e[90m(%d already present, skipped)\e[0m\n' "$skipped" >&2
@@ -296,7 +296,7 @@ cert_intercept() {
 
   # print summary
   if [ $cert_count -gt 0 ]; then
-    printf '\e[34madded %d certificate(s) to %s\e[0m\n' "$cert_count" "${cert_bundle/$HOME/\~}" >&2
+    printf '\e[34madded %d certificate(s) to %s\e[0m\n' "$cert_count" "${cert_bundle/$HOME/~}" >&2
   else
     printf '\e[34mno new certificates to add\e[0m\n' >&2
   fi
