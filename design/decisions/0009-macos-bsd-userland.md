@@ -12,7 +12,7 @@ installed a GNU userland that shadowed those same BSD tools for the user.
 **Decision:** On Darwin, `base.nix` does not install `coreutils`, `findutils`, or
 `gawk`; macOS keeps its native BSD userland. Off-Darwin (Linux/containers, where the
 base may be minimal or BusyBox) they are always installed. Implemented with
-`lib.optionals (!stdenv.isDarwin) [ ... ]`, mirroring `nix/scopes/docker.nix`. GNU
+`lib.optionals (!stdenv.hostPlatform.isDarwin) [ ... ]`, mirroring `nix/scopes/docker.nix`. GNU
 tools stay available on macOS as a conscious opt-in: `nx install coreutils findutils gawk`.
 
 **Consequence:** Project code that runs on macOS must not rely on GNU-only coreutils

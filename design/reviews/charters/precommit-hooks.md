@@ -4,21 +4,23 @@ Pre-commit hooks gate every commit. False positives erode trust ("the hooks are 
 
 ## Scope
 
-| File                                  | Role                                                                    |
-| ------------------------------------- | ----------------------------------------------------------------------- |
-| `tests/hooks/run_bats.py`             | Execute bats tests for changed shell script files                       |
-| `tests/hooks/run_pester.py`           | Execute Pester tests for changed PowerShell files                       |
-| `tests/hooks/check_bash32.py`         | Verify shell scripts for bash 3.2 / BSD sed compatibility               |
-| `tests/hooks/check_zsh_compat.py`     | Verify shell scripts for zsh compatibility                              |
-| `tests/hooks/check_changelog.py`      | Validate CHANGELOG.md structure and require updates for runtime changes |
-| `tests/hooks/check_no_tty_read.py`    | Forbid `read ... </dev/tty` without `# tty-ok` annotation               |
-| `tests/hooks/gen_nx_completions.py`   | Generate nx completions and help text from `nx_surface.json`            |
-| `tests/hooks/check_nx_completions.py` | Verify generated completions match committed artifacts                  |
-| `tests/hooks/validate_scopes.py`      | Validate scope definition internal consistency                          |
-| `tests/hooks/validate_docs_words.py`  | Validate documentation word/language conventions                        |
-| `tests/hooks/align_tables.py`         | Auto-align markdown table columns                                       |
-| `tests/hooks/nix_closure_to_spdx.py`  | Transform nix closure JSON to SPDX 2.3 SBOM                             |
-| `tests/hooks/gremlins.py`             | Scan staged files for unwanted Unicode characters                       |
+| File                                   | Role                                                                                                                |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `tests/hooks/run_bats.py`              | Execute bats tests for changed shell script files                                                                   |
+| `tests/hooks/run_pester.py`            | Execute Pester tests for changed PowerShell files                                                                   |
+| `tests/hooks/check_bash32.py`          | Verify shell scripts for bash 3.2 / BSD sed compatibility                                                           |
+| `tests/hooks/check_zsh_compat.py`      | Verify shell scripts for zsh compatibility                                                                          |
+| `tests/hooks/check_changelog.py`       | Validate CHANGELOG.md structure and require updates for runtime changes                                             |
+| `tests/hooks/check_no_tty_read.py`     | Forbid `read ... </dev/tty` without `# tty-ok` annotation                                                           |
+| `tests/hooks/check_distro_case_arm.py` | Require a non-empty, last-position `*)` arm on every distro `case`; content-scoped, `# distro-case-ok:` suppression |
+| `tests/hooks/check_curl_tls.py`        | Require `--proto` / `--tlsv1.2` on executing curl/wget fetches; `# tls-probe-ok:` suppression                       |
+| `tests/hooks/gen_nx_completions.py`    | Generate nx completions and help text from `nx_surface.json`                                                        |
+| `tests/hooks/check_nx_completions.py`  | Verify generated completions match committed artifacts                                                              |
+| `tests/hooks/validate_scopes.py`       | Validate scope definition internal consistency                                                                      |
+| `tests/hooks/validate_docs_words.py`   | Validate documentation word/language conventions                                                                    |
+| `tests/hooks/align_tables.py`          | Auto-align markdown table columns                                                                                   |
+| `tests/hooks/nix_closure_to_spdx.py`   | Transform nix closure JSON to SPDX 2.3 SBOM                                                                         |
+| `tests/hooks/gremlins.py`              | Scan staged files for unwanted Unicode characters                                                                   |
 
 **Out of scope:** the test bodies the hooks invoke (→ `test-quality` shard); the project-level prek configuration (`.pre-commit-config.yaml` is config, not hook logic).
 
