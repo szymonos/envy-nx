@@ -16,7 +16,9 @@ btop
 buglog
 buildx
 cafile
+catchable
 certifi
+chowned
 chsh
 cloudsdk
 cmatrix
@@ -29,6 +31,7 @@ coreutils
 cowsay
 cutover
 cword
+debconf
 dedup
 diffable
 direnv
@@ -36,6 +39,7 @@ diskpart
 distrobox
 distros
 dotdir
+dpkg
 eacces
 egsave
 eledath
@@ -44,6 +48,7 @@ elop
 elopment
 euid
 execvpe
+fakeroot
 fastfetch
 fileno
 findutils
@@ -52,6 +57,7 @@ fixcertpy
 fnm
 fontawesome
 footgun
+frontmatter
 gbda
 gheof
 gtimeout
@@ -67,6 +73,7 @@ incompat
 intune
 isatty
 jamf
+keyrings
 keytimeout
 koalaman
 ktog
@@ -88,6 +95,7 @@ manpath
 mapfile
 mgmt
 microsoftonline
+middlebox
 miniforge
 minisign
 mkdocs
@@ -105,6 +113,7 @@ nixpkgs
 nmap
 nodeenv
 nomatch
+noninteractive
 noout
 nounset
 oneshot
@@ -129,6 +138,7 @@ pytest
 readarray
 readlink
 redef
+redir
 reexeced
 regenerable
 reimplementations
@@ -171,9 +181,12 @@ unsets
 unvalidated
 upserts
 userland
+usermod
 vdisk
 venv
 versinfo
+vimrc
+vimscript
 virtualenv
 whatis
 wikilinks

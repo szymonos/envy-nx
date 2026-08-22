@@ -6,11 +6,11 @@ This tool provisions developer environments - if it breaks, developers cannot wo
 
 | Metric                       | Value                                                                       |
 | ---------------------------- | --------------------------------------------------------------------------- |
-| Unit test files              | 36 (27 bats + 9 Pester)                                                     |
-| Individual test cases        | 665 (523 bats + 142 Pester)                                                 |
-| Test code                    | 8,300+ lines                                                                |
-| Custom pre-commit hooks      | 14 Python scripts                                                           |
-| Pre-commit checks per commit | 25 hooks                                                                    |
+| Unit test files              | 41 (32 bats + 9 Pester)                                                     |
+| Individual test cases        | 771 (629 bats + 142 Pester)                                                 |
+| Test code                    | 11,100+ lines                                                               |
+| Custom pre-commit hooks      | 16 Python scripts                                                           |
+| Pre-commit checks per commit | 28 hooks                                                                    |
 | CI workflows                 | 7 (preflight, CodeQL, Linux, macOS, upgrade walk, release, docs)            |
 | CI matrix axes               | 5 (Linux daemon, Linux rootless, Linux tarball, macOS Sequoia, macOS Tahoe) |
 | Platforms validated per PR   | macOS (bash 3.2 + BSD), Ubuntu (bash 5 + GNU)                               |
@@ -46,11 +46,11 @@ The checks downstream exist to enforce four invariants. Reading them first makes
 
 ## Pre-commit hooks
 
-Every commit passes through 25 hooks split across two categories: **custom hooks** (Python scripts maintained in this repo, purpose-built for this codebase's invariants) and **vendored hooks** (third-party hooks pulled in via `.pre-commit-config.yaml`, covering general-purpose checks). For exact file scopes, hook IDs, and pinned revisions, read `.pre-commit-config.yaml` directly -- the tables below describe intent.
+Every commit passes through 28 hooks split across two categories: **custom hooks** (Python scripts maintained in this repo, purpose-built for this codebase's invariants) and **vendored hooks** (third-party hooks pulled in via `.pre-commit-config.yaml`, covering general-purpose checks). For exact file scopes, hook IDs, and pinned revisions, read `.pre-commit-config.yaml` directly -- the tables below describe intent.
 
 ### Custom hooks
 
-13 Python scripts under `tests/hooks/`, wired in as `repo: local` entries:
+16 Python scripts under `tests/hooks/`, wired in as `repo: local` entries:
 
 | Hook                          | Why it exists                                                                                                                                                                                                                        |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -61,6 +61,9 @@ Every commit passes through 25 hooks split across two categories: **custom hooks
 | `check-bash32`                | Blocks bash 4+ syntax in scripts that have to run on macOS's stock bash 3.2. The diagnostic includes the offending line and the recommended portable rewrite, not just "incompatible".                                               |
 | `check-zsh-compat`            | All bash scripts that get sourced into the user's zsh profile must avoid the patterns where bash and zsh disagree (function declarations, glob no-match behavior, completion builtins).                                              |
 | `check-no-tty-read`           | Forbids `read` redirected from `/dev/tty` in setup scripts unless explicitly self-attested. The pattern silently hangs in interactive shells but silently passes in headless CI / agents -- the worst kind of bug to ship.           |
+| `check-no-aliased-builtins`   | Forbids bare `mv` / `cp` in files sourced into the user's interactive shell. Under a common `alias mv='mv -i'` the prompt reads EOF in any non-tty context, the command exits non-zero, and the caller sees apparent success.        |
+| `check-distro-case-arm`       | Requires a `*)` arm on every distro `case`. An unmatched `/etc/os-release` ID leaves the variable empty, so the installer runs no arm and exits 0 having installed nothing. Scoped by file *content*, not directory.                 |
+| `check-curl-tls`              | Requires `--proto` and `--tlsv1.2` on every executing curl/wget fetch. Most of the hook is the false-positive surface: comments, examples blocks, output-helper strings, package names and existence probes all mention curl.        |
 | `check-md-html-tags`          | Forbids unbalanced tag-like `<...` substrings in `docs/*.md` -- Python-Markdown's HTML preprocessor consumes them as malformed tag openers (even inside backticks), silently dropping subsequent rendered content. Recurrence guard. |
 | `check-changelog`             | Runtime file changes require a CHANGELOG entry under `[Unreleased]`. Can be skipped via a label when the change is genuinely doc-only.                                                                                               |
 | `check-learning-trailer`      | Commit-msg hook nudging for a `Codified-Learning:` trailer when high-leverage paths (`.assets/lib/nx_*.sh`, `nix/lib/phases/*.sh`, `tests/hooks/*.py`) are staged. Skippable via `# no-learning`.                                    |
@@ -84,7 +87,7 @@ Third-party hooks for general-purpose checks. Each is a problem the project woul
 
 ## Unit tests
 
-27 bats files cover bash logic: scope dependency resolution, `nx` CLI commands and tab completers, managed-block injection / removal, profile migration, the overlay system, health checks, certificate handling, manager-scope removal hooks (`conda`, `nodejs`, `python`), the colima.yaml cert provisioner, and zsh runtime smoke tests.
+32 bats files cover bash logic: scope dependency resolution, `nx` CLI commands and tab completers, managed-block injection / removal, profile migration, the overlay system, health checks, certificate handling, manager-scope removal hooks (`conda`, `nodejs`, `python`), the colima.yaml cert provisioner, and zsh runtime smoke tests.
 
 9 Pester files mirror this for PowerShell components: WSL orchestration (high-level integration in `WslSetup.Tests.ps1`), the 16 phase functions extracted from `wsl/wsl_setup.ps1` into the `utils-setup` module (`WslSetupPhases.Tests.ps1` - 52 unit tests across the new module surface), scope parsing, certificate conversion, and the `nx` CLI argument completer.
 
