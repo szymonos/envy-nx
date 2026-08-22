@@ -1,6 +1,6 @@
 ---
 name: review
-description: Run a periodic chunked code review against one shard of the repo. Use /review <shard> to start a review, /review next to rotate to the oldest-reviewed shard, /review act <findings-path> to triage findings and apply fixes, /review status to see what's pending. Spawns the reviewer/fixer/verifier subagents from .claude/agents/.
+description: Run a periodic chunked code review against one shard of the repo. Use /review with a shard name to start a review, /review next to rotate to the oldest-reviewed shard, /review act with a findings path to triage findings and apply fixes, /review status to see what's pending. Spawns the reviewer/fixer/verifier subagents from .claude/agents/.
 disable-model-invocation: true
 ---
 
