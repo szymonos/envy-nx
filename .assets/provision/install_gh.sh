@@ -38,6 +38,16 @@ debian | ubuntu)
   # check if installed already
   dpkg -s gh &>/dev/null && exit 0 || true
   ;;
+*)
+  # The caller (linux_setup.sh) has no ERR trap and its EXIT trap prints
+  # nothing, so this message is all the user gets - spell out the diagnosis.
+  # SYS_ID is empty by construction here (the arm only fires when the detection
+  # sed matched nothing), so read the raw ID= field to name the actual distro.
+  raw_id="$(sed -n 's/^ID=//p' /etc/os-release 2>/dev/null | tr -d '"' | head -1)" || true
+  printf '\e[31;1m%s: unsupported distribution - detected ID "%s".\e[0m\n' "${0##*/}" "${raw_id:-unknown}" >&2
+  printf '\e[31;1mSupported: alpine, arch, fedora, debian, ubuntu, opensuse.\e[0m\n' >&2
+  exit 1
+  ;;
 esac
 
 printf "\e[92minstalling \e[1mgithub-cli\e[0m\n" >&2
@@ -67,5 +77,15 @@ opensuse)
   zypper --non-interactive --quiet addrepo --no-check https://cli.github.com/packages/rpm/gh-cli.repo
   zypper --gpg-auto-import-keys --quiet refresh gh-cli
   zypper --non-interactive install -y gh >&2 2>/dev/null
+  ;;
+*)
+  # The caller (linux_setup.sh) has no ERR trap and its EXIT trap prints
+  # nothing, so this message is all the user gets - spell out the diagnosis.
+  # SYS_ID is empty by construction here (the arm only fires when the detection
+  # sed matched nothing), so read the raw ID= field to name the actual distro.
+  raw_id="$(sed -n 's/^ID=//p' /etc/os-release 2>/dev/null | tr -d '"' | head -1)" || true
+  printf '\e[31;1m%s: unsupported distribution - detected ID "%s".\e[0m\n' "${0##*/}" "${raw_id:-unknown}" >&2
+  printf '\e[31;1mSupported: alpine, arch, fedora, debian, ubuntu, opensuse.\e[0m\n' >&2
+  exit 1
   ;;
 esac

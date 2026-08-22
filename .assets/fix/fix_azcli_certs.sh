@@ -12,7 +12,10 @@ SCRIPT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # *discover azure-cli certifi cacert.pem
 AZCLI_CERTIFI=""
 SYS_ID="$(sed -En '/^ID.*(fedora|debian|ubuntu|opensuse).*/{s//\1/;p;q}' /etc/os-release 2>/dev/null)" || true
-case ${SYS_ID:-} in
+# No `*)` arm on purpose: the detection sed above deliberately omits alpine and
+# arch because neither `rpm -ql` nor `dpkg-query -L` applies there. Those
+# distros leave AZCLI_CERTIFI empty and are picked up by the venv fallback below.
+case ${SYS_ID:-} in # distro-case-ok: alpine/arch are handled by the venv fallback below
 fedora | opensuse)
   AZCLI_CERTIFI=$(rpm -ql azure-cli 2>/dev/null | grep 'site-packages/certifi/cacert.pem') || true
   ;;
