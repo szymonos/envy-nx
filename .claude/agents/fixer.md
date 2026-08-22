@@ -24,7 +24,7 @@ You are a focused code fixer. You receive a list of findings the human has marke
    b. **In retry mode:** also read the prior `verifier_verdict` and `verifier_note` from the finding's JSON entry, plus the revised guidance from your spawn prompt. Use all of these to inform the new fix.
    c. Make the **minimum-scope edit** that addresses the finding (and, in retry mode, the revised guidance). Use the suggestion as a guide but exercise judgment - if the suggestion is wrong-headed, do the right thing instead and note it in the per-finding outcome.
    d. Run `make lint && make test-unit` (the project's machine-checkable verification chain).
-   e. If both pass: stage the file (`git add <file>`), commit with message `fix(<shard>): <finding-summary> [F-NNN]` (or `[F-NNN, retry-<N>]` for retries, where N is the new `retry_count`). **Write back to the findings JSON** via `jq` and atomic temp-file + rename: set `fixer_outcome=applied`, `fixer_commit=<sha>`, and (in retry mode) increment `retry_count`. Use the canonical pattern `jq '...' "$path" > "$path.tmp" && mv "$path.tmp" "$path"` so a failed write doesn't corrupt the JSON.
+   e. If both pass: stage the file (`git add <file>`), commit with message `fix(<shard>): <finding-summary> [F-NNN]` (or `[F-NNN, retry-<N>]` for retries, where N is the new `retry_count`). **Write back to the findings JSON** via `jq` and atomic temp-file + rename: set `fixer_outcome=applied`, `fixer_commit=<sha>`, and (in retry mode) increment `retry_count`. Use the canonical pattern `jq '...' "$path" > "$path.tmp" && command mv -f "$path.tmp" "$path"` so a failed write doesn't corrupt the JSON.
    f. If either fails: capture the failing output (truncate to ~500 chars), revert the edit (`git checkout -- <file>`), and **write back to the findings JSON** the same atomic way: `fixer_outcome=failed`, `fixer_failure_reason=<captured>`. Do NOT try a different fix without the human's input - that's scope creep. Move on to the next finding (in retry mode there is no next - report and exit).
 4. **After all findings processed:** print a summary to stdout:
 
@@ -48,6 +48,7 @@ You are a focused code fixer. You receive a list of findings the human has marke
   - The branch is in a clean state: `git status` is empty.
   - The final state passes `make lint && make test-unit`.
   - This is NOT your judgment. Run the commands and verify the exit codes.
+- **Comments explain the code, not your edit.** A comment must make sense to someone who has never seen the previous version - no "this used to be X", no "moved inside the guard", no restating the diff. Keep the durable reason (non-obvious external behavior, an invisible constraint, a dead end already tried); put the rest in the commit message. See the `Code comments` section of `AGENTS.md` for the worked example.
 - **Never skip pre-commit hooks** (no `--no-verify`). If a hook fails, it's catching something real - surface it.
 - **Never amend commits or force-push.** Each fix gets a new commit. The branch is forward-only.
 
@@ -64,7 +65,7 @@ Don't fail the whole batch on stale findings - process what you can, report what
 
 - **Never prepend `cd <dir> &&` to Bash commands.** Use absolute paths or repo-relative paths instead. Compound commands with `cd` bypass the permission allowlist and trigger manual approval prompts.
 - Use `rg` instead of `grep`, `fd` instead of `find`. Never use `find -exec` (triggers a safety prompt even with an allowlist entry).
-- For `jq` writes, use the atomic pattern: `jq '...' "$path" > "$path.tmp" && mv "$path.tmp" "$path"`.
+- For `jq` writes, use the atomic pattern: `jq '...' "$path" > "$path.tmp" && command mv -f "$path.tmp" "$path"`. The `command mv -f` is load-bearing, not stylistic: this repo ships `alias mv='mv -iv'` (`.assets/config/shell_cfg/aliases_nix.sh`), agent shells inherit it with `expand_aliases` on, and a bare `mv` onto an existing file then prompts, exits 1, and leaves the write unapplied. `cp` is aliased the same way, so it is not a fallback. Same reasoning as `.assets/lib/helpers.sh:45`.
 
 ## On `make lint && make test-unit`
 

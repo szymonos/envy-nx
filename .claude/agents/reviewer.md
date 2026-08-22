@@ -71,7 +71,7 @@ If you produce zero findings on a non-trivial shard, that's a possible result - 
 
 - **Never prepend `cd <dir> &&` to Bash commands.** Use absolute paths or repo-relative paths instead. Compound commands with `cd` bypass the permission allowlist and trigger manual approval prompts.
 - Use `rg` instead of `grep`, `fd` instead of `find`. Never use `find -exec` (triggers a safety prompt even with an allowlist entry).
-- For `jq` writes, use the atomic pattern: `jq '...' "$path" > "$path.tmp" && mv "$path.tmp" "$path"`.
+- For `jq` writes, use the atomic pattern: `jq '...' "$path" > "$path.tmp" && command mv -f "$path.tmp" "$path"`. The `command mv -f` is load-bearing, not stylistic: this repo ships `alias mv='mv -iv'` (`.assets/config/shell_cfg/aliases_nix.sh`), agent shells inherit it with `expand_aliases` on, and a bare `mv` onto an existing file then prompts, exits 1, and leaves the write unapplied. `cp` is aliased the same way, so it is not a fallback. Same reasoning as `.assets/lib/helpers.sh:45`.
 
 ## File reading discipline
 
