@@ -93,7 +93,7 @@ for cmd in curl jq tar; do
 done
 _io_step "resolving latest gcloud version"
 metadata_uri='https://dl.google.com/dl/cloudsdk/channels/rapid/components-2.json'
-ver="$(curl -fsSL "$metadata_uri" | jq -r '.version')"
+ver="$(curl --proto '=https' --tlsv1.2 -fsSL "$metadata_uri" | jq -r '.version')"
 if [ -z "$ver" ] || [ "$ver" = "null" ]; then
   printf '\e[31;1mFailed to resolve latest gcloud version from %s.\e[0m\n' "$metadata_uri" >&2
   exit 1

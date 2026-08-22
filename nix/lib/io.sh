@@ -36,12 +36,15 @@ err() { _log_msg "ERROR" "91" "1" "$@"; }
 # the right commands are issued without executing them.
 _io_nix() { nix "$@"; }
 _io_nix_eval() { nix eval --impure --raw --expr "$1"; }
-_io_curl_probe() { curl -sS "$1" >/dev/null 2>&1; }
+# No --proto/--tlsv1.2: $1 is $NIX_ENV_TLS_PROBE_URL, which the user may point at
+# an http:// endpoint (nx_doctor.sh strips an http:// prefix from it), and a
+# rejected protocol or TLS floor would be reported as a MITM cert failure.
+_io_curl_probe() { curl -sS "$1" >/dev/null 2>&1; } # tls-probe-ok: probe URL is user-supplied and may be http://
 # Insecure variant: bypasses cert validation (-k). Used by the MITM probe to
 # distinguish "TLS cert rejected" (cert problem - run cert_intercept) from
 # "endpoint unreachable" (network/DNS/captive portal - skip cert_intercept,
 # don't pollute ca-custom.crt with unrelated bytes).
-_io_curl_probe_insecure() { curl -ksS "$1" >/dev/null 2>&1; }
+_io_curl_probe_insecure() { curl -ksS "$1" >/dev/null 2>&1; } # tls-probe-ok: -k is load-bearing here
 # Pinned variant: probes TLS using `openssl s_client -CAfile <bundle>` so the
 # only trust source is the explicit Mozilla bundle. The implementation lives
 # in .assets/lib/cert_probe.sh (single source of truth - also called by

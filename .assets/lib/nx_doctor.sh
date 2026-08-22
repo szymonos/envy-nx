@@ -468,7 +468,9 @@ _check_cert_bundle() {
       return
     fi
     # Strict probe failed; distinguish cert vs network with insecure retry.
-    if curl -ksS --max-time 5 "$_probe_url" >/dev/null 2>&1; then
+    # tls-probe-ok: -k is load-bearing (a verifying probe would fail for the
+    # very reason we are testing) and $_probe_url may be http://.
+    if curl -ksS --max-time 5 "$_probe_url" >/dev/null 2>&1; then # tls-probe-ok: -k is load-bearing here
       printf 'fail\tMITM proxy detected but ca-custom.crt missing\tre-run nix/setup.sh to extract proxy certs into ~/.config/certs/ca-custom.crt and refresh ca-bundle.crt\n'
     else
       # Network problem (DNS/captive portal) - not a cert issue.
