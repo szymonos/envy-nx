@@ -24,7 +24,9 @@ SCOPES_DIR = REPO_ROOT / "nix" / "scopes"
 CONFIGURE_DIR = REPO_ROOT / "nix" / "configure"
 BOOTSTRAP_SH = REPO_ROOT / "nix" / "lib" / "phases" / "bootstrap.sh"
 
-BINS_RE = re.compile(r"^# bins:\s+\S", re.MULTILINE)
+# `[ \t]` not `\s`: \s matches the newline too, so `# bins:` with an empty
+# value passed as long as the next line started with a non-space character.
+BINS_RE = re.compile(r"^# bins:[ \t]+\S", re.MULTILINE)
 PARSE_ARGS_RE = re.compile(
     r"^phase_bootstrap_parse_args\(\) \{(.*?)^\}$", re.DOTALL | re.MULTILINE
 )
