@@ -54,7 +54,7 @@ To opt out for a commit that genuinely yields no generalization (and that touche
 <!-- Tags populate as entries land via the post-merge workflow -->
 
 - **cache-staleness** - [L-002](#l-002---2026-05-23---cache-staleness)
-- **general** - [L-003](#l-003---2026-07-24---general)
+- **general** - [L-003](#l-003---2026-07-24---general), [L-004](#l-004---2026-08-22---general), [L-005](#l-005---2026-08-22---general), [L-006](#l-006---2026-08-22---general), [L-007](#l-007---2026-08-22---general), [L-008](#l-008---2026-08-22---general), [L-009](#l-009---2026-08-22---general), [L-010](#l-010---2026-08-22---general), [L-011](#l-011---2026-08-22---general), [L-012](#l-012---2026-08-22---general)
 - **meta** - [L-000](#l-000---2026-05-23---meta)
 - **render-heuristics** - [L-001](#l-001---2026-05-23---render-heuristics)
 
@@ -108,5 +108,77 @@ To opt out for a commit that genuinely yields no generalization (and that touche
 **Source:** PR #46 (`281a7d6`)
 
 When syncing a vendored PowerShell module (do-common from ps-modules), a renamed/removed public parameter silently breaks first-party callers outside the module - PowerShell only fails at runtime param-binding, not at import. After a module sync, grep the repo for callers of any renamed parameter (e.g. `rg -- '-OldParamName'`) and update them in the same commit.
+
+---
+
+## L-004 - 2026-08-22 - general
+
+**Source:** PR #62 (`5f778c8`)
+
+an insecure curl flag inherited from a fork import survived two file moves because no commit message ever explained it
+
+---
+
+## L-005 - 2026-08-22 - general
+
+**Source:** PR #62 (`5f778c8`)
+
+a case statement with no default arm reports success for the one distro nobody tested
+
+---
+
+## L-006 - 2026-08-22 - general
+
+**Source:** PR #62 (`5f778c8`)
+
+an entry point with no test and no CI leg was fatally broken on a whole class of host and nobody noticed
+
+---
+
+## L-007 - 2026-08-22 - general
+
+**Source:** PR #62 (`5f778c8`)
+
+argument parsing sat behind the jq bootstrap that needed it, so a typo cost a repo pull and a profile install before anyone was told
+
+---
+
+## L-008 - 2026-08-22 - general
+
+**Source:** PR #62 (`5f778c8`)
+
+the upgrade path already swept these caches; the uninstaller was never taught the same lesson
+
+---
+
+## L-009 - 2026-08-22 - general
+
+**Source:** PR #62 (`5f778c8`)
+
+eleven of sixteen review findings were two copy-pasted shapes, both mechanically detectable
+
+---
+
+## L-010 - 2026-08-22 - general
+
+**Source:** PR #62 (`5f778c8`)
+
+the docker smoke test found a real bug on its first run
+
+---
+
+## L-011 - 2026-08-22 - general
+
+**Source:** PR #62 (`5f778c8`)
+
+a REST reviewer list that omits Bots made a queued Copilot review read as never requested
+
+---
+
+## L-012 - 2026-08-22 - general
+
+**Source:** PR #62 (`5f778c8`)
+
+a comment that narrates the change reads as noise to everyone who never saw the old version
 
 ---
