@@ -83,8 +83,17 @@ download_file() {
   local status_code
 
   while [ $retry_count -le $max_retries ]; do
-    # download file
-    status_code=$(curl -w '%{http_code}' -#Lko "$target_dir/$file_name" "$uri")
+    # Download file. Notes on the flag set:
+    #   --proto '=https' guards the initial request and every redirect hop
+    #     (conda.sh fetches a redirecting GitHub /latest/download/ URL), so
+    #     --proto-redir is redundant here - keep --proto, it does the work.
+    #   -f (--fail) is deliberately absent: the retry/404 handling below reads
+    #     %{http_code} and needs curl to exit 0 on an HTTP error. With -f curl
+    #     exits 22, and nix/configure/conda.sh calls download_file unguarded
+    #     under `set -eo pipefail`, so the caller would die before the retry
+    #     loop or the 404 message ever ran.
+    status_code=$(curl -w '%{http_code}' --proto '=https' --proto-redir '=https' --tlsv1.2 \
+      -#Lo "$target_dir/$file_name" "$uri")
 
     # check the HTTP status code
     case $status_code in

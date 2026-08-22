@@ -61,19 +61,32 @@ if [ "$no_daemon" = true ]; then
     exit 1
   fi
   user_home="$(getent passwd "$SUDO_USER" | cut -d: -f6)"
+  user_group="$(id -gn "$SUDO_USER")"
   # create /nix owned by the calling user
   mkdir -p /nix
-  chown "$SUDO_USER" /nix
+  chown "$SUDO_USER:$user_group" /nix
   # enable flakes and disable sandbox (containers lack namespace support)
   nix_conf="$user_home/.config/nix/nix.conf"
-  mkdir -p "$(dirname "$nix_conf")"
+  # `mkdir -p` runs as root here and also creates ~/.config when it does not
+  # exist yet - the normal case for a freshly created user in the Coder/
+  # container scenario this flag targets. Chown the whole created chain, not
+  # just the nix leaf: a root-owned ~/.config makes every later unprivileged
+  # write under it (~/.config/dev-env, ~/.config/certs, ~/.config/shell) fail
+  # with EACCES, and nothing later on this path runs as root to repair it.
+  mkdir -p "$user_home/.config/nix"
+  chown "$SUDO_USER:$user_group" "$user_home/.config" "$user_home/.config/nix"
   cat >"$nix_conf" <<'NIXCONF'
 experimental-features = nix-command flakes
 sandbox = false
 NIXCONF
-  chown -R "$SUDO_USER" "$(dirname "$nix_conf")"
-  # run upstream installer as the calling user
-  su - "$SUDO_USER" -c "curl -sL https://nixos.org/nix/install | sh -s -- --no-daemon"
+  chown "$SUDO_USER:$user_group" "$nix_conf"
+  # Run upstream installer as the calling user. nixos.org/nix/install answers
+  # 302 to releases.nixos.org, so the payload piped into sh comes from the
+  # redirect target; --proto '=https' covers that hop too, which is why
+  # --proto-redir is redundant here. The single quotes around '=https' survive
+  # the extra shell level `su -c` introduces.
+  curl_flags="--proto '=https' --proto-redir '=https' --tlsv1.2 -sSf -L"
+  su - "$SUDO_USER" -c "curl $curl_flags https://nixos.org/nix/install | sh -s -- --no-daemon"
 else
   # Multi-user install via Determinate Systems installer:
   # - Enables flakes and nix-command by default

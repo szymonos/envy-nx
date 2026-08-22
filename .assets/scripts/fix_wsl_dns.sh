@@ -106,7 +106,8 @@ cmd_status() {
 
   printf '\n\e[1mDNS test:\e[0m\n'
   local result
-  if result="$(curl -w 'dns:%{time_namelookup}s total:%{time_total}s' -s -o /dev/null https://google.com 2>&1)"; then
+  if result="$(curl --proto '=https' --tlsv1.2 -w 'dns:%{time_namelookup}s total:%{time_total}s' \
+    -s -o /dev/null https://google.com 2>&1)"; then
     print_ok "  google.com -> $result"
   else
     print_err "  google.com -> FAILED"
@@ -244,11 +245,13 @@ EOF
   printf '\n'
   print_info "verifying DNS resolution..."
   local result
-  if result="$(curl -w 'dns:%{time_namelookup}s total:%{time_total}s' -s -o /dev/null https://google.com 2>&1)"; then
+  if result="$(curl --proto '=https' --tlsv1.2 -w 'dns:%{time_namelookup}s total:%{time_total}s' \
+    -s -o /dev/null https://google.com 2>&1)"; then
     print_ok "google.com -> $result"
   else
     print_warn "first attempt slow/failed, retrying..."
-    if result="$(curl -w 'dns:%{time_namelookup}s total:%{time_total}s' -s -o /dev/null https://google.com 2>&1)"; then
+    if result="$(curl --proto '=https' --tlsv1.2 -w 'dns:%{time_namelookup}s total:%{time_total}s' \
+      -s -o /dev/null https://google.com 2>&1)"; then
       print_ok "google.com -> $result"
     else
       print_err "DNS resolution still failing. Run '.assets/scripts/fix_wsl_dns.sh status' to diagnose."
