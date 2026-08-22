@@ -1,4 +1,4 @@
-#!/usr/bin/env -S uv run --frozen python
+#!/usr/bin/env -S uv run python3
 """
 pr_review.py - state-aware GitHub PR review thread management.
 
@@ -14,7 +14,7 @@ C = fresh Copilot review exists, unresolved threads -> process them
 D = fresh Copilot review exists, no unresolved      -> DONE (only clean-exit)
 
 "Fresh" means a review whose commit SHA matches the PR's current HEAD SHA.
-"In progress" means Copilot is in the PR's requested_reviewers list.
+"In progress" means Copilot sits in the PR's pending review requests.
 
 Subcommands
 -----------
@@ -48,12 +48,10 @@ import sys
 import time
 
 COPILOT_REVIEWER_LOGIN = "copilot-pull-request-reviewer"  # author of submitted reviews
-# The requested_reviewers users list may surface Copilot under either login
-# depending on the API surface: "Copilot" (bot display login) or the same
-# "copilot-pull-request-reviewer" slug used when triggering. Accept both so
-# state detection doesn't misclassify an in-progress review as "not requested"
-# and re-trigger in a loop.
-COPILOT_REQUESTED_LOGINS = frozenset({"Copilot", COPILOT_REVIEWER_LOGIN})
+# Logins a pending Copilot request can carry. It is a Bot named
+# `copilot-pull-request-reviewer`; older payloads exposed it as a user "Copilot".
+# Compared case-insensitively.
+COPILOT_REQUESTED_LOGINS = frozenset({COPILOT_REVIEWER_LOGIN, "copilot"})
 
 STATE_QUERY = """
 query($owner: String!, $repo: String!, $pr: Int!) {
@@ -65,6 +63,15 @@ query($owner: String!, $repo: String!, $pr: Int!) {
           author { login }
           submittedAt
           commit { oid }
+        }
+      }
+      reviewRequests(first: 50) {
+        nodes {
+          requestedReviewer {
+            __typename
+            ... on User { login }
+            ... on Bot { login }
+          }
         }
       }
     }
@@ -160,14 +167,22 @@ def _graphql(query: str, **variables: str | int) -> dict:
     return json.loads(_run_gh(cmd))
 
 
-def _copilot_requested(owner: str, repo: str, pr: int) -> bool:
-    """Check if Copilot is in the PR's requested_reviewers list."""
-    data = json.loads(
-        _run_gh(["gh", "api", f"repos/{owner}/{repo}/pulls/{pr}/requested_reviewers"])
-    )
-    return any(
-        u.get("login") in COPILOT_REQUESTED_LOGINS for u in data.get("users", [])
-    )
+def _copilot_requested(pr_node: dict) -> bool:
+    """
+    Check whether Copilot sits in the PR's pending review requests.
+
+    Read from the GraphQL `reviewRequests` connection, NOT from REST
+    `/pulls/{n}/requested_reviewers`: that endpoint reports only `users` and
+    `teams`, and Copilot is a Bot, so a genuinely pending Copilot request
+    renders there as `{"users": [], "teams": []}` no matter which login you
+    match against. Using it made state detection report A ("nothing requested")
+    for a review that was already queued, so state B was unreachable.
+    """
+    logins = {
+        ((node.get("requestedReviewer") or {}).get("login") or "").lower()
+        for node in (pr_node.get("reviewRequests") or {}).get("nodes", [])
+    }
+    return bool(logins & COPILOT_REQUESTED_LOGINS)
 
 
 def _flatten_thread(thread: dict) -> dict:
@@ -230,6 +245,10 @@ def _detect_state(owner: str, repo: str, pr: int) -> dict:
         (fresh_review.get("commit") or {}).get("oid") if fresh_review else None
     )
 
+    # Reported in every state: once a review is submitted the request is
+    # consumed, so this is False in C/D and the flag only classifies A vs B.
+    copilot_requested = _copilot_requested(pr_node)
+
     # Only fetch review threads when a fresh review exists (states C/D). Without
     # one (states A/B), the threads are irrelevant to classification, so skip the
     # paginated fetch - it would add unnecessary GitHub API calls to every `wait`
@@ -243,12 +262,7 @@ def _detect_state(owner: str, repo: str, pr: int) -> dict:
             if not t["isResolved"] and not t["isOutdated"]
         ]
         state = "C" if fresh_threads else "D"
-        # A fresh review exists, so state is C/D regardless of this flag. Report the
-        # real requested-reviewer status rather than assuming True, so the field
-        # stays semantically accurate for callers.
-        copilot_requested = _copilot_requested(owner, repo, pr)
     else:
-        copilot_requested = _copilot_requested(owner, repo, pr)
         state = "B" if copilot_requested else "A"
 
     return {

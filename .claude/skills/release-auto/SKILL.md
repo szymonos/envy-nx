@@ -1,6 +1,6 @@
 ---
 name: release-auto
-description: Orchestrator-driven release prep. A stateful Python driver (release.py) runs the deterministic release spine headless - make lint, extract, make upgrade, pyproject bump, commit-plan recut, lint-diff, force-push, PR upsert - and stops at ~3 batched gates where the agent supplies judgment (CHANGELOG prose, cspell classification, commit topology, version verdict, review triage). Re-cutting after a fix is a scripted verb (zero agent turns). Inverts /prepare-release's turn-by-turn runbook to cut token cost. Use when the user types `/release-auto <X.Y.Z>`, asks to cut a release the automated way, or wants the orchestrator-driven release. Disabled for auto-invocation.
+description: Orchestrator-driven release prep. A stateful Python driver (release.py) runs the deterministic release spine headless - make lint, extract, make upgrade, pyproject bump, commit-plan recut, lint-diff, force-push, PR upsert - and stops at ~3 batched gates where the agent supplies judgment (CHANGELOG prose, cspell classification, commit topology, version verdict, review triage). Re-cutting after a fix is a scripted verb (zero agent turns). Inverts /prepare-release's turn-by-turn runbook to cut token cost. Use when the user types `/release-auto` with a target version, asks to cut a release the automated way, or wants the orchestrator-driven release. Disabled for auto-invocation.
 disable-model-invocation: true
 ---
 
