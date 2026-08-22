@@ -61,6 +61,11 @@ source "$SCRIPT_ROOT/.assets/lib/install_record.sh"
 # shellcheck source=../.assets/lib/setup_log.sh
 source "$SCRIPT_ROOT/.assets/lib/setup_log.sh"
 
+# ---- validate arguments ------------------------------------------------------
+# Ahead of the EXIT trap and every phase: a mistyped flag must not pull the
+# repo, write ~/.config/nix-env, install jq, or leave a failed install record.
+phase_bootstrap_validate_args "$@"
+
 # ---- trap + provenance -------------------------------------------------------
 _IR_ENTRY_POINT="nix"
 _IR_SCRIPT_ROOT="$SCRIPT_ROOT"
