@@ -19,7 +19,7 @@
 # tools every macOS script relies on (see design/decisions/0009-macos-bsd-userland).
 # Off-Darwin (Linux/containers, where the base may be busybox/minimal) always add
 # them. On macOS they are opt-in: nx install coreutils findutils gawk
-++ lib.optionals (!stdenv.isDarwin) [
+++ lib.optionals (!stdenv.hostPlatform.isDarwin) [
   coreutils
   findutils
   gawk
