@@ -454,6 +454,63 @@ Options:
 EOF
 }
 
+# Every option nix/setup.sh accepts. phase_bootstrap_parse_args does the real
+# parsing but needs scope_add from scopes.sh, which needs jq - installed nine
+# steps in - so it cannot be the thing that rejects a typo. This list exists to
+# recognise flags with no dependencies at all. The two must stay in sync;
+# test_setup_args.bats asserts set equality against the case statement below.
+NX_SETUP_FLAGS=(
+  -h --help
+  --az --bun --conda --docker --gcloud --k8s-base --k8s-dev --k8s-ext
+  --nodejs --pwsh --python --rice --shell --terraform --zsh
+  --all --omp-theme --starship-theme --remove
+  --unattended --register-ssh-key --skip-repo-update --update-modules
+  --allow-unfree --upgrade --quiet-summary
+)
+
+# Map a rejected token onto the flag the user probably meant. Covers the two
+# forms people actually type: a dropped leading dash (`-omp-theme`) and the
+# underscore spelling, which is what .assets/scripts/linux_setup.sh takes.
+_nx_suggest_flag() {
+  local bare="$1" norm f
+  while [ "${bare#-}" != "$bare" ]; do bare="${bare#-}"; done
+  norm="--${bare//_/-}"
+  for f in "${NX_SETUP_FLAGS[@]}"; do
+    if [ "$norm" = "$f" ]; then
+      printf '%s' "$f"
+      return 0
+    fi
+  done
+  return 0
+}
+
+# Reject unknown options before anything is fetched, written or installed.
+# Runs first in nix/setup.sh, ahead of the repo refresh, so a mistyped flag
+# costs nothing instead of surfacing after a git pull and a nix profile
+# install. Only tokens starting with `-` are checked; flag values never do.
+phase_bootstrap_validate_args() {
+  local arg f known suggestion
+  for arg in "$@"; do
+    case "$arg" in
+    -*) ;;
+    *) continue ;;
+    esac
+    known=false
+    for f in "${NX_SETUP_FLAGS[@]}"; do
+      if [ "$arg" = "$f" ]; then
+        known=true
+        break
+      fi
+    done
+    [ "$known" = true ] && continue
+    err "Unknown option: $arg"
+    suggestion="$(_nx_suggest_flag "$arg")"
+    [ -n "$suggestion" ] && printf 'Did you mean %s?\n' "$suggestion" >&2
+    printf 'Run nix/setup.sh --help for the full list of options.\n' >&2
+    exit 2
+  done
+}
+
 phase_bootstrap_parse_args() {
   omp_theme=""
   starship_theme=""
