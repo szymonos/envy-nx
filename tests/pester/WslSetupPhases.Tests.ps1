@@ -628,6 +628,16 @@ Describe 'Get-WslGhConfigFromDefault' {
         $result = Get-WslGhConfigFromDefault -TargetDistro 'Debian' -InstalledDistros $installed
         $result | Should -Contain 'github.com:'
     }
+
+    It 'returns empty array when no distros are installed' {
+        $result = Get-WslGhConfigFromDefault -TargetDistro 'Ubuntu' -InstalledDistros @()
+        $result | Should -BeNullOrEmpty
+    }
+
+    It 'returns empty array when InstalledDistros is null' {
+        $result = Get-WslGhConfigFromDefault -TargetDistro 'Ubuntu' -InstalledDistros $null
+        $result | Should -BeNullOrEmpty
+    }
 }
 
 Describe 'Install-WslDistroIfMissing' {
@@ -657,6 +667,20 @@ Describe 'Install-WslDistroIfMissing' {
         $installed = @([pscustomobject]@{ Name = 'OtherDistro' })
         { Install-WslDistroIfMissing -Distro 'NonExistent' -InstalledDistros $installed } |
             Should -Throw "*unknown distro 'NonExistent'*"
+    }
+
+    # fresh machine with zero distros - the pipeline in wsl_setup.ps1 used to
+    # unwrap the empty result to $null and fail the Mandatory bind here
+    It 'installs the distro when no distros are installed' {
+        $result = Install-WslDistroIfMissing -Distro 'Ubuntu' -InstalledDistros @()
+        $result | Should -Be 'Ubuntu'
+        $script:wslInvoked | Should -Be $true
+    }
+
+    It 'installs the distro when InstalledDistros is null' {
+        $result = Install-WslDistroIfMissing -Distro 'Ubuntu' -InstalledDistros $null
+        $result | Should -Be 'Ubuntu'
+        $script:wslInvoked | Should -Be $true
     }
 }
 

@@ -163,7 +163,9 @@ begin {
     }
 
     # *get list of distros
-    $lxss = Get-WslDistro | Where-Object Name -NotMatch '^docker-desktop'
+    # @() keeps an empty result an empty array - a pipeline that yields nothing
+    # produces $null, which has no .Where() and throws on the WSL1 check below
+    $lxss = @(Get-WslDistro | Where-Object Name -NotMatch '^docker-desktop')
     if ($PsCmdlet.ParameterSetName -ne 'Update') {
         try {
             $Distro = Install-WslDistroIfMissing `
@@ -180,7 +182,14 @@ begin {
         }
         $gh_cfg = Get-WslGhConfigFromDefault -TargetDistro $Distro -InstalledDistros $lxss
         # get installed distro details
-        $lxss = Get-WslDistro -FromRegistry | Where-Object Name -EQ $Distro
+        $lxss = @(Get-WslDistro -FromRegistry | Where-Object Name -EQ $Distro)
+        # the distro was just installed or confirmed present, so an empty lookup
+        # means the registry disagrees with wsl.exe - the process block would
+        # otherwise iterate nothing and exit 0 having configured no distro
+        if (-not $lxss) {
+            Show-LogContext -Message "Phase: 'distro-install'; '$Distro' not found in the WSL registry after install." -Level ERROR
+            exit 1
+        }
     } elseif ($lxss) {
         Write-Host "Found $($lxss.Count) distro$($lxss.Count -eq 1 ? '' : 's') to update:" -ForegroundColor White
         $lxss.Name.ForEach({ Write-Host " - $_" })
