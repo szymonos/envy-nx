@@ -11,7 +11,9 @@ distro is the same as the target (nothing to pull) or the file is missing.
 Distro that will receive the config. When it matches the default distro,
 the function is a no-op and returns @().
 .PARAMETER InstalledDistros
-Output of Get-WslDistro filtered to non-docker-desktop entries.
+Output of Get-WslDistro filtered to non-docker-desktop entries. Accepts an
+empty collection or $null - a machine with no distros installed yet is the
+normal first-run state, not an error.
 #>
 function Get-WslGhConfigFromDefault {
     [CmdletBinding()]
@@ -20,11 +22,12 @@ function Get-WslGhConfigFromDefault {
         [string]$TargetDistro,
 
         [Parameter(Mandatory)]
+        [AllowNull()]
         [AllowEmptyCollection()]
         [object[]]$InstalledDistros
     )
 
-    $defaultDistro = $InstalledDistros.Where({ $_.Default }).Name
+    $defaultDistro = @($InstalledDistros).Where({ $_.Default }).Name
     if (-not $defaultDistro -or $defaultDistro -eq $TargetDistro) {
         return @()
     }
@@ -122,7 +125,9 @@ for the orchestrator to translate into exit 0).
 .PARAMETER Distro
 Requested distro name.
 .PARAMETER InstalledDistros
-Output of Get-WslDistro filtered to non-docker-desktop entries.
+Output of Get-WslDistro filtered to non-docker-desktop entries. Accepts an
+empty collection or $null - a machine with no distros installed yet is the
+normal first-run state, not an error.
 .PARAMETER WebDownload
 True to forward --web-download to wsl.exe --install.
 #>
@@ -133,6 +138,7 @@ function Install-WslDistroIfMissing {
         [string]$Distro,
 
         [Parameter(Mandatory)]
+        [AllowNull()]
         [AllowEmptyCollection()]
         [object[]]$InstalledDistros,
 
