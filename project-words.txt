@@ -89,6 +89,7 @@ lockfiles
 locpath
 logind
 lstrip
+lxss
 makefiles
 mandoc
 manpath

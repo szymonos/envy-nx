@@ -5,6 +5,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.19.2] - 2026-08-27
+
+### Fixed
+
+- `wsl_setup.ps1` no longer aborts on a machine with no WSL distros installed - the state every first-time user starts from. With nothing installed, `wsl.exe --list --verbose` prints a status line instead of a `NAME STATE VERSION` table, so `Get-WslDistro`'s header match fails and it returns an empty list; PowerShell unwraps that through `| Where-Object` to `$null` rather than `@()`, which fails the `Mandatory` bind on `Install-WslDistroIfMissing -InstalledDistros` with `Cannot bind argument to parameter 'InstalledDistros' because it is null` - aborting on the very call that would have installed the distro. `[AllowEmptyCollection()]` was already on the parameter, but it admits `@()`, not `$null`. Both `$lxss` assignments are now wrapped in `@(...)`, and `InstalledDistros` gained `[AllowNull()]` on `Install-WslDistroIfMissing` and `Get-WslGhConfigFromDefault` so a null from any future caller degrades instead of throwing.
+- `wsl_setup.ps1` now fails loudly when a just-installed distro is absent from the WSL registry. `Get-WslDistro -FromRegistry` finding nothing left the `process` block's `foreach` with an empty sequence, so the script exited 0 having configured no distro; it now logs the phase and exits 1.
+
 ## [1.19.1] - 2026-08-22
 
 ### Added
