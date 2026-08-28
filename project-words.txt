@@ -131,6 +131,7 @@ pkgs
 platformdirs
 powerline
 prek
+prio
 pscustomobject
 pymdown
 pypi
