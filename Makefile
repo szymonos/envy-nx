@@ -40,7 +40,7 @@ upgrade: ## Upgrade prek and hooks versions
 	uv sync --all-groups --upgrade --compile-bytecode
 	uv run prek autoupdate
 
-.PHONY: test test-unit test-nix test-linux-setup test-upgrade-walk
+.PHONY: test test-unit test-nix test-scope-env test-linux-setup test-upgrade-walk
 test: test-unit test-nix test-linux-setup ## Run all tests (unit + Docker smoke)
 
 test-unit: ## Run bats + Pester + pytest unit tests in parallel (fast, no Docker)
@@ -70,6 +70,10 @@ test-nix: ## Run Docker smoke test for nix path
 		docker rmi lss-test-nix >/dev/null 2>&1 || true; \
 		$(CLEANUP_ROOT_CERT); \
 		exit $$rc
+
+test-scope-env: ## Build the nix env with every scope at once and verify declared bins (needs nix, ~3.5 GB download)
+	@printf "\n\033[95;1m== Building all-scopes nix env ==\033[0m\n\n"
+	@tests/nix/build_scope_env.sh $(if $(SCOPES),--scopes "$(SCOPES)",)
 
 test-linux-setup: ## Run Docker smoke test for the linux_setup.sh entry point (jq-less host)
 	@printf "\n\033[95;1m== Testing linux path (linux_setup.sh, no preinstalled jq) ==\033[0m\n\n"
