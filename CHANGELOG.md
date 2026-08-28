@@ -5,6 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `nix/scopes/k8s_ext.nix` marks `minikube` with `lib.lowPrio` so its bundled `bin/kubectl` yields to the standalone `pkgs.kubectl` from `k8s_base` during `buildEnv` collision resolution. Previously enabling both scopes together (e.g. `nix/setup.sh --k8s-base --k8s-ext`) aborted `phase_nix_profile_apply` with a conflicting-subpath error. `docs/architecture.md` gains a `### Collision resolution` subsection and ADR `design/decisions/0010-lowprio-buildenv-collisions.md` records the constraint and scope for future bundler-class collisions.
+
 ## [1.19.3] - 2026-08-28
 
 ### Fixed

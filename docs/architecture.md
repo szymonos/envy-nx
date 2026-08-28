@@ -175,6 +175,41 @@ graph TD
 
 All four merge into a single `nix profile upgrade` - one atomic operation, one rollback point. There is no layered priority or shadowing; the flake concatenates them and asks Nix to build the union. Conflict (same binary from two layers) is a build error, surfaced at provisioning time, not at runtime.
 
+### Collision resolution
+
+Package layers merge into a single `buildEnv`. When two derivations
+contribute the same relative file path (e.g. both ship `bin/kubectl`),
+Nix uses each derivation's `meta.priority` to pick a winner. Priorities
+are per-derivation, not per-layer, so the layer model is unchanged:
+resolution happens *within* the union, before the profile is built.
+
+| Marker            | `meta.priority` | Behaviour                                             |
+| ----------------- | --------------: | ----------------------------------------------------- |
+| *(default)*       | 5               | Normal candidate. Two defaults collide → build error. |
+| `lib.lowPrio pkg` | 10              | Loses to any default-priority candidate.              |
+| `lib.hiPrio pkg`  | -10             | Beats any default-priority candidate.                 |
+
+Equal-priority collisions are always a build error - `buildEnv` never
+silently picks a winner (`ignoreCollisions` is not set on the flake, on
+purpose). The scope maintainer resolves each case explicitly by tagging
+the appropriate derivation in its scope file:
+
+- **Bundler collides with standalone tool** - tag the bundler
+  `lib.lowPrio` so the standalone version wins the colliding file, while
+  every other file in the bundler still links. Example: `pkgs.minikube`
+  in `k8s_ext` ships `bin/kubectl`, which loses to standalone
+  `pkgs.kubectl` from `k8s_base`.
+- **Two standalone tools claim the same binary** - one of them is
+  probably a mistake; drop the duplicate. `validate-scopes` catches
+  duplicates within a single scope; cross-scope duplicates surface as
+  build errors on setup.
+- **Deliberate override** - rare, but if a specific scope must ship a
+  patched variant of a base package, tag the variant `lib.hiPrio`.
+
+See ADR [0010](../design/decisions/0010-lowprio-buildenv-collisions.md)
+for the exhaustive scenario matrix, alternatives rejected, and the
+constraint on when this pattern applies.
+
 This design enables the three customization patterns without forking:
 
 - **Solo developer** - `nx install httpie` adds a package to layer 4, no scope involved.

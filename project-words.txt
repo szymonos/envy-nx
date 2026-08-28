@@ -14,6 +14,7 @@ bootcamp
 bootstrapper
 btop
 buglog
+buildenv
 buildx
 cafile
 catchable
@@ -88,6 +89,7 @@ libicu
 lockfiles
 locpath
 logind
+lowprio
 lstrip
 lxss
 makefiles
@@ -131,6 +133,7 @@ pkgs
 platformdirs
 powerline
 prek
+prio
 pscustomobject
 pymdown
 pypi
