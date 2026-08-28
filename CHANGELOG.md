@@ -5,6 +5,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.19.3] - 2026-08-28
+
+### Fixed
+
+- `Connect-AzAccount` browser login now works without manual setup in headless Coder sessions. Linux profile setup disables WAM regardless of Az installation order and supplies `DISPLAY` only when `wslview` is the only viable opener.
+- Coder documentation now covers forwarding Az PowerShell's localhost callback, including its `8400-8999` fallback range.
+
 ## [1.19.2] - 2026-08-27
 
 ### Fixed
