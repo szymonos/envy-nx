@@ -5,6 +5,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.19.4] - 2026-08-28
+
+### Added
+
+- `make test-scope-env` builds the nix env with every scope enabled at once and verifies each scope's declared `# bins:`, catching `buildEnv` collisions between packages that no per-scope CI job installs together.
+- `test_scope_env.yml` runs that check on PRs touching the scope definitions or the flake, and weekly - the flake tracks `nixpkgs-unstable`, so a collision can appear with no repo change.
+
+### Fixed
+
+- `nix profile upgrade` no longer aborts with a conflicting-subpath error on `bin/kubectl` whenever `k8s_ext` is installed - nixpkgs' `minikube` ships `bin/kubectl` as a symlink to itself.
+- `nix/flake.nix` demotes bundler packages named in `collisionLowPrio` with `lib.lowPrio`, across scopes and `nx install` alike, so the standalone tool wins the colliding file and the bundler still installs.
+- `nx doctor --strict` no longer fails for the `zsh` scope, which installs plugins only - `# bins: zsh%` now marks the binary as system-provided. `distrobox` gained the `(external-installer)` sentinel.
+- Decision record `0010` and a `### Collision resolution` section in `docs/architecture.md` record when to reach for `lib.lowPrio` and why `ignoreCollisions` stays off.
+
 ## [1.19.3] - 2026-08-28
 
 ### Fixed
