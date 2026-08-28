@@ -54,7 +54,7 @@ To opt out for a commit that genuinely yields no generalization (and that touche
 <!-- Tags populate as entries land via the post-merge workflow -->
 
 - **cache-staleness** - [L-002](#l-002---2026-05-23---cache-staleness)
-- **general** - [L-003](#l-003---2026-07-24---general), [L-004](#l-004---2026-08-22---general), [L-005](#l-005---2026-08-22---general), [L-006](#l-006---2026-08-22---general), [L-007](#l-007---2026-08-22---general), [L-008](#l-008---2026-08-22---general), [L-009](#l-009---2026-08-22---general), [L-010](#l-010---2026-08-22---general), [L-011](#l-011---2026-08-22---general), [L-012](#l-012---2026-08-22---general)
+- **general** - [L-003](#l-003---2026-07-24---general), [L-004](#l-004---2026-08-22---general), [L-005](#l-005---2026-08-22---general), [L-006](#l-006---2026-08-22---general), [L-007](#l-007---2026-08-22---general), [L-008](#l-008---2026-08-22---general), [L-009](#l-009---2026-08-22---general), [L-010](#l-010---2026-08-22---general), [L-011](#l-011---2026-08-22---general), [L-012](#l-012---2026-08-22---general), [L-013](#l-013---2026-08-28---general), [L-014](#l-014---2026-08-28---general)
 - **meta** - [L-000](#l-000---2026-05-23---meta)
 - **render-heuristics** - [L-001](#l-001---2026-05-23---render-heuristics)
 
@@ -180,5 +180,21 @@ a REST reviewer list that omits Bots made a queued Copilot review read as never 
 **Source:** PR #62 (`5f778c8`)
 
 a comment that narrates the change reads as noise to everyone who never saw the old version
+
+---
+
+## L-013 - 2026-08-28 - general
+
+**Source:** PR #69 (`2e385f1`)
+
+provisioning that depends on a module being installed first is order-dependent by construction - write the tool's own config file instead of calling its cmdlet, and the step works whatever ran before it.
+
+---
+
+## L-014 - 2026-08-28 - general
+
+**Source:** PR #69 (`2e385f1`)
+
+dot-sourcing a required library under $ErrorActionPreference = 'SilentlyContinue' cannot fail loudly - a missing or unparsable file leaves the helpers undefined, and the unguarded call sites then return $null and continue to exit 0. Probe with Get-Command after the dot-source and gate every call site on the result.
 
 ---
