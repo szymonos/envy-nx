@@ -129,7 +129,7 @@ repos:
         args: ["--fix"]
         files: \.md$
   - repo: https://github.com/streetsidesoftware/cspell-cli
-    rev: v10.0.1
+    rev: v10.1.0
     hooks:
       - id: cspell
         files: \.md$
