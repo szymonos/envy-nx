@@ -204,4 +204,18 @@ First run takes roughly 5-15 minutes, depending on the machine and selected scop
     nix/setup.sh --shell --python --pwsh
     ```
 
+    Interactive `Connect-AzAccount` login prints a browser URL instead of using
+    device-code authentication. Az starts at callback port 8400 and selects the
+    first available port through 8999. When the browser runs outside the
+    workspace, forward port 8400 before signing in:
+
+    ```bash
+    coder port-forward <workspace> --tcp 8400:8400
+    ```
+
+    Keep the forward open until authentication completes. If the printed URL's
+    `redirect_uri` uses another port, forward that port instead (for example,
+    `--tcp 8401:8401`). WSL does not normally need this step because Windows and
+    WSL share localhost.
+
 After setup, the repository clone can be removed - the environment is fully self-contained in `~/.config/nix-env/`.
