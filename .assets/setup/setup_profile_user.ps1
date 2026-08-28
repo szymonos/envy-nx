@@ -17,6 +17,25 @@ param (
 $ErrorActionPreference = 'SilentlyContinue'
 $WarningPreference = 'Ignore'
 
+# Dot-sourcing runs under SilentlyContinue, so a missing or unparsable library
+# leaves the helpers undefined without raising - probe for one before using them.
+. (Join-Path $PSScriptRoot 'setup_az_login.ps1')
+$azLoginReady = [bool](Get-Command Set-AzPowerShellWamConfig -ErrorAction Ignore)
+if (-not $azLoginReady) {
+    Write-Host 'WARNING: setup_az_login.ps1 did not load - skipping Az/MSAL browser auth setup.' -ForegroundColor Yellow
+}
+
+if ($IsLinux -and $azLoginReady) {
+    $azConfigPath = Join-Path $HOME '.Azure/PSConfig.json'
+    try {
+        if (Set-AzPowerShellWamConfig -Path $azConfigPath -ErrorAction Stop) {
+            Write-Host 'disabling WAM login for Az PowerShell...'
+        }
+    } catch {
+        Write-Host "WARNING: unable to configure Az PowerShell browser login: $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+}
+
 # *PowerShell profile
 # create user profile powershell config directory
 $profileDir = [IO.Path]::GetDirectoryName($PROFILE)
@@ -78,8 +97,7 @@ $hasRealOpener = @('xdg-open', 'gnome-open', 'kfmclient', 'microsoft-edge').Wher
 $realWslview = Get-Command wslview -CommandType Application -ErrorAction SilentlyContinue |
     Where-Object Source -NE $wslviewPath
 # "headless" = Linux with no MSAL browser opener of its own - the only case we
-# install the shim. (Disabling the WAM broker is done separately by the
-# orchestrator, after Az is installed.)
+# install the shim. WAM is disabled separately through PSConfig.json above.
 $headlessNoOpener = $IsLinux -and -not $hasRealOpener -and -not $realWslview
 if ($headlessNoOpener -and (Test-Path $shimSource -PathType Leaf)) {
     # (re)install the shim only when missing or changed
@@ -93,6 +111,11 @@ if ($headlessNoOpener -and (Test-Path $shimSource -PathType Leaf)) {
         & install -m 0755 $shimSource $wslviewPath
     }
 }
+$hasWslview = [bool]$realWslview -or (Test-Path $wslviewPath -PathType Leaf)
+$needsMsalDisplay = $azLoginReady -and (Test-MsalBrowserAuthNeedsDisplay `
+        -IsLinuxPlatform $IsLinux `
+        -HasEarlierOpener ([bool]$hasRealOpener) `
+        -HasWslview $hasWslview)
 #endregion
 
 #region $PROFILE.CurrentUserCurrentHost
@@ -145,6 +168,19 @@ if (Test-Path $PROFILE.CurrentUserAllHosts -PathType Leaf) {
 }
 # track if profile is modified
 $isProfileModified = $false
+
+# MSAL requires DISPLAY to be non-empty before it probes browser openers. This
+# region lets headless PowerShell reach either a genuine wslview or our shim.
+if ($azLoginReady) {
+    try {
+        if (Set-MsalBrowserAuthProfileRegion -Content $profileContent -Enabled $needsMsalDisplay -ErrorAction Stop) {
+            Write-Host "$($needsMsalDisplay ? 'adding' : 'removing') MSAL browser auth profile configuration..."
+            $isProfileModified = $true
+        }
+    } catch {
+        Write-Host "WARNING: unable to configure the MSAL browser auth profile region: $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+}
 
 # remove legacy devenv region (replaced by nx version)
 $devenvStart = $profileContent.FindIndex({ param($l) $l -match '^\s*#region devenv' })
