@@ -824,13 +824,14 @@ Coverage is **not** measured as a percentage (bash makes line coverage misleadin
 
 GitHub Actions workflows under `.github/workflows/` encode validated deployment targets. Each matrix entry is a real install scenario; passing the job is the compatibility guarantee for that scenario.
 
-| Workflow          | Runner / Matrix            | Scenario it validates                                                                          |
-| ----------------- | -------------------------- | ---------------------------------------------------------------------------------------------- |
-| `test_linux.yml`  | `ubuntu-slim`, `daemon`    | Multi-user Nix install (WSL, bare-metal Linux, managed macOS via equivalent path)              |
-| `test_linux.yml`  | `ubuntu-slim`, `no-daemon` | Single-user rootless Nix install. Covers Coder / devcontainer (no systemd, no root at runtime) |
-| `test_macos.yml`  | `macos-15` (default), `26` | Apple Silicon macOS via Determinate installer. Validates bash 3.2 + BSD sed constraints        |
-| `repo_checks.yml` | pre-commit hooks           | `check_bash32`, `check_zsh_compat`, `validate_scopes`, ShellCheck, lint                        |
-| `release.yml`     | Full test matrix           | Build tarball + SBOM + sign + publish (triggers on `v*` tags)                                  |
+| Workflow             | Runner / Matrix                     | Scenario it validates                                                                           |
+| -------------------- | ----------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `test_linux.yml`     | `ubuntu-slim`, `daemon`             | Multi-user Nix install (WSL, bare-metal Linux, managed macOS via equivalent path)               |
+| `test_linux.yml`     | `ubuntu-slim`, `no-daemon`          | Single-user rootless Nix install. Covers Coder / devcontainer (no systemd, no root at runtime)  |
+| `test_macos.yml`     | `macos-15` (default), `26`          | Apple Silicon macOS via Determinate installer. Validates bash 3.2 + BSD sed constraints         |
+| `test_scope_env.yml` | `ubuntu-slim` (+ `macos-15` off-PR) | Every scope enabled at once: `pkgs.buildEnv` package collisions and declared `# bins:` coverage |
+| `repo_checks.yml`    | pre-commit hooks                    | `check_bash32`, `check_zsh_compat`, `validate_scopes`, ShellCheck, lint                         |
+| `release.yml`        | Full test matrix                    | Build tarball + SBOM + sign + publish (triggers on `v*` tags)                                   |
 
 **Test-per-run assertions** (both integration workflows):
 
@@ -844,7 +845,9 @@ GitHub Actions workflows under `.github/workflows/` encode validated deployment 
 - Full bats + Pester suites pass (parallel via `xargs -P 4` for bats and `ForEach-Object -Parallel` for Pester - same helpers `make test-unit` uses).
 - `nix/uninstall.sh --env-only` removes the `nix:managed` block (and the legacy `nix-env managed` block during the migration window), preserves the `env:managed` block, leaves `/nix/store` intact, and (when `--conda` was in scope) removes `~/miniforge3/` plus the `conda initialize` rc block.
 
-**Triggers:** manual (`workflow_dispatch` with scope override), PR label (`test:integration`), or push to an already-labeled PR.
+**Triggers** (`test_linux.yml`, `test_macos.yml`): manual (`workflow_dispatch` with scope override), PR label (`test:integration`), or push to an already-labeled PR.
+
+**All-scopes env build** (`test_scope_env.yml`, local equivalent `make test-scope-env`). The integration matrices install a handful of scopes each, so a package that collides with a package from a *different* scope only breaks the users who combine them - the way minikube's `bin/kubectl` symlink took down every env that had both `k8s_ext` and `k8s_base` (v1.19.4). `tests/nix/build_scope_env.sh` generates a `config.nix` with every scope in `scopes.json`, builds the flake (a `pkgs.buildEnv` collision fails the build), then asserts every binary each scope declares in its `# bins:` comment exists in the result, and that pinned bins resolve to the expected package. It runs on PRs touching `nix/scopes/`, `nix/flake.nix` or `scopes.json`, and weekly - the flake tracks `nixpkgs-unstable`, so a collision can appear with no repo change at all. Known collisions are resolved in `flake.nix:collisionLowPrio`, which demotes the losing package with `lib.lowPrio` (it still installs, minus the clashing file) and covers ad-hoc `nx add` packages too.
 
 **WSL end-to-end testing (intentionally omitted).** GitHub-hosted Windows runners only support WSL1 (no nested virtualization for WSL2), which lacks systemd and behaves differently from production WSL2. A self-hosted Windows runner with WSL2 would work but cannot be ephemeral, making maintenance cost disproportionate. The orchestration logic is validated by Pester unit tests (`tests/pester/WslSetup.Tests.ps1`) that mock `wsl.exe`.
 
