@@ -62,7 +62,7 @@ make hooks                 # List available hook IDs (use with HOOK=<id>)
 make help                  # List all available make targets
 ```
 
-**Agent guardrail:** never invoke `make test-nix` or `make test` from an agent session. Both pull Docker images and run full provisioning passes. Agent-side verification stops at `make lint` + `make test-unit`.
+**Agent guardrail:** never invoke `make test-nix` or `make test` from an agent session. Both pull Docker images and run full provisioning passes. Agent-side verification stops at `make lint` + `make test-unit`. `make test-scope-env` (all-scopes nix build, ~3.5 GB download) is allowed only when the change touches `nix/scopes/`, `nix/flake.nix`, or `scopes.json` - and only after asking the user.
 
 All `lint*` targets accept `HOOK=<id>` to run a single hook - seconds instead of minutes when verifying one hook's scope.
 

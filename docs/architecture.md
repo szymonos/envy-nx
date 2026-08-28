@@ -175,6 +175,24 @@ graph TD
 
 All four merge into a single `nix profile upgrade` - one atomic operation, one rollback point. There is no layered priority or shadowing; the flake concatenates them and asks Nix to build the union. Conflict (same binary from two layers) is a build error, surfaced at provisioning time, not at runtime.
 
+### Collision resolution
+
+When two packages contribute the same relative file path (both ship `bin/kubectl`), Nix picks the winner by `meta.priority`. Priorities belong to the package, not the layer, so the layer model above is unchanged - resolution happens *within* the union, before the profile is built.
+
+| Marker            | `meta.priority` | Behavior                                              |
+| ----------------- | --------------: | ----------------------------------------------------- |
+| *(default)*       | 5               | Normal candidate. Two defaults collide -> build error |
+| `lib.lowPrio pkg` | 10              | Loses to any default-priority candidate               |
+| `lib.hiPrio pkg`  | -10             | Beats any default-priority candidate                  |
+
+Equal-priority collisions are always a build error - `buildEnv` never silently picks a winner, and `ignoreCollisions` is deliberately not set on the flake. Known conflicts are resolved by name in `collisionLowPrio` in `nix/flake.nix`, which demotes the listed packages across all four layers:
+
+- **A package bundles a tool another package owns** - demote the bundler, so the standalone version wins the colliding file while everything else in the bundler still links. `pkgs.minikube` ships `bin/kubectl` as a symlink to itself and loses it to `pkgs.kubectl` from the `k8s_base` scope.
+- **Two packages genuinely provide the same binary** - one is probably a mistake; drop the duplicate rather than demote either.
+- **Deliberate override** - a scope that must ship a patched variant of a base package tags the variant `lib.hiPrio`.
+
+`make test-scope-env` builds every scope at once to catch collisions that only appear in scope combinations CI does not otherwise install together. See decision record [0010](https://github.com/szymonos/envy-nx/blob/main/design/decisions/0010-lowprio-buildenv-collisions.md) for the scenario matrix and the rejected alternatives.
+
 This design enables the three customization patterns without forking:
 
 - **Solo developer** - `nx install httpie` adds a package to layer 4, no scope involved.
