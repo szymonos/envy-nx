@@ -39,9 +39,23 @@
             else [ ];
           extraPkgs = map (name: pkgs.${name}) extraNames;
 
+          # Packages that ship a file another package in the env also owns.
+          # buildEnv aborts the whole build on a duplicate path, so the loser of
+          # each known conflict is demoted with lowPrio: it still installs, minus
+          # the clashing file. Applied to every source of packages (scopes and
+          # ad-hoc `nx add`) so the conflict cannot come back through packages.nix.
+          #   minikube - bin/kubectl is a symlink to minikube itself and collides
+          #              with kubectl from the k8s_base scope. `minikube kubectl`
+          #              is unaffected.
+          collisionLowPrio = [ "minikube" ];
+          demote = pkg:
+            if builtins.elem (pkgs.lib.getName pkg) collisionLowPrio
+            then pkgs.lib.lowPrio pkg
+            else pkg;
+
         in pkgs.buildEnv {
           name = "dev-env";
-          paths = basePkgs ++ initPkgs ++ scopePkgs ++ extraPkgs;
+          paths = map demote (basePkgs ++ initPkgs ++ scopePkgs ++ extraPkgs);
         };
     in
     {
