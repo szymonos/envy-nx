@@ -1,3 +1,3 @@
 # Distrobox - installed traditionally, not via nix.
-# bins: distrobox
+# bins: (external-installer)
 { pkgs }: [ ]
