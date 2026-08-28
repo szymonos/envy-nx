@@ -1,0 +1,79 @@
+name: All-Scopes Env Build
+
+# Builds nix/flake.nix with every scope in scopes.json enabled at once and
+# verifies each scope's declared `# bins:` land in the result.
+#
+# Why a dedicated workflow: the integration matrices install a handful of
+# scopes each, so a package that collides with a package from another scope
+# (minikube's bin/kubectl vs the real kubectl, v1.19.4) only fails for users
+# who happen to combine them. The flake follows nixpkgs-unstable, so a
+# collision can appear with no repo change at all - hence the schedule.
+#
+# Triggers:
+#   1. PR touching the scope definitions, the flake, or the check itself
+#   2. Weekly schedule - catches nixpkgs-unstable drift
+#   3. Manual dispatch (pick the scope list)
+
+on:
+  pull_request:
+    paths:
+      - "nix/scopes/**"
+      - "nix/flake.nix"
+      - ".assets/lib/scopes.json"
+      - "tests/nix/build_scope_env.sh"
+      - ".github/workflows/test_scope_env.yml"
+
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+
+  workflow_dispatch:
+    inputs:
+      scopes:
+        description: "Scope names (space-separated, empty = all)"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scope-env:
+    # macOS is skipped on PRs (slow, paid minutes) - the scheduled and manual
+    # runs cover Darwin, where the package set and its collisions differ.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-slim"]') || fromJSON('["ubuntu-slim", "macos-15"]') }}
+
+    name: "all scopes on ${{ matrix.os }}"
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    env:
+      NIX_CONFIG: "access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install Nix (Determinate)
+        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
+
+      # The all-scopes closure is ~3.5 GB before the env itself is built.
+      - name: Show free disk space
+        run: df -h /
+
+      - name: Build all-scopes env and verify declared bins
+        # The dispatch input reaches the script as one quoted argument via the
+        # environment - never interpolated into the run block, never evaluated.
+        env:
+          SCOPES: ${{ github.event.inputs.scopes }}
+        run: |
+          if [ -n "$SCOPES" ]; then
+            tests/nix/build_scope_env.sh --scopes "$SCOPES"
+          else
+            tests/nix/build_scope_env.sh
+          fi
