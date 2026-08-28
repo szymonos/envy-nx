@@ -131,12 +131,12 @@ Implications for any change you make:
 
 **Post-install dispatch** (in `post_install.sh`):
 
-| Script                                 | Condition       | Purpose                          |
-| -------------------------------------- | --------------- | -------------------------------- |
-| `.assets/setup/setup_common.sh`        | always          | Copilot, zsh plugins, PS modules |
-| `.assets/provision/install_copilot.sh` | called by above | GitHub Copilot CLI               |
-| `.assets/setup/setup_profile_user.zsh` | scope: zsh      | Zsh profile setup                |
-| `.assets/setup/setup_profile_user.ps1` | pwsh available  | certs, local PATH, MSAL shim     |
+| Script                                 | Condition       | Purpose                              |
+| -------------------------------------- | --------------- | ------------------------------------ |
+| `.assets/setup/setup_common.sh`        | always          | Copilot, zsh plugins, PS modules     |
+| `.assets/provision/install_copilot.sh` | called by above | GitHub Copilot CLI                   |
+| `.assets/setup/setup_profile_user.zsh` | scope: zsh      | Zsh profile setup                    |
+| `.assets/setup/setup_profile_user.ps1` | pwsh available  | certs, local PATH, MSAL browser auth |
 
 **Variable naming convention** (cross-phase globals):
 
@@ -354,7 +354,7 @@ export NODE_EXTRA_CA_CERTS="$HOME/.config/certs/ca-custom.crt"
 # <<< env:managed <<<
 ```
 
-**PowerShell** - `_aliases_nix.ps1` provides `_NxProfileRegenerate` + region helpers. Nix-managed regions use the `nix:` prefix (`#region nix:base`, `#region nix:path`, `#region nix:certs`). Generic regions (certs, conda, make completer) use unprefixed names and are written by `setup_profile_user.ps1`. The uninstaller only removes `nix:`-prefixed regions.
+**PowerShell** - `_aliases_nix.ps1` provides `_NxProfileRegenerate` + region helpers. Nix-managed regions use the `nix:` prefix (`#region nix:base`, `#region nix:path`, `#region nix:certs`). Generic regions (certs, conda, make completer, MSAL browser auth) use unprefixed names and are written by `setup_profile_user.ps1`. The uninstaller only removes `nix:`-prefixed regions. On headless Linux, setup also merges `Az.EnableLoginByWam=false` into `~/.Azure/PSConfig.json` without requiring Az.Accounts to be installed, and adds a guarded `DISPLAY=:0` profile region when a genuine or managed `wslview` is the only viable MSAL opener.
 
 Properties:
 
