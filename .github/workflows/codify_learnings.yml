@@ -69,8 +69,12 @@ jobs:
           pr_num="${{ github.event.pull_request.number }}"
           branch="codify/PR-${pr_num}-${range}"
 
-          git config user.name "codify-learnings-bot"
-          git config user.email "noreply@github.com"
+          # The Actions bot, not an invented identity: a commit authored by an
+          # address with no GitHub account is an "unattributed change", and a
+          # ruleset with require_extra_approval_for_unattributed_changes makes
+          # it cost a second approval.
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch -c "${branch}"
           git add design/lessons.md
           git commit -m "docs(lessons): codify ${range} from #${pr_num}"

@@ -1,0 +1,263 @@
+name: Bump Validated nixpkgs Revision
+
+# Advances nix/nixpkgs_rev.json - the nixpkgs revision users actually install -
+# to the current nixpkgs-unstable HEAD, but only after that revision has built
+# every scope and completed a real setup.sh install on both Linux and macOS.
+#
+# Why this exists: the flake tracks nixpkgs-unstable, which Hydra validates
+# against nixpkgs' own tests, not against this repo's scope combinations. A
+# buildEnv collision like minikube's bin/kubectl (v1.19.4) passes upstream CI
+# and lands straight on users. Before this workflow there was no gate at all
+# between nixpkgs-unstable and an install.
+#
+# The gate runs INLINE, in the `gate` job, before the PR is opened. Two reasons
+# it cannot be delegated to the PR's own checks:
+#   1. A PR created with GITHUB_TOKEN does not trigger `pull_request` workflows
+#      (GitHub's recursion guard), so the integration suites would never fire.
+#   2. `main` has no branch protection, so `gh pr merge --auto` has no required
+#      checks to wait on and would merge instantly regardless.
+# The PR therefore exists for the audit trail and as a revert target, not as
+# the gate. If required checks are ever configured on main, move the gate there
+# and switch the merge back to `--auto`.
+#
+# Triggers:
+#   1. Weekly schedule - nixpkgs-unstable moves constantly; the repo does not
+#   2. Manual dispatch (optionally pin a specific candidate revision)
+
+on:
+  schedule:
+    - cron: "0 4 * * 1" # Mondays 04:00 UTC, ahead of the other weekly jobs
+
+  workflow_dispatch:
+    inputs:
+      rev:
+        description: "Candidate nixpkgs revision (empty = nixpkgs-unstable HEAD)"
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    name: resolve candidate revision
+    # Downstream redistributions of this repo (an independent copy synced by
+    # release PR rather than a GitHub fork) inherit this file along with
+    # everything else. Running it there would compute a *different* candidate
+    # and diverge from the upstream validated revision - two repos, two
+    # revisions, and the all-scopes build paid for twice. Set the
+    # repo variable NIXPKGS_BUMP_ENABLED=false to inherit upstream's revision
+    # through the normal sync instead. Only worth enabling downstream when the
+    # runners live somewhere upstream's cannot reach - inside a corporate
+    # network, behind a TLS-inspecting proxy - so the run tests something new.
+    if: vars.NIXPKGS_BUMP_ENABLED != 'false'
+    runs-on: ubuntu-slim
+    outputs:
+      rev: ${{ steps.candidate.outputs.rev }}
+      epoch: ${{ steps.candidate.outputs.epoch }}
+      changed: ${{ steps.candidate.outputs.changed }}
+      branch: ${{ steps.candidate.outputs.branch }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Resolve nixpkgs-unstable HEAD
+        id: candidate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REQUESTED: ${{ github.event.inputs.rev }}
+        run: |
+          set -euo pipefail
+          if [ -n "$REQUESTED" ]; then
+            rev="$REQUESTED"
+          else
+            rev="$(gh api repos/NixOS/nixpkgs/commits/nixpkgs-unstable --jq '.sha')"
+          fi
+          # lastModified is what the no-downgrade comparison orders revisions
+          # by, and it must match what nix itself records in flake.lock - the
+          # committer date of the revision, as epoch seconds.
+          date_iso="$(gh api "repos/NixOS/nixpkgs/commits/$rev" --jq '.commit.committer.date')"
+          epoch="$(date -u -d "$date_iso" +%s)"
+
+          current="$(sed -n 's/.*"rev"[[:space:]]*:[[:space:]]*"\([0-9a-f]*\)".*/\1/p' nix/nixpkgs_rev.json | head -1)"
+          if [ "$rev" = "$current" ]; then
+            echo "already validated: $rev"
+            echo "changed=false" >>"$GITHUB_OUTPUT"
+          else
+            echo "candidate $rev (current $current)"
+            echo "changed=true" >>"$GITHUB_OUTPUT"
+          fi
+          echo "rev=$rev" >>"$GITHUB_OUTPUT"
+          echo "epoch=$epoch" >>"$GITHUB_OUTPUT"
+          echo "branch=bump/nixpkgs-${rev:0:12}" >>"$GITHUB_OUTPUT"
+
+  gate:
+    name: "gate on ${{ matrix.os }}"
+    needs: resolve
+    if: needs.resolve.outputs.changed == 'true'
+    strategy:
+      fail-fast: false # a Linux-only failure should still show the macOS result
+      matrix:
+        os: [ubuntu-slim, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      NIX_CONFIG: "access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install Nix (Determinate)
+        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
+
+      # The all-scopes closure is ~3.5 GB before the env itself is built.
+      - name: Show free disk space
+        run: df -h /
+
+      # The heavy check: every scope in one buildEnv against the candidate.
+      # A collision, an eval error, or a package that vanished from nixpkgs
+      # fails here rather than on a user's machine.
+      - name: Build all scopes against the candidate
+        run: tests/nix/build_scope_env.sh --rev "${{ needs.resolve.outputs.rev }}"
+
+      # The build proves the packages resolve; this proves the install pipeline
+      # still works against them - profile add, shell init, managed blocks.
+      - name: Install with the candidate revision
+        run: |
+          set -euo pipefail
+          python3 - "${{ needs.resolve.outputs.rev }}" "${{ needs.resolve.outputs.epoch }}" <<'PY'
+          import json, sys
+          rev, epoch = sys.argv[1], int(sys.argv[2])
+          p = "nix/nixpkgs_rev.json"
+          d = json.load(open(p))
+          d["rev"], d["lastModified"] = rev, epoch
+          json.dump(d, open(p, "w"), indent=2)
+          open(p, "a").write("\n")
+          PY
+          # --unattended: no gh auth / SSH-key prompts on a headless runner.
+          nix/setup.sh --shell --python --k8s-base --unattended --quiet-summary --skip-repo-update
+
+      - name: Verify the profile locked the candidate
+        run: |
+          set -euo pipefail
+          locked="$(jq -r '.nodes.nixpkgs.locked.rev' ~/.config/nix-env/flake.lock)"
+          echo "locked: $locked"
+          [ "$locked" = "${{ needs.resolve.outputs.rev }}" ] || {
+            echo "::error::setup.sh did not lock the validated revision" >&2
+            exit 1
+          }
+
+      # No unit tests here on purpose: they are hermetic and say nothing about
+      # the candidate revision. repo_checks runs them on the bump PR.
+      - name: Report the gated revision
+        run: printf 'gated %s on %s\n' "${{ needs.resolve.outputs.rev }}" "${{ matrix.os }}"
+
+  bump:
+    name: open and merge the bump PR
+    needs: [resolve, gate]
+    if: needs.resolve.outputs.changed == 'true'
+    runs-on: ubuntu-slim
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Write the validated revision
+        env:
+          REV: ${{ needs.resolve.outputs.rev }}
+          EPOCH: ${{ needs.resolve.outputs.epoch }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import datetime, json, os
+          p = "nix/nixpkgs_rev.json"
+          d = json.load(open(p))
+          d["rev"] = os.environ["REV"]
+          d["lastModified"] = int(os.environ["EPOCH"])
+          d["validated_at"] = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+          d["run_url"] = os.environ["RUN_URL"]
+          json.dump(d, open(p, "w"), indent=2)
+          open(p, "a").write("\n")
+          PY
+
+      # nix/nixpkgs_rev.json counts as a runtime file, so the check-changelog
+      # hook requires an entry under ## [Unreleased] for this commit.
+      - name: Add CHANGELOG entry
+        env:
+          REV: ${{ needs.resolve.outputs.rev }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, pathlib
+          rev = os.environ["REV"]
+          entry = (
+              f"- Validated nixpkgs revision advanced to `{rev[:12]}` - built with every "
+              "scope and installed end-to-end on Linux and macOS before landing.\n"
+          )
+          p = pathlib.Path("CHANGELOG.md")
+          s = p.read_text()
+          head = "## [Unreleased]\n"
+          i = s.index(head) + len(head)
+          rest = s[i:]
+          if rest.startswith("\n### Changed\n"):
+              j = i + len("\n### Changed\n")
+              p.write_text(s[:j] + "\n" + entry + s[j:])
+          else:
+              p.write_text(s[:i] + "\n### Changed\n\n" + entry + rest)
+          PY
+
+      - name: Open PR and merge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ needs.resolve.outputs.branch }}
+          REV: ${{ needs.resolve.outputs.rev }}
+          AUTOMERGE: ${{ vars.NIXPKGS_BUMP_AUTOMERGE }}
+        run: |
+          set -euo pipefail
+          short="${REV:0:12}"
+
+          # Commit as the Actions bot, NOT a made-up "bump-bot <noreply@...>"
+          # identity. A commit whose author is not a real GitHub account is an
+          # "unattributed change", and a ruleset with
+          # require_extra_approval_for_unattributed_changes demands a second
+          # approval for it - so the invented identity silently doubles the
+          # review burden wherever that rule is on.
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$BRANCH"
+          git add nix/nixpkgs_rev.json CHANGELOG.md
+          git commit -m "chore(nix): validate nixpkgs ${short}"
+          git push -u origin "$BRANCH"
+
+          gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --title "chore(nix): validate nixpkgs ${short}" \
+            --body "Advances the validated nixpkgs revision to \`${REV}\`.
+
+          Gated before this PR was opened - the all-scopes \`buildEnv\` and a real \`setup.sh\` install both passed on **ubuntu-slim** and **macos-15** against this revision. See the \`gate\` jobs in [this run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}).
+
+          Users move to it on their next \`nx self update\` + \`nx upgrade\`. To stay put, \`nx pin set <rev>\`."
+
+          if [ "${AUTOMERGE:-true}" = "false" ]; then
+            printf 'NIXPKGS_BUMP_AUTOMERGE=false - leaving the PR open for review.\n'
+            exit 0
+          fi
+
+          # Merged directly, not with --auto: the gate already ran above, and
+          # --auto only waits on *required status checks*, which neither repo
+          # defines - so it would merge instantly and gate nothing.
+          #
+          # A review requirement blocking the merge is an expected outcome, not
+          # a failure: the revision is validated either way and the PR is the
+          # thing a human approves. Failing here would just paint the weekly
+          # run red until someone clicks approve.
+          if ! gh pr merge "$BRANCH" --squash --delete-branch; then
+            printf 'merge blocked (review required?) - PR left open for approval.\n'
+            gh pr comment "$BRANCH" --body "Auto-merge was blocked, most likely by a required review. The gate already passed on both platforms; approving this PR is all that is outstanding." || true
+          fi

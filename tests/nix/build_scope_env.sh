@@ -9,6 +9,12 @@ tests/nix/build_scope_env.sh --scopes "shell python k8s_base k8s_ext"
 # :build for another platform (needs a builder for that system)
 tests/nix/build_scope_env.sh --system aarch64-darwin
 
+# :build a candidate nixpkgs revision instead of the validated one
+tests/nix/build_scope_env.sh --rev e8be7818e19ada32105a8af937a6a473b38167ca
+
+# :build nixpkgs-unstable HEAD, ignoring nixpkgs_rev.json
+tests/nix/build_scope_env.sh --latest
+
 # :keep the generated flake directory for inspection
 tests/nix/build_scope_env.sh --keep
 '
@@ -24,6 +30,7 @@ set -eo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SCOPES_JSON="$REPO_ROOT/.assets/lib/scopes.json"
 SCOPES_DIR="$REPO_ROOT/nix/scopes"
+REV_JSON="$REPO_ROOT/nix/nixpkgs_rev.json"
 
 # Bins whose owning package must be pinned - a `# bins:` presence check alone
 # passes even when the wrong package wins a buildEnv collision. Format:
@@ -33,6 +40,8 @@ BIN_OWNERS="kubectl:-kubectl-"
 scopes=""
 system=""
 keep=false
+rev=""
+use_latest=false
 
 _need_value() {
   [ $# -ge 2 ] || {
@@ -52,6 +61,15 @@ while [ $# -gt 0 ]; do
     _need_value "$@"
     system="$2"
     shift 2
+    ;;
+  --rev)
+    _need_value "$@"
+    rev="$2"
+    shift 2
+    ;;
+  --latest)
+    use_latest=true
+    shift
     ;;
   --keep)
     keep=true
@@ -128,7 +146,39 @@ cp -R "$REPO_ROOT/nix/." "$work_dir/"
   printf '  ];\n}\n'
 } >"$work_dir/config.nix"
 
+# Which nixpkgs to build against. Defaults to the repo's validated revision so
+# a local run reproduces what users actually get; the bump workflow passes
+# --rev to test a candidate before it becomes the validated one.
+# Mutually exclusive: with both set, `rev` used to win and --latest was
+# silently ignored - a build against the wrong nixpkgs reported as a pass.
+if [ "$use_latest" = true ] && [ -n "$rev" ]; then
+  printf '\e[31;1m--rev and --latest are mutually exclusive\e[0m\n' >&2
+  exit 1
+fi
+
+if [ "$use_latest" = false ] && [ -z "$rev" ] && [ -f "$REV_JSON" ]; then
+  rev="$(sed -n 's/.*"rev"[[:space:]]*:[[:space:]]*"\([0-9a-f]*\)".*/\1/p' "$REV_JSON" | head -1)"
+  # Present but unreadable is an error, not a reason to fall back to HEAD:
+  # the build would pass against a revision users are not getting, which is
+  # precisely the false PASS this script exists to prevent.
+  [ -n "$rev" ] || {
+    printf '\e[31;1m%s has no readable rev - refusing to fall back to unstable HEAD\e[0m\n' "$REV_JSON" >&2
+    printf 'pass --latest to build HEAD deliberately.\n' >&2
+    exit 1
+  }
+fi
+
 printf '\e[96mbuilding dev-env for %s with %s scopes:\e[0m %s\n' "$system" "$(echo $scopes | wc -w | tr -d ' ')" "$scopes"
+
+if [ -n "$rev" ]; then
+  printf '\e[96mnixpkgs pinned to:\e[0m %s\n' "$rev"
+  nix flake lock --override-input nixpkgs "github:nixos/nixpkgs/$rev" "path:$work_dir" || {
+    printf '\e[31;1mfailed to lock nixpkgs to %s\e[0m\n' "$rev" >&2
+    exit 1
+  }
+else
+  printf '\e[96mnixpkgs:\e[0m nixpkgs-unstable HEAD (unpinned)\n'
+fi
 
 out_path="$(nix build "path:$work_dir#packages.$system.default" --no-link --print-out-paths)" || {
   printf '\e[31;1mbuild failed - see the buildEnv error above (package collision or eval error).\e[0m\n' >&2
