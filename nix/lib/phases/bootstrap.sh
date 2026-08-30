@@ -5,8 +5,8 @@
 # Reads:  BASH_SOURCE (for path resolution)
 # Writes: SCRIPT_ROOT, NIX_ENV_VERSION, NIX_SRC, CONFIGURE_DIR, ENV_DIR,
 #         CONFIG_NIX, omp_theme, starship_theme, unattended, update_modules,
-#         upgrade_packages, quiet_summary, allow_unfree, remove_scopes,
-#         any_scope, _scope_set, _ir_skip, _ir_error, NX_REEXECED
+#         upgrade_packages, upgrade_latest, quiet_summary, allow_unfree,
+#         remove_scopes, any_scope, _scope_set, _ir_skip, _ir_error, NX_REEXECED
 
 # Refresh the repo from upstream when behind. Skips silently when:
 #   - NX_REEXECED is already set (we are the post-exec invocation; refresh
@@ -370,6 +370,17 @@ phase_bootstrap_sync_env_dir() {
   mkdir -p "$ENV_DIR"
   cp "$NIX_SRC/flake.nix" "$ENV_DIR/"
   cp -r "$NIX_SRC/scopes" "$ENV_DIR/"
+  # The validated nixpkgs revision. This is the only channel by which a new
+  # rev reaches a machine - `nx upgrade` reads the synced copy and never
+  # fetches it itself, so the rev advances when the repo is refreshed
+  # (setup.sh auto-pulls, `nx self update` pulls then re-runs setup).
+  #
+  # Atomic, unlike the flake.nix/scopes.json copies above: those are read by
+  # nix at build time, whereas this one is read by `nx upgrade` from an
+  # interactive shell that can run *during* a setup. A torn read resolves to
+  # no rev, which is safe (the ladder keeps the current lock rather than
+  # reaching for HEAD) but silently skips the upgrade the user asked for.
+  install_atomic "$NIX_SRC/nixpkgs_rev.json" "$ENV_DIR/nixpkgs_rev.json"
   # Sync scopes.json so nx commands can validate against the canonical
   # valid_scopes list at runtime (e.g. nx_scope.sh:add rejects overlay
   # names that collide with managed scopes). _nx_find_lib resolves it
@@ -384,7 +395,7 @@ phase_bootstrap_sync_env_dir() {
   # its opening line, body lines then interpreted as commands).
   local _nx_lib
   # >>> nx-libs generated >>> (regenerate: python3 -m tests.hooks.gen_nx_completions)
-  for _nx_lib in nx.sh nx_lifecycle.sh nx_pkg.sh nx_profile.sh nx_scope.sh nx_doctor.sh profile_block.sh cert_probe.sh; do
+  for _nx_lib in nx.sh nx_lifecycle.sh nx_pkg.sh nx_profile.sh nx_scope.sh nx_doctor.sh profile_block.sh cert_probe.sh nx_rev.sh; do
     # <<< nx-libs generated <<<
     install_atomic "$SCRIPT_ROOT/.assets/lib/$_nx_lib" "$ENV_DIR/$_nx_lib"
   done
@@ -442,7 +453,8 @@ Scope flags (add new packages - merged with existing config):
 
 Options:
   --remove <scope> [...]    Remove one or more scopes (space-separated)
-  --upgrade                 Update flake.lock to latest nixpkgs and upgrade all packages
+  --upgrade                 Move to the validated nixpkgs revision and upgrade all packages
+  --latest                  Use nixpkgs-unstable HEAD instead of the validated revision
   --allow-unfree            Allow unfree (proprietary-licensed) nix packages
   --omp-theme <name>        Install oh-my-posh with theme (base, nerd, powerline, ...)
   --starship-theme <name>   Install starship with theme (base, nerd)
@@ -465,7 +477,7 @@ NX_SETUP_FLAGS=(
   --nodejs --pwsh --python --rice --shell --terraform --zsh
   --all --omp-theme --starship-theme --remove
   --unattended --register-ssh-key --skip-repo-update --update-modules
-  --allow-unfree --upgrade --quiet-summary
+  --allow-unfree --upgrade --latest --quiet-summary
 )
 
 # Map a rejected token onto the flag the user probably meant. Covers the two
@@ -518,6 +530,7 @@ phase_bootstrap_parse_args() {
   update_modules="false"
   quiet_summary="false"
   upgrade_packages="false"
+  upgrade_latest="false"
   allow_unfree="false"
   remove_scopes=()
   _scope_set=" "
@@ -586,6 +599,12 @@ phase_bootstrap_parse_args() {
       ;;
     --upgrade)
       upgrade_packages="true"
+      ;;
+    --latest)
+      # Opt out of the validated revision for this run. Implies --upgrade:
+      # asking for HEAD without asking to upgrade has no meaning.
+      upgrade_packages="true"
+      upgrade_latest="true"
       ;;
     --quiet-summary)
       quiet_summary="true"

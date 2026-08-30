@@ -2,8 +2,9 @@
 # Flake update, nix profile upgrade, MITM proxy certificate detection.
 # shellcheck disable=SC2154  # ENV_DIR, upgrade_packages, SCRIPT_ROOT - set by bootstrap phase
 #
-# Reads:  ENV_DIR, DEV_ENV_DIR, upgrade_packages, SCRIPT_ROOT, NIX_ENV_TLS_PROBE_URL
-# Writes: PINNED_REV, _ir_error, NIX_SSL_CERT_FILE, SSL_CERT_FILE
+# Reads:  ENV_DIR, DEV_ENV_DIR, upgrade_packages, upgrade_latest, SCRIPT_ROOT,
+#         NIX_ENV_TLS_PROBE_URL
+# Writes: NX_REV_MODE, NX_REV_SHA, _ir_error, NIX_SSL_CERT_FILE, SSL_CERT_FILE
 
 should_update_flake() {
   local upgrade_flag="${1:-false}"
@@ -11,29 +12,54 @@ should_update_flake() {
   return 1
 }
 
-phase_nix_profile_load_pinned_rev() {
-  PINNED_REV=""
-  if [[ -f "$ENV_DIR/pinned_rev" ]]; then
-    PINNED_REV="$(tr -d '[:space:]' <"$ENV_DIR/pinned_rev")"
-  fi
+# Resolve which nixpkgs revision this run should lock, using the same ladder as
+# `nx upgrade` (.assets/lib/nx_rev.sh). Both entry points must agree - if they
+# don't, which nixpkgs a user ends up on depends on whether they typed
+# `nx upgrade` or re-ran setup.sh.
+phase_nix_profile_load_rev() {
+  # shellcheck source=../../../.assets/lib/nx_rev.sh
+  source "$SCRIPT_ROOT/.assets/lib/nx_rev.sh"
+  local _resolved
+  _resolved="$(_nx_rev_resolve "$ENV_DIR" "${upgrade_latest:-false}")"
+  NX_REV_MODE="${_resolved%% *}"
+  NX_REV_SHA=""
+  case "$_resolved" in *" "*) NX_REV_SHA="${_resolved#* }" ;; esac
 }
 
 phase_nix_profile_print_mode() {
   if [[ ! -f "$ENV_DIR/flake.lock" ]]; then
     info "first run - resolving nixpkgs and installing..."
   elif should_update_flake "$upgrade_packages"; then
-    if [[ -n "$PINNED_REV" ]]; then
-      info "pinning nixpkgs to $PINNED_REV..."
-    else
-      info "upgrading all packages to latest (nix flake update + profile upgrade)..."
-    fi
+    case "$NX_REV_MODE" in
+    pinned) info "pinning nixpkgs to $NX_REV_SHA..." ;;
+    validated) info "upgrading to the validated nixpkgs ${NX_REV_SHA:0:12}..." ;;
+    latest) info "upgrading to nixpkgs-unstable HEAD - not validated by CI..." ;;
+    *) info "no validated revision on disk - keeping the current lock..." ;;
+    esac
   else
     info "applying nix configuration (use --upgrade to pull latest packages)..."
   fi
 }
 
 phase_nix_profile_update_flake() {
-  if should_update_flake "$upgrade_packages"; then
+  # Also runs when there is no lock yet, not only on --upgrade: left to itself
+  # `nix profile add` resolves nixpkgs-unstable HEAD and writes a lock naming a
+  # revision no CI has ever built. Locking the validated rev first is what
+  # makes a *first* install gated, not just an upgrade.
+  local _first_run=false
+  [[ -f "$ENV_DIR/flake.lock" ]] || _first_run=true
+  if should_update_flake "$upgrade_packages" || { [[ "$_first_run" == "true" ]] && [[ -n "$NX_REV_SHA" ]]; }; then
+    # Refuse to move backwards on an existing install. Mirrors the same guard
+    # in _nx_pkg_upgrade: a user who moved ahead with --latest must not be
+    # dragged back whenever the CI bump is lagging behind them.
+    if [[ "$_first_run" == "false" && "$NX_REV_MODE" == "validated" ]]; then
+      local _cand_epoch
+      _cand_epoch="$(_nx_rev_json_field "$ENV_DIR/nixpkgs_rev.json" lastModified)"
+      if _nx_rev_is_downgrade "$ENV_DIR" "$_cand_epoch"; then
+        info "already at or ahead of the validated revision - keeping the current lock"
+        return 0
+      fi
+    fi
     # nix writes progress (the live progress bar and per-path "copying path"
     # lines) to stderr; let it through so the user sees what's happening
     # during the network-bound flake update.
@@ -62,13 +88,19 @@ phase_nix_profile_update_flake() {
       if [[ -n "$_gh_token" ]]; then
         export NIX_CONFIG="${NIX_CONFIG:+$NIX_CONFIG$_nl}extra-access-tokens = github.com=$_gh_token"
       fi
-      if [[ -n "$PINNED_REV" ]]; then
-        _io_nix flake lock --override-input nixpkgs "github:nixos/nixpkgs/$PINNED_REV" --flake "$ENV_DIR" ||
+      case "$NX_REV_MODE" in
+      pinned | validated)
+        _io_nix flake lock --override-input nixpkgs "github:nixos/nixpkgs/$NX_REV_SHA" "$ENV_DIR" ||
           warn "flake lock failed - using existing lock"
-      else
+        ;;
+      latest)
         _io_nix flake update --flake "$ENV_DIR" ||
           warn "flake update failed (network issue?) - using existing lock"
-      fi
+        ;;
+      *)
+        warn "no validated nixpkgs revision found - keeping the current lock"
+        ;;
+      esac
     )
   fi
 }

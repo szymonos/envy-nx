@@ -1,0 +1,7 @@
+{
+  "_about": "The nixpkgs revision this repo has validated. Advanced only by .github/workflows/bump_nixpkgs_rev.yml, after the full gating suite passes on Linux and macOS. Consumed by nix/lib/phases/nix_profile.sh and .assets/lib/nx_pkg.sh, which pin the flake's nixpkgs input to it instead of tracking nixpkgs-unstable HEAD. See design/decisions/0011-validated-nixpkgs-rev.md.",
+  "rev": "e8be7818e19ada32105a8af937a6a473b38167ca",
+  "lastModified": 1787964612,
+  "validated_at": "2026-08-30T00:00:00Z",
+  "run_url": "seeded manually - first validated rev, predates the bump workflow"
+}
