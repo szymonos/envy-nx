@@ -156,7 +156,7 @@ phase_scopes_write_config
 _ir_phase="nix-profile"
 _ir_flush "in_progress"
 
-phase_nix_profile_load_pinned_rev
+phase_nix_profile_load_rev
 phase_nix_profile_print_mode
 phase_nix_profile_update_flake
 phase_nix_profile_apply
