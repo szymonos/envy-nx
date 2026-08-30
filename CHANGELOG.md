@@ -5,6 +5,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.20.0] - 2026-08-30
+
+Users no longer track `nixpkgs-unstable` HEAD. The flake still follows unstable, but
+`nx upgrade` and a fresh install both resolve to a revision this repo has built with
+every scope and installed end-to-end on Linux and macOS. Upstream CI validates nixpkgs
+against nixpkgs' own tests, not against these scope combinations - which is how the
+v1.19.4 `bin/kubectl` collision passed upstream and still reached users.
+
+### Added
+
+- `nix/nixpkgs_rev.json` records the nixpkgs revision users install, and `bump_nixpkgs_rev.yml` advances it weekly - but only after that revision has built every scope and completed a real `setup.sh` install on both Linux and macOS.
+- `nx upgrade --latest` (and `nix/setup.sh --latest`) opts out of the validated revision and takes `nixpkgs-unstable` HEAD.
+- `nx doctor` check `nixpkgs_rev` reports a machine running behind the validated revision, and surfaces an upgrade that failed and rolled back.
+- `tests/nix/build_scope_env.sh` accepts `--rev` / `--latest` to build a candidate revision rather than the validated one.
+- `/release-auto`'s push gate reports `review_coda` and accepts `{"review": true}` to enable the review coda on a run started with `--skip-review`. One-way: omitting it never disables an enabled coda.
+
+### Changed
+
+- **`nx upgrade` now means "move to the latest *validated* nixpkgs", not "move to the latest nixpkgs".** Upgrades lag upstream by up to a week by design; that lag is the gate. `nx upgrade --latest` restores the old behaviour.
+- A first install now locks the validated revision before `nix profile add` runs, so it is gated too - previously only upgrades resolved a revision explicitly and a fresh install always took HEAD.
+- `nx upgrade` refuses to move backwards: if the validated revision is older than what is already locked (the state left by `--latest` while the weekly bump is blocked), it reports and does nothing. `nx pin set <rev>` still goes back deliberately.
+- `test_scope_env.yml` dropped its weekly schedule; detecting `nixpkgs-unstable` drift is now the bump workflow's job. Its PR trigger stays - it varies the repo against a fixed revision, which the bump gate never covers.
+- `/release-auto` keeps the commit plan across a wipe as `commit-plan.prev.json` and seeds the next `start` from it, so `start --reopen` edits a plan instead of re-deriving every group.
+- Bot workflows commit as `github-actions[bot]` rather than an invented `noreply@github.com` identity, which a ruleset requiring extra approval for unattributed changes would charge a second review for.
+
+### Fixed
+
+- `nx pin set <rev>` now actually pins. `nix flake lock` takes the flake path positionally and has no `--flake` option, so every pin attempt errored and the fallback warning swallowed it, silently leaving the old lock in place.
+- A release could finish with PR review threads still open, because `pr_review.py state` hides every thread a coda re-push flipped to `isOutdated`. `pr_review.py unresolved` now lists them all, and `push --done` re-runs that check and warns.
+- `release.py start --reopen` no longer dies on `check-changelog`. It lints with `lint-diff`, since a reopen's CHANGELOG entry already sits under its version heading and leaves `[Unreleased]` empty - the same false positive the skill warns agents about.
+- `release.py push --done` on an already-finished release is a no-op instead of failing with `no .release/state.json` - the documented last step is meant to be run unconditionally.
+- A failed `nix profile upgrade` no longer leaves `flake.lock` naming a revision the profile never received. The lock is snapshotted before the update and restored on failure, so the machine stays on the revision that was working.
+- Broken links in the published docs. A relative link out of `docs/` returned 404 (`mkdocs.yml` sets `docs_dir: docs/`), and the lessons-ledger link pointed at a repo readers cannot reach; both now use resolvable URLs.
+
 ## [1.19.4] - 2026-08-28
 
 ### Added
@@ -885,7 +919,7 @@ This release introduces the **manifest-driven nx CLI surface** - `.assets/lib/nx
 - extended `k8s_dev` scope with crane and kyverno cli.
 - moved `.assets/provision/gh_helpers.sh` to `.assets/lib/helpers.sh` so it can be sourced from the nix path (used by `nix/configure/conda.sh` for `download_file`); added `helpers` to the `check-bash32` hook regex.
 - `nix/configure/az.sh`: pass `--fix_certify true` on macOS too (was Linux-only) - keychain-intercepted certs now land in `~/.config/certs/ca-custom.crt`, so the same patch path applies cross-platform; safe no-op when no custom bundle exists.
-- `nx setup`: removed the interactive clone-path prompt. Primary path is `install.json:repo_path` when it points to a valid envy-nx checkout (respects forks / non-canonical clones); falls back to canonical `~/source/repos/procter-gamble/gto-cse-envy-nx` when the recorded path is unset or stale, cloning on demand. Stale-fallback case prints a one-line notice.
+- `nx setup`: removed the interactive clone-path prompt. Primary path is `install.json:repo_path` when it points to a valid envy-nx checkout (respects forks / non-canonical clones); falls back to canonical `~/source/repos/szymonos/envy-nx` when the recorded path is unset or stale, cloning on demand. Stale-fallback case prints a one-line notice.
 
 ### Fixed
 
