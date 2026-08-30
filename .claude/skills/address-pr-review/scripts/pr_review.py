@@ -2,9 +2,9 @@
 """
 pr_review.py - state-aware GitHub PR review thread management.
 
-Companion script for the /address-pr-review skill. Handles Copilot review
-lifecycle: detect current state, trigger reviews, wait for completion, and
-resolve threads via GraphQL.
+Shared by the /address-pr-review and /prepare-pr skills, which each vendor a
+copy. Handles Copilot review lifecycle: detect current state, trigger reviews,
+wait for completion, and resolve threads via GraphQL.
 
 Review states
 -------------
@@ -16,11 +16,20 @@ D = fresh Copilot review exists, no unresolved      -> DONE (only clean-exit)
 "Fresh" means a review whose commit SHA matches the PR's current HEAD SHA.
 "In progress" means Copilot sits in the PR's pending review requests.
 
+States C and D are about *triage*: they count only threads that still describe
+the current code, so D means "nothing left to triage", not "nothing left open".
+Finishing is a different question, and `unresolved` is what answers it.
+
 Subcommands
 -----------
 state --pr N
     Detect the current state. Prints JSON; exit code = state-specific:
-      0 = D (clean), 1 = C (unresolved), 2 = B (in progress), 3 = A (none).
+      0 = D (triage-clean), 1 = C (threads to triage), 2 = B (in progress),
+      3 = A (none). Exit 0 here is not "nothing is open" - see `unresolved`.
+
+unresolved --pr N
+    List every unresolved thread, outdated or not. Exit 1 while any remain.
+    The finish-time completeness check; see `cmd_unresolved`.
 
 trigger --pr N
     Request Copilot review (gh pr edit --add-reviewer). Idempotent.
@@ -34,6 +43,7 @@ resolve <thread-id>
 
 # :example
 .claude/skills/address-pr-review/scripts/pr_review.py state --pr 37
+.claude/skills/address-pr-review/scripts/pr_review.py unresolved --pr 37
 .claude/skills/address-pr-review/scripts/pr_review.py trigger --pr 37
 .claude/skills/address-pr-review/scripts/pr_review.py wait --pr 37 --timeout 480
 .claude/skills/address-pr-review/scripts/pr_review.py resolve PRRT_xxx
@@ -46,12 +56,17 @@ import json
 import subprocess
 import sys
 import time
+from collections.abc import Sequence
 
 COPILOT_REVIEWER_LOGIN = "copilot-pull-request-reviewer"  # author of submitted reviews
 # Logins a pending Copilot request can carry. It is a Bot named
 # `copilot-pull-request-reviewer`; older payloads exposed it as a user "Copilot".
 # Compared case-insensitively.
 COPILOT_REQUESTED_LOGINS = frozenset({COPILOT_REVIEWER_LOGIN, "copilot"})
+
+#: Ceiling for a single `gh` invocation. Generous, because a GraphQL page over
+#: a large PR is not instant, but finite so `wait` cannot overrun its deadline.
+GH_TIMEOUT = 120
 
 STATE_QUERY = """
 query($owner: String!, $repo: String!, $pr: Int!) {
@@ -122,11 +137,21 @@ def _run_gh(cmd: list[str]) -> str:
     traceback on common, expected failures (gh not installed, not logged in,
     missing scopes). Surface a readable one-line error the calling skill can
     show the user instead.
+
+    The timeout matters because `wait` polls: a single `gh` call that blocks on
+    a network stall or an auth prompt would otherwise hang the whole pipeline
+    past its own deadline, with nothing on stderr to act on.
     """
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=GH_TIMEOUT)
     except FileNotFoundError:
         print("gh CLI not found on PATH. Install and authenticate gh.", file=sys.stderr)
+        raise SystemExit(1) from None
+    except subprocess.TimeoutExpired:
+        print(
+            f"gh command timed out after {GH_TIMEOUT}s: {' '.join(cmd[:3])} ...",
+            file=sys.stderr,
+        )
         raise SystemExit(1) from None
     if result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip() or "unknown error"
@@ -142,20 +167,40 @@ def _repo_info() -> tuple[str, str]:
 
 
 def _auto_pr() -> int:
-    """Auto-detect PR number from current branch."""
+    """
+    Auto-detect PR number from current branch.
+
+    Bounded by the same timeout as every other `gh` call: omitting `--pr` is
+    the normal path, so an unbounded call here would hang `state`, `trigger`
+    and `wait` alike while the rest of the script looked well-behaved.
+    """
     try:
         result = subprocess.run(
             ["gh", "pr", "view", "--json", "number", "--jq", ".number"],
             capture_output=True,
             text=True,
+            timeout=GH_TIMEOUT,
         )
     except FileNotFoundError:
         print("gh CLI not found on PATH. Install and authenticate gh.", file=sys.stderr)
         raise SystemExit(1) from None
+    except subprocess.TimeoutExpired:
+        print(f"gh pr view timed out after {GH_TIMEOUT}s.", file=sys.stderr)
+        raise SystemExit(1) from None
     if result.returncode != 0 or not result.stdout.strip():
         print("No open PR on this branch. Push first or specify --pr.", file=sys.stderr)
         raise SystemExit(1)
-    return int(result.stdout.strip())
+    try:
+        return int(result.stdout.strip())
+    except ValueError:
+        # Anything non-numeric here is gh printing something unexpected. A
+        # ValueError traceback would undo the point of every other branch in
+        # this function.
+        print(
+            f"could not read a PR number from gh: {result.stdout.strip()[:200]}",
+            file=sys.stderr,
+        )
+        raise SystemExit(1) from None
 
 
 def _graphql(query: str, **variables: str | int) -> dict:
@@ -199,6 +244,26 @@ def _flatten_thread(thread: dict) -> dict:
     }
 
 
+def _pull_request(data: dict, owner: str, repo: str, pr: int) -> dict:
+    """
+    Pull the `pullRequest` node out of a response, or exit with a readable message.
+
+    Every query here nests under `repository.pullRequest`, and either level can
+    come back null on a 200 - an unreadable repo, a number that resolves to
+    nothing. Indexing straight through turns that into a TypeError traceback the
+    caller cannot act on, which is the one thing `_run_gh` exists to avoid.
+    """
+    repository = (data.get("data") or {}).get("repository") or {}
+    pr_node = repository.get("pullRequest")
+    if pr_node is None:
+        print(
+            f"PR #{pr} not found in {owner}/{repo} (invalid number or no access).",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+    return pr_node
+
+
 def _fetch_all_threads(owner: str, repo: str, pr: int) -> list[dict]:
     """Fetch all review threads via cursor pagination (no first:N cap)."""
     all_threads: list[dict] = []
@@ -208,7 +273,7 @@ def _fetch_all_threads(owner: str, repo: str, pr: int) -> list[dict]:
         if cursor is not None:
             kwargs["cursor"] = cursor
         data = _graphql(THREADS_PAGE_QUERY, **kwargs)
-        block = data["data"]["repository"]["pullRequest"]["reviewThreads"]
+        block = _pull_request(data, owner, repo, pr)["reviewThreads"]
         all_threads.extend(block["nodes"])
         if not block["pageInfo"]["hasNextPage"]:
             break
@@ -219,13 +284,7 @@ def _fetch_all_threads(owner: str, repo: str, pr: int) -> list[dict]:
 def _detect_state(owner: str, repo: str, pr: int) -> dict:
     """Run state detection. Returns a dict for JSON output + exit-code decisions."""
     data = _graphql(STATE_QUERY, owner=owner, repo=repo, pr=pr)
-    pr_node = (data.get("data") or {}).get("repository", {}).get("pullRequest")
-    if pr_node is None:
-        print(
-            f"PR #{pr} not found in {owner}/{repo} (invalid number or no access).",
-            file=sys.stderr,
-        )
-        raise SystemExit(1)
+    pr_node = _pull_request(data, owner, repo, pr)
     head_sha = pr_node["headRefOid"]
 
     # Find the most-recent Copilot review matching HEAD SHA. GraphQL can return
@@ -261,6 +320,10 @@ def _detect_state(owner: str, repo: str, pr: int) -> dict:
             for t in all_threads
             if not t["isResolved"] and not t["isOutdated"]
         ]
+        # Outdated threads are excluded because triage wants comments that still
+        # describe the current code. That makes D "nothing left to triage" and
+        # NOT "nothing left open" - `unresolved` is the check for the latter,
+        # and skipping it is how an unactioned comment reaches a merged PR.
         state = "C" if fresh_threads else "D"
     else:
         state = "B" if copilot_requested else "A"
@@ -287,6 +350,46 @@ def cmd_state(args: argparse.Namespace) -> int:
     json.dump(result, sys.stdout, indent=2)
     print()
     return _state_exit_code(result["state"])
+
+
+def unresolved_threads(owner: str, repo: str, pr: int) -> list[dict]:
+    """Every unresolved thread on the PR, outdated ones included."""
+    return [
+        _flatten_thread(t)
+        for t in _fetch_all_threads(owner, repo, pr)
+        if not t["isResolved"]
+    ]
+
+
+def cmd_unresolved(args: argparse.Namespace) -> int:
+    """
+    Print every unresolved thread, outdated or not - the finish-time check.
+
+    `state` reports only threads that are unresolved *and* not outdated, and in
+    states A/B it skips the thread fetch entirely so `wait` polling stays cheap.
+    Both are right for triage and wrong for finishing, because a force-push
+    moves the head SHA and flips every thread anchored to the old diff to
+    `isOutdated`. A comment nobody actioned therefore drops out of `state` at
+    exactly the moment you are deciding you are done, and state D cannot tell
+    "no threads are open" from "the open ones stopped being visible".
+
+    Outdated does not mean settled: it means the diff moved underneath the
+    comment. Judge each on its merits, fix or dismiss, then resolve it.
+
+    Exit 1 while any remain, so this can gate a finish step.
+    """
+    pr = args.pr or _auto_pr()
+    owner, repo = _repo_info()
+    threads = unresolved_threads(owner, repo, pr)
+    payload = {
+        "pr": pr,
+        "unresolved": len(threads),
+        "outdated": sum(1 for t in threads if t["isOutdated"]),
+        "threads": threads,
+    }
+    json.dump(payload, sys.stdout, indent=2)
+    print()
+    return 1 if threads else 0
 
 
 def cmd_trigger(args: argparse.Namespace) -> int:
@@ -339,13 +442,20 @@ def cmd_resolve(args: argparse.Namespace) -> int:
     return 0 if resolved else 1
 
 
-def main(argv: list[str]) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     """Parse args, dispatch to state/trigger/wait/resolve."""
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[1])
+    parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[1])
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_state = sub.add_parser("state", help="Detect current review state")
     p_state.add_argument("--pr", type=int, help="PR number (auto-detect if omitted)")
+
+    p_unresolved = sub.add_parser(
+        "unresolved", help="List ALL unresolved threads (incl. outdated); exit 1 if any"
+    )
+    p_unresolved.add_argument(
+        "--pr", type=int, help="PR number (auto-detect if omitted)"
+    )
 
     p_trigger = sub.add_parser("trigger", help="Request Copilot review")
     p_trigger.add_argument("--pr", type=int, help="PR number (auto-detect if omitted)")
@@ -365,6 +475,7 @@ def main(argv: list[str]) -> int:
     args = parser.parse_args(argv)
     handlers = {
         "state": cmd_state,
+        "unresolved": cmd_unresolved,
         "trigger": cmd_trigger,
         "wait": cmd_wait,
         "resolve": cmd_resolve,
@@ -373,4 +484,4 @@ def main(argv: list[str]) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main(sys.argv[1:]))
+    raise SystemExit(main())

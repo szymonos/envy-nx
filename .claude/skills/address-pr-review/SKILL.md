@@ -1,6 +1,6 @@
 ---
 name: address-pr-review
-description: State-aware GitHub Copilot PR review handler. Detects review state (not triggered / in progress / has unresolved threads / clean), triggers Copilot via `gh pr edit --add-reviewer` when needed, polls until completion, classifies fresh unresolved comments as fix/resolve-only/skip, applies fixes, resolves threads via GraphQL, and pushes. Only exits when the fresh review (matching HEAD SHA) has no unresolved fresh threads. Use when the user types `/address-pr-review`, asks to address PR comments, wants to clear review findings, or says "check the PR review." Disabled for auto-invocation.
+description: State-aware GitHub Copilot PR review handler. Detects review state (not triggered / in progress / has unresolved threads / clean), triggers Copilot via `gh pr edit --add-reviewer` when needed, polls until completion, classifies fresh unresolved comments as fix/resolve-only/skip, applies fixes, resolves threads via GraphQL, and pushes. Only exits when no thread is left unresolved at all, outdated ones included - triage works off the fresh review (matching HEAD SHA), but finishing runs a separate completeness check. Use when the user types `/address-pr-review`, asks to address PR comments, wants to clear review findings, or says "check the PR review." Disabled for auto-invocation.
 disable-model-invocation: true
 ---
 
@@ -25,28 +25,28 @@ State-aware Copilot PR review handler. Detects the current review state, drives 
 
 The skill operates as a state machine. Four states are possible:
 
-| State | Fresh review exists? | Copilot requested? | Unresolved fresh threads? | Action           |
-| ----- | -------------------- | ------------------ | ------------------------- | ---------------- |
-| **A** | No                   | No                 | N/A                       | Trigger + wait   |
-| **B** | No                   | Yes (in progress)  | N/A                       | Wait             |
-| **C** | Yes                  | No                 | Yes                       | **Process**      |
-| **D** | Yes                  | No                 | No                        | **EXIT** (clean) |
+| State | Fresh review exists? | Copilot requested? | Unresolved fresh threads? | Action                          |
+| ----- | -------------------- | ------------------ | ------------------------- | ------------------------------- |
+| **A** | No                   | No                 | N/A                       | Trigger + wait                  |
+| **B** | No                   | Yes (in progress)  | N/A                       | Wait                            |
+| **C** | Yes                  | No                 | Yes                       | **Process**                     |
+| **D** | Yes                  | No                 | No                        | **Run `unresolved`**, then exit |
 
 "Fresh review" = a Copilot review whose `commit.oid` matches the PR's current `headRefOid`. A review from a prior push is **stale** and ignored - the skill triggers a new one.
 
-"Fresh threads" = threads with `isResolved: false` AND `isOutdated: false`. Outdated unresolved threads are silently ignored - the fresh review re-evaluates the same code.
+"Fresh threads" = threads with `isResolved: false` AND `isOutdated: false`. The four states are about **triage** - which comments still describe the current code - so they deliberately exclude outdated ones.
 
-**State D is the only clean exit.** Every other state drives toward it via trigger/wait/process.
+**State D means "nothing left to triage", not "nothing left open".** A force-push moves the head SHA and flips every thread anchored to the old diff to `isOutdated`, which drops it out of `state` entirely. Before calling a PR done, run the separate completeness check in Phase 2.
 
 ## Workflow
 
 ### Phase 1 - detect state
 
 ```bash
-uv run --frozen python .claude/skills/address-pr-review/scripts/pr_review.py state --pr <N>
+.claude/skills/address-pr-review/scripts/pr_review.py state --pr <N>
 ```
 
-Returns JSON with `state`, `headSha`, `freshReviewSha`, `copilotRequested`, and `unresolvedFreshThreads`. Exit code: `0`=D, `1`=C, `2`=B, `3`=A.
+Returns JSON with `state`, `headSha`, `freshReviewSha`, `copilotRequested`, and `unresolvedFreshThreads` (fresh only - the finish-time check is `unresolved`, in Phase 2). Exit code: `0`=D, `1`=C, `2`=B, `3`=A.
 
 If no PR is found on the current branch (or `--pr` is invalid), the script exits with a clear error. Surface it to the user and stop.
 
@@ -57,7 +57,17 @@ Branch on the state from Phase 1:
 - **State A** (not triggered): run `pr_review.py trigger --pr <N>` to request Copilot. Then `pr_review.py wait --pr <N>` to poll until the review completes. The `wait` subcommand returns when the state resolves to C or D. Continue from that state.
 - **State B** (in progress): skip trigger, go straight to `pr_review.py wait --pr <N>`. Same continuation.
 - **State C** (unresolved fresh threads): proceed to Phase 3.
-- **State D**: announce "PR review clean - no unresolved fresh threads. Exit." Done.
+- **State D**: no unresolved *fresh* threads. Do not announce the PR clean yet - run the completeness check below first.
+
+#### The completeness check
+
+```bash
+.claude/skills/address-pr-review/scripts/pr_review.py unresolved --pr <N>
+```
+
+Lists **every** unresolved thread, outdated or not, and exits 1 while any remain. `state` cannot see the outdated ones, so a comment nobody actioned goes invisible exactly when you are deciding you are done - and it stays open on the PR, where it still counts against "Require conversation resolution before merging".
+
+Outdated means the diff moved under the comment, not that the point is moot. Triage each one the same way as Phase 3, then `resolve` it. Only announce the review clean once this exits 0.
 
 `wait` polls every 30 seconds, up to 8 min total. On timeout (exit 4), surface to the user - Copilot may be queued or the service may be slow. Don't loop the wait; let the user decide whether to retry.
 
@@ -87,7 +97,7 @@ For each remaining thread, read the comment body + the referenced file at the sp
 Resolve `fix` and `resolve-only` threads via:
 
 ```bash
-uv run --frozen python .claude/skills/address-pr-review/scripts/pr_review.py resolve <thread-id>
+.claude/skills/address-pr-review/scripts/pr_review.py resolve <thread-id>
 ```
 
 After processing all `fix` and `resolve-only` items:
@@ -114,8 +124,9 @@ If no files were edited (all threads were `resolve-only` or `skip` → leave-ope
 
 ## Anti-patterns
 
-- **Processing outdated threads.** Threads with `isOutdated: true` reference code that may no longer exist at that line. The fresh review re-evaluates the same code; if the issue persists, it appears as a fresh thread. Silently ignoring outdated threads is correct.
-- **Treating a stale review as fresh.** A review whose `commit.oid` doesn't match the current `headRefOid` is from a prior push. Don't process its threads even if they're unresolved - trigger a new review instead.
+- **Finishing on `state` alone.** `state` filters to threads that describe the current code, which is right for triage and wrong for deciding you are done. A check that filters by freshness cannot also serve as the completeness check - run `unresolved` before you call a PR clean.
+- **Treating "outdated" as "handled".** `isOutdated: true` means the diff moved under the comment, not that anyone read it. Don't assume the fresh review re-raises it: Copilot is not obliged to repeat a finding, and an unresolved outdated thread still blocks merge under conversation-resolution rules.
+- **Skipping a thread because its review is stale.** Thread selection is not SHA-scoped - `state` and `unresolved` both return threads from *any* prior review. A finding does not stop being true because a newer commit landed; triage it on its merits.
 - **Resolving `skip` items silently.** The human might want to act on them - a "consider X" suggestion might actually be a good idea. Surface, don't suppress.
 - **Posting reply comments before resolving.** Silent resolve is the design choice - keeps the PR history clean. The fix is visible in the diff; the resolution is visible in the thread state.
 - **Looping `wait` on timeout.** If `wait` exits 4 (timeout), don't immediately re-call it. Surface to the user; Copilot may be queued or rate-limited.
