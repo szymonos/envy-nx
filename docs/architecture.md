@@ -206,7 +206,7 @@ the appropriate derivation in its scope file:
 - **Deliberate override** - rare, but if a specific scope must ship a
   patched variant of a base package, tag the variant `lib.hiPrio`.
 
-See ADR [0010](../design/decisions/0010-lowprio-buildenv-collisions.md)
+See ADR [0010](https://github.com/szymonos/envy-nx/blob/main/design/decisions/0010-lowprio-buildenv-collisions.md)
 for the exhaustive scenario matrix, alternatives rejected, and the
 constraint on when this pattern applies.
 
