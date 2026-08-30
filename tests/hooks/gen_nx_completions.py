@@ -552,8 +552,14 @@ def emit_ps_region(manifest):
         first = False
     for v in verbs_with_flags(manifest):
         flag_names = [f["long"] for f in v["flags"]]
+        # `-in <all names>`, not `-eq <canonical>`: bash and zsh complete a verb's
+        # flags under its aliases too (`nx update --latest`), and pwsh matching
+        # only the canonical name is the v1.6.3 asymmetry all over again. Latent
+        # until 1.20.0 - `upgrade` is the first verb to have both an alias and a
+        # verb-level flag.
+        names_pat = ", ".join(f"'{n}'" for n in all_names(v))
         kw = "if" if first else "elseif"
-        lines.append(f"            {kw} ($tokens[1].Value -eq '{v['name']}') {{")
+        lines.append(f"            {kw} ($tokens[1].Value -in {names_pat}) {{")
         lines.append(f"                {ps_quoted(flag_names)}")
         lines.append("            }")
         first = False
@@ -586,8 +592,9 @@ def emit_ps_region(manifest):
     for v in verbs_with_flags(manifest):
         flag_names = [f["long"] for f in v["flags"]]
         flags_with_completer = [f for f in v["flags"] if f.get("value_completer")]
+        names_pat = ", ".join(f"'{n}'" for n in all_names(v))
         kw = "if" if first else "elseif"
-        lines.append(f"            {kw} ($tokens[1].Value -eq '{v['name']}') {{")
+        lines.append(f"            {kw} ($tokens[1].Value -in {names_pat}) {{")
         if flags_with_completer:
             lines.append("                $prev = $tokens[$pos - 1].Value")
             lines.append("                switch ($prev) {")
@@ -811,9 +818,11 @@ def _lib_files_list(manifest):
     # nx.sh is the dispatcher entry; nx_doctor.sh and profile_block.sh are
     # not verb families but are required runtime libs. cert_probe.sh is the
     # shared Mozilla-pinned probe for nx_doctor.sh's _check_cert_bundle.
+    # nx_rev.sh is the nixpkgs-revision ladder shared by `nx upgrade` and the
+    # nix_profile phase, so it must reach ENV_DIR for the former to run.
     families = sorted({v["family"] for v in manifest["verbs"] if v.get("family")})
     files = ["nx.sh"] + [f"nx_{f}.sh" for f in families]
-    files += ["nx_doctor.sh", "profile_block.sh", "cert_probe.sh"]
+    files += ["nx_doctor.sh", "profile_block.sh", "cert_probe.sh", "nx_rev.sh"]
     # de-dupe while preserving order
     seen, out = set(), []
     for f in files:

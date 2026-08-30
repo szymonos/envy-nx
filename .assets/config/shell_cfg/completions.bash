@@ -19,6 +19,10 @@ function _nx_completions() {
     while IFS= read -r line; do COMPREPLY+=("$line"); done < <(compgen -W "doctor regenerate uninstall help" -- "$cur")
   elif [ "$COMP_CWORD" -eq 2 ] && [ "$prev" = "self" ]; then
     while IFS= read -r line; do COMPREPLY+=("$line"); done < <(compgen -W "update path help" -- "$cur")
+  elif [ "$COMP_CWORD" -ge 2 ] && [ "${COMP_WORDS[1]}" = "upgrade" ]; then
+    while IFS= read -r line; do COMPREPLY+=("$line"); done < <(compgen -W "--latest" -- "$cur")
+  elif [ "$COMP_CWORD" -ge 2 ] && [ "${COMP_WORDS[1]}" = "update" ]; then
+    while IFS= read -r line; do COMPREPLY+=("$line"); done < <(compgen -W "--latest" -- "$cur")
   elif [ "$COMP_CWORD" -ge 2 ] && [ "${COMP_WORDS[1]}" = "setup" ]; then
     case "$prev" in
     --omp-theme)

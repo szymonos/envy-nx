@@ -124,24 +124,108 @@ function _nx_pkg_remove() {
 }
 
 function _nx_pkg_upgrade() {
+  local _want_latest=false _arg
+  for _arg in "$@"; do
+    case "$_arg" in
+    --latest) _want_latest=true ;;
+    *)
+      printf "\e[31munknown flag: %s\e[0m\n" "$_arg" >&2
+      printf "Usage: nx upgrade [--latest]\n" >&2
+      return 1
+      ;;
+    esac
+  done
+
+  # Records the failed attempt so `nx doctor` can surface a machine that
+  # quietly stopped advancing; cleared on success. nx_doctor.sh is standalone
+  # after install (it never sources nx.sh), so it hardcodes the same name.
+  local _err_file="$_NX_ENV_DIR/last_upgrade_error"
+  local _resolved _mode _rev
+  _resolved="$(_nx_rev_resolve "$_NX_ENV_DIR" "$_want_latest")"
+  _mode="${_resolved%% *}"
+  _rev=""
+  case "$_resolved" in *" "*) _rev="${_resolved#* }" ;; esac
+
+  # Refuse to move backwards. Without this, a user who ran `nx upgrade
+  # --latest` would be dragged back to an older nixpkgs by the next plain
+  # upgrade whenever the CI bump is behind them.
+  if [ "$_mode" = "validated" ]; then
+    local _cand_epoch
+    _cand_epoch="$(_nx_rev_json_field "$_NX_ENV_DIR/nixpkgs_rev.json" lastModified)"
+    if _nx_rev_is_downgrade "$_NX_ENV_DIR" "$_cand_epoch"; then
+      printf "\e[96malready at or ahead of the validated revision (%s) - nothing to do.\e[0m\n" "${_rev:0:12}"
+      printf "\e[90mto go back deliberately: nx pin set %s\e[0m\n" "${_rev:0:12}"
+      return 0
+    fi
+  fi
+
   printf "\e[96mupgrading packages...\e[0m\n"
-  local _pinned_rev=""
-  [ -f "$_NX_ENV_DIR/pinned_rev" ] && _pinned_rev="$(tr -d '[:space:]' <"$_NX_ENV_DIR/pinned_rev")"
+
+  # flake.lock is rewritten before the slow, cancellable `nix profile upgrade`,
+  # so a Ctrl-C or a build failure would otherwise leave the lock naming a
+  # revision the profile never received. Snapshot it and put it back on
+  # failure: the lock is already the per-machine record of the revision in
+  # use, so restoring it is the whole "stay on the last working rev" contract -
+  # no second bookkeeping file to drift from profile generations.
+  local _lock="$_NX_ENV_DIR/flake.lock" _lock_backup=""
+  if [ -f "$_lock" ]; then
+    _lock_backup="$(mktemp "${_lock}.bak.XXXXXX")" || {
+      printf "\e[31mcould not back up flake.lock - aborting to protect the current revision\e[0m\n" >&2
+      return 1
+    }
+    command cp "$_lock" "$_lock_backup" || {
+      command rm -f "$_lock_backup"
+      printf "\e[31mcould not back up flake.lock - aborting to protect the current revision\e[0m\n" >&2
+      return 1
+    }
+  fi
+
   # nix writes progress (the live progress bar and per-path "copying path"
   # lines) to stderr; let it through so the user sees what's happening
   # during the network-bound flake update.
-  if [ -n "$_pinned_rev" ]; then
-    printf "\e[96mpinning nixpkgs to %s\e[0m\n" "$_pinned_rev"
-    nix flake lock --override-input nixpkgs "github:nixos/nixpkgs/$_pinned_rev" --flake "$_NX_ENV_DIR" ||
+  case "$_mode" in
+  pinned)
+    printf "\e[96mpinning nixpkgs to %s (nx pin)\e[0m\n" "$_rev"
+    nix flake lock --override-input nixpkgs "github:nixos/nixpkgs/$_rev" "$_NX_ENV_DIR" ||
       printf "\e[33mflake lock failed - using existing lock\e[0m\n" >&2
-  else
+    ;;
+  validated)
+    printf "\e[96musing validated nixpkgs %s\e[0m\n" "${_rev:0:12}"
+    nix flake lock --override-input nixpkgs "github:nixos/nixpkgs/$_rev" "$_NX_ENV_DIR" ||
+      printf "\e[33mflake lock failed - using existing lock\e[0m\n" >&2
+    ;;
+  latest)
+    printf "\e[33musing nixpkgs-unstable HEAD - not validated by CI\e[0m\n"
     nix flake update --flake "$_NX_ENV_DIR" ||
       printf "\e[33mflake update failed (network issue?) - using existing lock\e[0m\n" >&2
-  fi
-  nix profile upgrade nix-env || {
+    ;;
+  *)
+    printf "\e[33mno validated revision found - keeping the current lock\e[0m\n" >&2
+    printf "\e[90mrun nx self update to fetch one\e[0m\n" >&2
+    ;;
+  esac
+
+  if ! nix profile upgrade nix-env; then
     printf "\e[31mnix profile upgrade failed\e[0m\n" >&2
+    if [ -n "$_lock_backup" ]; then
+      command mv "$_lock_backup" "$_lock"
+      printf "\e[33mrestored the previous flake.lock - still on the last working revision\e[0m\n" >&2
+    fi
+    # Record what was actually attempted. `latest` really did reach for HEAD;
+    # `none` touched no lock at all, and naming HEAD there made nx doctor
+    # report an upgrade that never happened.
+    local _target
+    case "$_mode" in
+    latest) _target="nixpkgs-unstable HEAD" ;;
+    none) _target="existing lock (no validated rev synced)" ;;
+    *) _target="$_rev" ;;
+    esac
+    printf '%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_target" >"$_err_file" 2>/dev/null
     return 1
-  }
+  fi
+
+  [ -n "$_lock_backup" ] && command rm -f "$_lock_backup"
+  command rm -f "$_err_file"
   _nx_clear_stale_caches
   printf "\e[32mdone.\e[0m\n"
 }
