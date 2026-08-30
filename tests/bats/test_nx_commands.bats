@@ -151,7 +151,46 @@ EOF
   [[ "$output" == *"No pin set"* ]]
 }
 
-# -- upgrade with pinned_rev --------------------------------------------------
+# -- upgrade: revision ladder -------------------------------------------------
+
+# `nix` is stubbed to exit 0 for everything in setup(); these helpers swap in a
+# logging stub so a test can assert which nix subcommand actually ran.
+_stub_nix_log() {
+  cat >"$TEST_DIR/bin/nix" <<EOF
+#!/bin/sh
+echo "\$@" >>"$TEST_DIR/nix.log"
+exit 0
+EOF
+  chmod +x "$TEST_DIR/bin/nix"
+  : >"$TEST_DIR/nix.log"
+}
+
+# Fails only on `profile upgrade`, so the flake lock still gets rewritten -
+# exactly the window the flake.lock backup exists to cover.
+_stub_nix_fail_profile_upgrade() {
+  cat >"$TEST_DIR/bin/nix" <<EOF
+#!/bin/sh
+echo "\$@" >>"$TEST_DIR/nix.log"
+case "\$*" in
+"profile upgrade"*) exit 1 ;;
+esac
+exit 0
+EOF
+  chmod +x "$TEST_DIR/bin/nix"
+  : >"$TEST_DIR/nix.log"
+}
+
+_write_lock() {
+  cat >"$ENV_DIR/flake.lock" <<EOF
+{"nodes":{"nixpkgs":{"locked":{"lastModified":$1,"rev":"locked000"}}}}
+EOF
+}
+
+_write_rev() {
+  cat >"$ENV_DIR/nixpkgs_rev.json" <<EOF
+{"rev":"$1","lastModified":$2}
+EOF
+}
 
 @test "upgrade reads pinned_rev file when present" {
   printf 'pinnedabc123\n' >"$ENV_DIR/pinned_rev"
@@ -160,10 +199,106 @@ EOF
   [[ "$output" == *"pinning nixpkgs to pinnedabc123"* ]]
 }
 
-@test "upgrade without pin does normal update" {
+@test "upgrade uses the validated rev when unpinned" {
+  _stub_nix_log
+  _write_lock 1000000000
+  _write_rev validatedrev 2000000000
   run nx upgrade
   [ "$status" -eq 0 ]
-  [[ "$output" != *"pinning nixpkgs"* ]]
+  [[ "$output" == *"using validated nixpkgs"* ]]
+  grep -q 'flake lock --override-input nixpkgs github:nixos/nixpkgs/validatedrev' "$TEST_DIR/nix.log"
+  ! grep -q 'flake update' "$TEST_DIR/nix.log"
+}
+
+@test "upgrade --latest opts out of the validated rev" {
+  _stub_nix_log
+  _write_lock 1000000000
+  _write_rev validatedrev 2000000000
+  run nx upgrade --latest
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"not validated by CI"* ]]
+  grep -q 'flake update' "$TEST_DIR/nix.log"
+}
+
+@test "upgrade refuses to downgrade below the locked revision" {
+  _stub_nix_log
+  # locked is newer than validated: the state left by `nx upgrade --latest`
+  # while the CI bump lags behind.
+  _write_lock 2000000000
+  _write_rev validatedrev 1000000000
+  run nx upgrade
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"already at or ahead"* ]]
+  [[ "$output" == *"nx pin set"* ]]
+  [[ ! -s "$TEST_DIR/nix.log" ]]
+}
+
+@test "upgrade keeps the lock when no validated rev is synced" {
+  _stub_nix_log
+  _write_lock 1000000000
+  rm -f "$ENV_DIR/nixpkgs_rev.json"
+  run nx upgrade
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"no validated revision found"* ]]
+  ! grep -q 'flake' "$TEST_DIR/nix.log"
+}
+
+@test "upgrade rejects an unknown flag" {
+  run nx upgrade --bogus
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"unknown flag"* ]]
+}
+
+# -- upgrade: transactional failure -------------------------------------------
+
+@test "upgrade restores the previous flake.lock when profile upgrade fails" {
+  _write_lock 1000000000
+  _write_rev validatedrev 2000000000
+  local _before
+  _before="$(cat "$ENV_DIR/flake.lock")"
+  # The lock rewrite has to actually happen for the restore to mean anything.
+  cat >"$TEST_DIR/bin/nix" <<EOF
+#!/bin/sh
+case "\$*" in
+"flake lock"*) echo '{"nodes":{"nixpkgs":{"locked":{"lastModified":2000000000,"rev":"newrev"}}}}' >"$ENV_DIR/flake.lock" ; exit 0 ;;
+"profile upgrade"*) exit 1 ;;
+esac
+exit 0
+EOF
+  chmod +x "$TEST_DIR/bin/nix"
+  run nx upgrade
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"restored the previous flake.lock"* ]]
+  [[ "$(cat "$ENV_DIR/flake.lock")" == "$_before" ]]
+}
+
+@test "upgrade records the failed attempt for nx doctor" {
+  _stub_nix_fail_profile_upgrade
+  _write_lock 1000000000
+  _write_rev validatedrev 2000000000
+  run nx upgrade
+  [ "$status" -eq 1 ]
+  [[ -f "$ENV_DIR/last_upgrade_error" ]]
+  grep -q 'validatedrev' "$ENV_DIR/last_upgrade_error"
+}
+
+@test "upgrade clears a previous failure marker on success" {
+  _stub_nix_log
+  _write_lock 1000000000
+  _write_rev validatedrev 2000000000
+  printf '2026-01-01T00:00:00Z\told\n' >"$ENV_DIR/last_upgrade_error"
+  run nx upgrade
+  [ "$status" -eq 0 ]
+  [[ ! -f "$ENV_DIR/last_upgrade_error" ]]
+}
+
+@test "upgrade leaves no stray flake.lock backup behind on success" {
+  _stub_nix_log
+  _write_lock 1000000000
+  _write_rev validatedrev 2000000000
+  run nx upgrade
+  [ "$status" -eq 0 ]
+  [[ -z "$(find "$ENV_DIR" -name 'flake.lock.bak.*' 2>/dev/null)" ]]
 }
 
 # -- scope remove with local_ prefix -----------------------------------------

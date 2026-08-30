@@ -13,6 +13,34 @@ setup_file() {
   export REPO_ROOT="$BATS_TEST_DIRNAME/../.."
 }
 
+# Write a minimal flake.lock whose nixpkgs node carries `lastModified` - the
+# field the no-downgrade comparison orders revisions by.
+_write_flake_lock() {
+  cat >"$TEST_ENV_DIR/flake.lock" <<EOF
+{
+  "nodes": {
+    "nixpkgs": {
+      "locked": {
+        "lastModified": $1,
+        "rev": "locked000"
+      }
+    }
+  }
+}
+EOF
+}
+
+# Write the repo-validated revision file that phase_bootstrap_sync_env_dir
+# copies into ENV_DIR.
+_write_validated_rev() {
+  cat >"$TEST_ENV_DIR/nixpkgs_rev.json" <<EOF
+{
+  "rev": "$1",
+  "lastModified": $2
+}
+EOF
+}
+
 setup() {
   # create an isolated environment
   TEST_HOME="$(mktemp -d)"
@@ -35,6 +63,11 @@ setup() {
   source "$REPO_ROOT/nix/lib/phases/scopes.sh"
   # shellcheck source=../../nix/lib/phases/nix_profile.sh
   source "$REPO_ROOT/nix/lib/phases/nix_profile.sh"
+  # nix_profile phase resolves the nixpkgs revision through nx_rev.sh,
+  # which it sources from SCRIPT_ROOT.
+  SCRIPT_ROOT="$REPO_ROOT"
+  # shellcheck source=../../.assets/lib/nx_rev.sh
+  source "$REPO_ROOT/.assets/lib/nx_rev.sh"
   # shellcheck source=../../nix/lib/phases/post_install.sh
   source "$REPO_ROOT/nix/lib/phases/post_install.sh"
   # shellcheck source=../../nix/lib/phases/summary.sh
@@ -731,22 +764,42 @@ _scope_pkgs() {
 # Nix profile phase
 # =============================================================================
 
-@test "nix_profile: pinned_rev loaded from file" {
+@test "nix_profile: rev ladder picks the user pin first" {
   echo "abc123" >"$TEST_ENV_DIR/pinned_rev"
-  phase_nix_profile_load_pinned_rev
-  [[ "$PINNED_REV" == "abc123" ]]
+  _write_validated_rev def456 2000000000
+  phase_nix_profile_load_rev
+  [[ "$NX_REV_MODE" == "pinned" ]]
+  [[ "$NX_REV_SHA" == "abc123" ]]
 }
 
-@test "nix_profile: pinned_rev empty when file missing" {
+@test "nix_profile: rev ladder falls to the validated rev when unpinned" {
   rm -f "$TEST_ENV_DIR/pinned_rev"
-  phase_nix_profile_load_pinned_rev
-  [[ "$PINNED_REV" == "" ]]
+  _write_validated_rev def456 2000000000
+  phase_nix_profile_load_rev
+  [[ "$NX_REV_MODE" == "validated" ]]
+  [[ "$NX_REV_SHA" == "def456" ]]
 }
 
-@test "nix_profile: pinned_rev strips whitespace" {
+@test "nix_profile: rev ladder honours --latest over the validated rev" {
+  rm -f "$TEST_ENV_DIR/pinned_rev"
+  _write_validated_rev def456 2000000000
+  upgrade_latest="true"
+  phase_nix_profile_load_rev
+  [[ "$NX_REV_MODE" == "latest" ]]
+  [[ "$NX_REV_SHA" == "" ]]
+}
+
+@test "nix_profile: rev ladder reports none when no rev file is synced" {
+  rm -f "$TEST_ENV_DIR/pinned_rev" "$TEST_ENV_DIR/nixpkgs_rev.json"
+  upgrade_latest="false"
+  phase_nix_profile_load_rev
+  [[ "$NX_REV_MODE" == "none" ]]
+}
+
+@test "nix_profile: rev ladder strips whitespace from the pin" {
   printf "  abc123  \n" >"$TEST_ENV_DIR/pinned_rev"
-  phase_nix_profile_load_pinned_rev
-  [[ "$PINNED_REV" == "abc123" ]]
+  phase_nix_profile_load_rev
+  [[ "$NX_REV_SHA" == "abc123" ]]
 }
 
 @test "nix_profile: apply runs profile add and upgrade" {
@@ -798,26 +851,87 @@ _scope_pkgs() {
 
 @test "nix_profile: update_flake uses override-input when pinned" {
   : >"$BATS_TEST_TMPDIR/nix.log"
-  PINNED_REV="abc123"
+  _write_flake_lock 1000000000
+  NX_REV_MODE="pinned"
+  NX_REV_SHA="abc123"
   upgrade_packages="true"
   SECONDS=0
   phase_nix_profile_update_flake
   grep -q 'flake lock --override-input' "$BATS_TEST_TMPDIR/nix.log"
 }
 
-@test "nix_profile: update_flake uses flake update when unpinned" {
+@test "nix_profile: update_flake locks the validated rev" {
   : >"$BATS_TEST_TMPDIR/nix.log"
-  PINNED_REV=""
+  _write_flake_lock 1000000000
+  _write_validated_rev def456 2000000000
+  NX_REV_MODE="validated"
+  NX_REV_SHA="def456"
+  upgrade_packages="true"
+  SECONDS=0
+  phase_nix_profile_update_flake
+  grep -q 'flake lock --override-input nixpkgs github:nixos/nixpkgs/def456' "$BATS_TEST_TMPDIR/nix.log"
+}
+
+@test "nix_profile: update_flake refuses to downgrade to an older validated rev" {
+  : >"$BATS_TEST_TMPDIR/nix.log"
+  # locked is NEWER than validated - the shape after `nx upgrade --latest`
+  # while the CI bump is lagging behind.
+  _write_flake_lock 2000000000
+  _write_validated_rev def456 1000000000
+  NX_REV_MODE="validated"
+  NX_REV_SHA="def456"
+  upgrade_packages="true"
+  SECONDS=0
+  run phase_nix_profile_update_flake
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == *"already at or ahead"* ]]
+  [[ ! -s "$BATS_TEST_TMPDIR/nix.log" ]]
+}
+
+@test "nix_profile: update_flake uses flake update for --latest" {
+  : >"$BATS_TEST_TMPDIR/nix.log"
+  _write_flake_lock 1000000000
+  NX_REV_MODE="latest"
+  NX_REV_SHA=""
   upgrade_packages="true"
   SECONDS=0
   phase_nix_profile_update_flake
   grep -q 'flake update' "$BATS_TEST_TMPDIR/nix.log"
 }
 
+@test "nix_profile: update_flake keeps the lock when no validated rev exists" {
+  : >"$BATS_TEST_TMPDIR/nix.log"
+  _write_flake_lock 1000000000
+  NX_REV_MODE="none"
+  NX_REV_SHA=""
+  upgrade_packages="true"
+  SECONDS=0
+  run phase_nix_profile_update_flake
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == *"no validated nixpkgs revision"* ]]
+  [[ ! -s "$BATS_TEST_TMPDIR/nix.log" ]]
+}
+
+@test "nix_profile: update_flake locks the validated rev on a first run without --upgrade" {
+  : >"$BATS_TEST_TMPDIR/nix.log"
+  # No flake.lock: `nix profile add` would otherwise resolve unstable HEAD and
+  # write a lock naming a revision no CI has built.
+  rm -f "$TEST_ENV_DIR/flake.lock"
+  _write_validated_rev def456 2000000000
+  NX_REV_MODE="validated"
+  NX_REV_SHA="def456"
+  upgrade_packages="false"
+  SECONDS=0
+  phase_nix_profile_update_flake
+  grep -q 'flake lock --override-input nixpkgs github:nixos/nixpkgs/def456' "$BATS_TEST_TMPDIR/nix.log"
+}
+
 @test "nix_profile: update_flake warns and continues when flake update fails" {
   : >"$BATS_TEST_TMPDIR/nix.log"
+  _write_flake_lock 1000000000
   _io_nix() { return 1; }
-  PINNED_REV=""
+  NX_REV_MODE="latest"
+  NX_REV_SHA=""
   upgrade_packages="true"
   SECONDS=0
   run phase_nix_profile_update_flake
@@ -827,8 +941,10 @@ _scope_pkgs() {
 
 @test "nix_profile: update_flake warns and continues when flake lock fails (pinned)" {
   : >"$BATS_TEST_TMPDIR/nix.log"
+  _write_flake_lock 1000000000
   _io_nix() { return 1; }
-  PINNED_REV="abc123"
+  NX_REV_MODE="pinned"
+  NX_REV_SHA="abc123"
   upgrade_packages="true"
   SECONDS=0
   run phase_nix_profile_update_flake

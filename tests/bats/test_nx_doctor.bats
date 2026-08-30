@@ -148,6 +148,112 @@ EOF
   [[ "$output" == *"FAIL  flake_lock"* ]]
 }
 
+# -- nixpkgs_rev check -------------------------------------------------------
+
+# `_write_flake_lock` locks rev "abc123"; these helpers describe what the repo
+# says is validated, so the two can agree or diverge per test.
+_write_rev_file() {
+  cat >"$ENV_DIR/nixpkgs_rev.json" <<EOF
+{
+  "rev": "$1",
+  "lastModified": 1787964612
+}
+EOF
+}
+
+@test "nixpkgs_rev passes when the locked rev is the validated one" {
+  _write_flake_lock
+  _write_install_json
+  _write_rev_file abc123
+  run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"PASS  nixpkgs_rev"* ]]
+}
+
+# A lock carrying lastModified, so the check can order it against the validated
+# rev instead of only comparing SHAs.
+_write_flake_lock_at() {
+  cat >"$ENV_DIR/flake.lock" <<EOF
+{
+  "nodes": {
+    "nixpkgs": {
+      "locked": {
+        "lastModified": $1,
+        "rev": "locked000"
+      }
+    }
+  }
+}
+EOF
+}
+
+@test "nixpkgs_rev warns when the machine is behind the validated rev" {
+  _write_flake_lock_at 1000000000
+  _write_install_json
+  _write_rev_file def456
+  run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"WARN  nixpkgs_rev"* ]]
+  [[ "$output" == *"behind"* ]]
+  [[ "$output" == *"nx upgrade"* ]]
+}
+
+# The `nx upgrade --latest` state. Warning here would never clear, because
+# nx upgrade refuses to downgrade - so --strict would fail forever.
+@test "nixpkgs_rev passes when the machine is ahead of the validated rev" {
+  _write_flake_lock_at 2000000000
+  _write_install_json
+  _write_rev_file def456
+  run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"PASS  nixpkgs_rev"* ]]
+}
+
+@test "nixpkgs_rev still warns when neither side carries a comparable timestamp" {
+  _write_flake_lock
+  _write_install_json
+  _write_rev_file def456
+  run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"WARN  nixpkgs_rev"* ]]
+}
+
+@test "nixpkgs_rev does not warn about a divergence the user pinned" {
+  _write_flake_lock
+  _write_install_json
+  _write_rev_file def456
+  echo "abc123" >"$ENV_DIR/pinned_rev"
+  run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"PASS  nixpkgs_rev"* ]]
+}
+
+# An empty pin file is what `nx pin remove` can leave behind; _nx_rev_resolve
+# strips whitespace and ignores it, so doctor must not call it a pin either.
+@test "nixpkgs_rev ignores an empty pinned_rev and still reports drift" {
+  _write_flake_lock_at 1000000000
+  _write_install_json
+  _write_rev_file def456
+  printf '   \n' >"$ENV_DIR/pinned_rev"
+  run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"WARN  nixpkgs_rev"* ]]
+  [[ "$output" == *"behind"* ]]
+}
+
+@test "nixpkgs_rev warns when no validated rev has been synced" {
+  _write_flake_lock
+  _write_install_json
+  rm -f "$ENV_DIR/nixpkgs_rev.json"
+  run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"WARN  nixpkgs_rev"* ]]
+  [[ "$output" == *"nx self update"* ]]
+}
+
+@test "nixpkgs_rev reports a failed upgrade attempt ahead of any drift" {
+  _write_flake_lock
+  _write_install_json
+  _write_rev_file abc123
+  printf '2026-08-30T10:00:00Z\tdef456\n' >"$ENV_DIR/last_upgrade_error"
+  run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"WARN  nixpkgs_rev"* ]]
+  [[ "$output" == *"last upgrade to def456 failed"* ]]
+}
+
 # -- install_record check ---------------------------------------------------
 
 @test "install_record passes with valid install.json" {
@@ -649,6 +755,7 @@ _write_env_dir_files() {
   : >"$ENV_DIR/nx_doctor.sh"
   : >"$ENV_DIR/profile_block.sh"
   : >"$ENV_DIR/cert_probe.sh"
+  : >"$ENV_DIR/nx_rev.sh"
   : >"$ENV_DIR/config.nix"
 }
 
