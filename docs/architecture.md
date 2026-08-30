@@ -407,7 +407,9 @@ Every setup run writes `~/.config/dev-env/install.json`. This single file answer
 
 `nx version` reads this file and prints a human-readable summary. Fleet operators can collect `install.json` from each developer machine to build deployment dashboards. The data is structured (JSON), versioned, and written by an `EXIT` trap so it is captured even when setup fails - `status: "failed"` plus `phase: "<where it died>"` is far more actionable than a missing entry.
 
-For coordinated reproducibility across a team, `nx pin set <rev>` locks the entire `nixpkgs` input to a specific commit SHA. Everyone resolves the same package versions until the pin is updated. No shipped `flake.lock` in the repo; the per-user lock in `~/.config/nix-env/flake.lock` gives run-to-run reproducibility on one machine without forcing a single revision on every consumer.
+Users do not track `nixpkgs-unstable` HEAD. `nix/nixpkgs_rev.json` records a **validated revision** - one that CI has built with every scope and installed end-to-end via `setup.sh` on both Linux and macOS - and a weekly workflow advances it only when all of that passes. Upstream's own CI validates nixpkgs against nixpkgs' tests, not against this repo's scope combinations, which is how a `buildEnv` collision reached users in v1.19.4. `nx upgrade --latest` opts out for anyone who needs a package sooner than the weekly cadence allows.
+
+For coordinated reproducibility across a team, `nx pin set <rev>` locks the entire `nixpkgs` input to a specific commit SHA and outranks the validated revision. Everyone resolves the same package versions until the pin is updated. No shipped `flake.lock` in the repo - it would pin every input and fight `nx pin`'s `--override-input`; the per-user lock in `~/.config/nix-env/flake.lock` gives run-to-run reproducibility on one machine without forcing a single revision on every consumer.
 
 ## Customization without forking
 
