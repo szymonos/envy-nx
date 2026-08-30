@@ -6,25 +6,35 @@ name: All-Scopes Env Build
 # Why a dedicated workflow: the integration matrices install a handful of
 # scopes each, so a package that collides with a package from another scope
 # (minikube's bin/kubectl vs the real kubectl, v1.19.4) only fails for users
-# who happen to combine them. The flake follows nixpkgs-unstable, so a
-# collision can appear with no repo change at all - hence the schedule.
+# who happen to combine them.
+#
+# This holds the *revision* fixed and varies the *repo*: it builds against
+# whatever nix/nixpkgs_rev.json pins, so it answers "does this change to the
+# scopes break the env?". bump_nixpkgs_rev.yml is the mirror image - repo fixed,
+# revision varied - and never runs on a PR, so it cannot cover this. Both
+# variables break the build independently; neither workflow subsumes the other.
+#
+# No schedule: a weekly run would rebuild the same pinned revision, which is
+# nearly a no-op. Detecting nixpkgs-unstable drift is bump_nixpkgs_rev.yml's
+# job, and it builds the candidate on both platforms every Monday.
 #
 # Triggers:
-#   1. PR touching the scope definitions, the flake, or the check itself
-#   2. Weekly schedule - catches nixpkgs-unstable drift
-#   3. Manual dispatch (pick the scope list)
+#   1. PR touching the scope definitions, the flake, the pinned rev, or the check
+#   2. Manual dispatch (pick the scope list)
 
 on:
   pull_request:
     paths:
       - "nix/scopes/**"
       - "nix/flake.nix"
+      # A hand-edited pin (e.g. rolling back a bad revision) still needs the
+      # all-scopes build. The weekly bot PR does not double up here: a PR opened
+      # with GITHUB_TOKEN does not trigger pull_request workflows, and the bump
+      # workflow gated that revision inline before opening it.
+      - "nix/nixpkgs_rev.json"
       - ".assets/lib/scopes.json"
       - "tests/nix/build_scope_env.sh"
       - ".github/workflows/test_scope_env.yml"
-
-  schedule:
-    - cron: "0 6 * * 1" # Mondays 06:00 UTC
 
   workflow_dispatch:
     inputs:
@@ -42,8 +52,9 @@ concurrency:
 
 jobs:
   scope-env:
-    # macOS is skipped on PRs (slow, paid minutes) - the scheduled and manual
-    # runs cover Darwin, where the package set and its collisions differ.
+    # macOS is skipped on PRs (slow, paid minutes). Darwin - where the package
+    # set and its collisions differ - is covered weekly by bump_nixpkgs_rev.yml's
+    # macos-15 gate, and on demand via workflow_dispatch here.
     strategy:
       fail-fast: false
       matrix:
