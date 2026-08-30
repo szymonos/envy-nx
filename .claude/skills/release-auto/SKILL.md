@@ -94,7 +94,13 @@ From the `phase1` payload, do three things, then resume:
    dictionary); genuinely ambiguous → ask the user in one batched `AskUserQuestion`.
 3. **Author `.release/commit-plan.json`.** `Write` it following
    `schemas/commit-plan.example.json`: ordered `groups`, each `{globs, prefix,
-   message, trailers}`, **file-granularity**, first-match-wins. Put the CHANGELOG
+   message, trailers}`, **file-granularity**, first-match-wins. When
+   `context.plan_seed.seeded` is true the *previous release's* plan is already
+   there - read it against `diff_name_status` and **edit** it rather than
+   starting over. Only glob coverage is machine-checked (`recut` pre-validation
+   rejects an orphan path or an empty group), so a stale glob fails loudly; the
+   commit messages and the `docs(changelog)` group's version still describe the
+   last release until you change them. Put the CHANGELOG
    riders (`CHANGELOG.md`, `project-words.txt`, `pyproject.toml`, `uv.lock`) in
    the final `docs(changelog)` group. Store `Codified-Learning:`/`Co-Authored-By:`
    lines as `trailers` entries - never re-typed later.
@@ -143,6 +149,19 @@ create-or-update the release PR (`chore(release): <X.Y.Z>`, body = the CHANGELOG
 section verbatim - no attribution trailer). If `--skip-review` was set, this wipes
 `.release/` and the release is merge-ready (exit 0). Otherwise it prints
 `SPINE_COMPLETE` and hands off to the review coda.
+
+**This gate is the last chance to turn the review coda on.** `review_coda` in the
+payload reports which of the two endings is coming; when it is `false` this push
+wipes the run. If `--skip-review` was passed but the user wants the review after
+all, add the key rather than letting the run wipe and starting a second spine:
+
+```bash
+echo '{"approve": true, "review": true}' | .claude/skills/release-auto/scripts/release.py resume --decision -
+```
+
+It only ever turns the coda **on**. Omitting it on a run started without
+`--skip-review` leaves the coda enabled - forgetting to repeat a flag must not be
+able to destroy the state the coda runs on.
 
 To abort at either gate: resume with `{"abort": true}`, or run `release.py abort`
 (soft-rewinds any release commits back to the tag - work preserved in the tree -
@@ -212,7 +231,7 @@ introduces over the last tag).
    triggers; the trigger is your responsibility:
 
    ```bash
-   python3 .claude/skills/address-pr-review/scripts/pr_review.py state    # A=trigger, B=just wait, C=process, D=clean
+   python3 .claude/skills/address-pr-review/scripts/pr_review.py state    # A=trigger, B=just wait, C=process, D=triage-clean
    python3 .claude/skills/address-pr-review/scripts/pr_review.py trigger  # ONLY if state A
    python3 .claude/skills/address-pr-review/scripts/pr_review.py wait --timeout 480
    ```
@@ -236,6 +255,12 @@ introduces over the last tag).
    .claude/skills/release-auto/scripts/release.py recut
    .claude/skills/release-auto/scripts/release.py push
    ```
+
+   **Resolve every `fix`/`resolve-only` thread before you re-cut.** The re-push
+   is a force-push, which flips every thread anchored to the old diff to
+   `isOutdated` - and `state` does not report those. A thread you push past
+   instead of resolving does not come back: it stays open on the PR, unread,
+   and still blocks merge under conversation-resolution rules.
 
    **Let `recut` be the lint gate; never validate a coda fix with bare `make
    lint`.** The spine commits only through `recut`, which uses `git commit
@@ -271,19 +296,43 @@ introduces over the last tag).
 
 #### Step 4c - finish
 
-Once **both** review layers are clean:
+First confirm nothing is still open. `pr_review.py state` reports only *fresh*
+threads, and every coda re-push moves the head SHA - which flips existing
+threads to `isOutdated` and drops them from that list. A review comment nobody
+actioned therefore goes invisible precisely when you are deciding the coda is
+clean (this hid two unresolved threads on the 1.20.0 PR, one a live bug):
+
+```bash
+python3 .claude/skills/address-pr-review/scripts/pr_review.py unresolved
+```
+
+It exits 1 while any thread is unresolved, outdated or not. Triage each the
+same way as step 4b - outdated means the diff moved under the comment, not that
+the point is moot - then `resolve` it. Only once that exits 0, and **both**
+review layers are clean:
 
 ```bash
 .claude/skills/release-auto/scripts/release.py push --done
 ```
 
-Deletes the safety backup ref, wipes `.release/`. The release is merge-ready.
+Deletes the safety backup ref, wipes `.release/` (the commit plan survives as
+`commit-plan.prev.json`). The release is merge-ready. Safe to run
+unconditionally - `--done` on an already-finished run is a no-op, not an error.
+
+`--done` re-runs the thread check itself and prints a `WARNING` to stderr for
+anything still unresolved - or for a lookup it could not complete, which is not
+the same as clean. That is a backstop for a skipped step, not a substitute for
+running `unresolved` above: this is the terminal command, so a warning it prints
+is the last chance anyone has to see the thread. Report any such warning to the
+user rather than letting the run end on it.
 
 ## Recovery & inspection
 
 - `release.py status` - print the current state JSON.
 - `release.py start --reopen --version <X.Y.Z>` - re-cut an already-cut+pushed
-  release that has **no new changes**. Skips the "nothing to do" guard and the
+  release that has **no new changes**. The previous release's commit plan is
+  seeded into place automatically (see `plan_seed` at the phase-1 gate), so a
+  consolidation re-cut is an edit rather than a re-derivation of every group. Skips the "nothing to do" guard and the
   version bump + `make upgrade` (content frozen), then runs the normal
   phase-1 → recut → push flow. Use to fold coda follow-up commits (made outside the
   spine, or after `.release/` was wiped) back into clean per-group commits. The
@@ -361,6 +410,8 @@ description. This is the most common merge-case error.
 - **Editing `.release/` files by hand mid-run** (except `commit-plan.json`, which the agent authors). State is the driver's; corrupting it breaks `resume`. Use `abort` to restart.
 - **Reasoning about whether to recut.** `recut` reconciles and decides. It's a silent no-op unless the plan can't execute against the tree (orphan path or empty group); just call it after a fix - including after *reverting* one, as long as you also drop the now-unused plan group.
 - **Calling `gh pr edit --add-reviewer` directly.** Use `pr_review.py trigger` - the raw call drifts on reviewer login/idempotency.
+- **Finishing on state D.** D means "nothing left to triage", not "nothing left open" - it cannot see threads a force-push made outdated. Run `pr_review.py unresolved` before `push --done` (step 4c).
+- **Pushing past a thread instead of resolving it.** The force-push hides it rather than settling it: it drops out of `state` and stays open on the PR.
 - **Copying a reviewer's suggested fix verbatim,** or auto-applying findings without challenge. The reviewer is a different model with limited context; validate against author intent, surface uncertainty to the user.
 - **Adding a `Fixed`/`Changed` bullet for something that never shipped.** Fold into `Added` (see reclassification).
 - **Force-pushing to `main`/`master`/`develop`** - the driver refuses; don't work around it.

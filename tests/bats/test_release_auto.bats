@@ -743,7 +743,11 @@ release.cmd_abort(argparse.Namespace())
 # Non-ancestor backup -> HEAD MUST be untouched (no reset onto foreign history).
 assert release.head_sha() == head_before, 'abort reset onto divergent history!'
 import os
-assert not os.path.isdir('.release'), 'state not wiped'
+assert not os.path.isfile('.release/state.json'), 'state not wiped'
+# The commit plan is the one deliberate survivor - an aborted release is
+# usually retried, and re-deriving every group is the expensive part.
+leftover = sorted(os.listdir('.release')) if os.path.isdir('.release') else []
+assert leftover in ([], ['commit-plan.prev.json']), leftover
 print('OK')
 "
   [ "$status" -eq 0 ]
@@ -823,6 +827,91 @@ open('new.txt','w').write('x')
 subprocess.run(['git','add','-A']); subprocess.run(['git','commit','-qm','ahead'])
 assert release.head_is_published() is False, 'ahead of upstream should be unpublished'
 print('OK')
+"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *OK* ]]
+}
+
+@test "push gate reports whether the review coda will run" {
+  _seed_plan_and_changes
+  run _py "
+import release
+# The value the agent has to notice is the false one: it means this push
+# wipes the run, so a coda has nothing left to drive.
+for skip, expected in ((True, False), (False, True)):
+    assert (not {'skip_review': skip}.get('skip_review')) is expected
+# And the real payload carries it.
+src = open(release.__file__).read()
+assert '\"review_coda\": not state.get(\"skip_review\")' in src, 'gate does not report review_coda'
+print('OK')
+"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *OK* ]]
+}
+
+@test "push gate decision can turn the review coda on" {
+  _seed_plan_and_changes
+  run _py "
+import release
+# A driver launched with --skip-review when the user wanted the review: the
+# flag is otherwise fixed at start and the push wipes state, so without this
+# the only recovery is re-running the whole spine.
+state = {'skip_review': True}
+decision = {'approve': True, 'review': True}
+if decision.get('review'):
+    state['skip_review'] = False
+assert state['skip_review'] is False
+print('OK')
+"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *OK* ]]
+}
+
+@test "push gate decision cannot turn an enabled review coda off" {
+  _seed_plan_and_changes
+  run _py "
+import release
+# One-way by design: forgetting to repeat a flag is likelier than wanting to
+# revoke it, and revoking here would destroy the state the coda runs on.
+state = {'skip_review': False}
+for decision in ({'approve': True}, {'approve': True, 'review': False}):
+    if decision.get('review'):
+        state['skip_review'] = False
+    assert state['skip_review'] is False, decision
+print('OK')
+"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *OK* ]]
+}
+
+@test "push --done on an already-finished run is a no-op, not an error" {
+  _seed_plan_and_changes
+  rm -rf .release
+  run _py "
+import argparse, release
+# The documented last step is run unconditionally; a --skip-review run has
+# already wiped its own state by then, so this used to dead-end on
+# 'no .release/state.json' - which reads as a fault, not as 'already done'.
+rc = release.cmd_push(argparse.Namespace(done=True))
+assert rc == release.EXIT_OK, rc
+print('OK')
+"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *OK* ]]
+  [[ "$output" == *"already finished"* ]]
+}
+
+@test "push without --done still fails loudly when there is no run" {
+  _seed_plan_and_changes
+  rm -rf .release
+  run _py "
+import argparse, release
+try:
+    release.cmd_push(argparse.Namespace(done=False))
+    print('NO-RAISE')
+except release.ReleaseError as e:
+    assert 'no .release/state.json' in str(e), str(e)
+    print('OK')
 "
   [ "$status" -eq 0 ]
   [[ "$output" == *OK* ]]

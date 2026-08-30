@@ -15,6 +15,11 @@
       "match_body": "ubuntu-slim",
       "disposition": "resolve-only",
       "reason": "ubuntu-slim is a valid GitHub-hosted runner this repo uses intentionally"
+    },
+    {
+      "match_body": "character sequence",
+      "disposition": "resolve-only",
+      "reason": "PowerShell `-in` with a scalar RHS is a single-element collection, not a character sequence: `'setup' -in 'setup'` is True while `'set' -in 'setup'` and `'s' -in 'setup'` are both False. Verified in pwsh; the single-name verb completers are correct."
     }
   ],
   "path_ownership": [

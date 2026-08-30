@@ -40,6 +40,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import re
 import shutil
@@ -52,6 +53,10 @@ from pathlib import Path, PurePosixPath
 STATE_DIR = Path(".release")
 STATE_FILE = STATE_DIR / "state.json"
 PLAN_FILE = STATE_DIR / "commit-plan.json"
+# Deliberately not the live plan name: a leftover under `commit-plan.json` would
+# be picked up by `load_plan()` on a run that never authored one, turning "the
+# phase-1 gate must author it first" into "we silently shipped last release's".
+PREV_PLAN_FILE = STATE_DIR / "commit-plan.prev.json"
 POLICY_FILE = STATE_DIR / "review-policy.json"
 
 EXIT_OK = 0
@@ -68,6 +73,9 @@ SECTION_HEADER_RE = re.compile(r"^## \[([^\]]+)\](?:\s*-\s*(\S+))?\s*$")
 SHARED = Path(".claude/skills/release-auto/scripts")
 # Committed default review policy, seeded into .release/ for the coda to edit.
 DEFAULT_POLICY = Path(".claude/skills/release-auto/review-policy.json")
+# Sibling skill, driven verbatim by the review coda. Imported (not shelled out
+# to) at `push --done` so the finish payload can carry the thread check.
+PR_REVIEW_SCRIPT = Path(".claude/skills/address-pr-review/scripts/pr_review.py")
 
 
 # -- errors -------------------------------------------------------------------
@@ -645,7 +653,14 @@ def phase_start(version: str, skip_review: bool, reopen: bool = False) -> int:
             "`start --reopen`."
         )
 
-    run_make("lint")
+    # `lint-diff` on a reopen, not bare `lint`. The CHANGELOG entry is already
+    # cut into `## [X.Y.Z]` by then, so `[Unreleased]` is empty and any
+    # uncommitted runtime fix trips check-changelog - the same false positive
+    # SKILL.md tells the agent never to validate a coda fix with bare `make
+    # lint`. `lint-diff` (--from-ref main) runs the same hooks diff-scoped and
+    # sees CHANGELOG.md in the diff. A first cut still uses bare `lint`: there
+    # is no version block yet, so the hook reads `[Unreleased]` and is right to.
+    run_make("lint-diff" if reopen else "lint")
     if not reopen:
         # --reopen freezes the release payload: skip the version bump and dependency
         # upgrade so a consolidation re-cut never re-resolves deps or alters content.
@@ -676,10 +691,12 @@ def phase_start(version: str, skip_review: bool, reopen: bool = False) -> int:
         "extract": extract,
         "cspell_findings": cspell,
         "diff_name_status": diff,
+        "plan_seed": seed_plan(),
         "instructions": (
             "Compose the CHANGELOG entry (Edit CHANGELOG.md), fix any cspell typos, "
             "then author .release/commit-plan.json (file-granularity glob->commit). "
-            "Resume with a decision: "
+            "When plan_seed.seeded is true the previous release's plan is already "
+            "there - edit it rather than starting over. Resume with a decision: "
             '{"cspell_add": [...], "version_final": "X.Y.Z", "plan_written": true}'
         ),
     }
@@ -816,9 +833,13 @@ def resume_phase1(state: dict, decision: dict) -> int:
         "version": final,
         "commits": subjects,
         "pr_body_preview": changelog_section(final),
+        "review_coda": not state.get("skip_review"),
         "instructions": (
             "Review the commit sequence and PR body. Resume with "
-            '{"approve": true} to push + open/update the PR, or {"abort": true}.'
+            '{"approve": true} to push + open/update the PR, or {"abort": true}. '
+            "review_coda reports whether the review coda will run; when it is false "
+            'this push wipes the run. If the user asked for the review, add {"review": '
+            "true} here - this gate is the last point at which it can be turned on."
         ),
     }
     return emit_gate("push", context, ["approve", "abort"])
@@ -868,11 +889,23 @@ def _is_ancestor(a: str, b: str) -> bool:
 
 
 def resume_push(state: dict, decision: dict) -> int:
-    """Consume the push decision: force-push, open/update PR, end the spine."""
+    """
+    Consume the push decision: force-push, open/update PR, end the spine.
+
+    ``{"review": true}`` is settable here because this gate is the last moment
+    before a ``--skip-review`` push wipes the run, and the flag is otherwise
+    fixed at ``start`` - a user who asks for the review after the driver was
+    launched with ``--skip-review`` would otherwise have to re-run the whole
+    spine to get it. One-way on purpose: omitting the key leaves an already
+    enabled coda enabled, so forgetting to repeat it cannot silently wipe the
+    state the coda runs on.
+    """
     if decision.get("abort"):
         raise ReleaseError("push aborted by decision - nothing pushed")
     if not decision.get("approve"):
         raise ReleaseError('push gate needs {"approve": true} or {"abort": true}')
+    if decision.get("review"):
+        state["skip_review"] = False
 
     _do_push()
     _upsert_pr(state["version"])
@@ -984,15 +1017,144 @@ def _wipe_state_dir() -> None:
     """
     if STATE_DIR.is_symlink() or STATE_DIR.is_file():
         STATE_DIR.unlink()
-    elif STATE_DIR.is_dir():
-        shutil.rmtree(STATE_DIR)
+        return
+    if not STATE_DIR.is_dir():
+        return
+    # The commit plan outlives the wipe, renamed. Everything else in here the
+    # driver computed and can recompute in a second; the plan is the one artifact
+    # the *agent* authored, and `start --reopen` exists precisely to re-cut an
+    # already-pushed release - so throwing it away made the documented
+    # consolidation path re-derive every group and commit message from scratch.
+    #
+    # `is_file()` follows symlinks, so the read is gated on `is_symlink()` for
+    # the same reason the directory is above: a symlinked plan would otherwise
+    # have an arbitrary file's contents copied out under a name the next run
+    # seeds from. Guarding one and not the other is the inconsistency, not the
+    # threat model.
+    plan = (
+        PLAN_FILE.read_bytes()
+        if PLAN_FILE.is_file() and not PLAN_FILE.is_symlink()
+        else None
+    )
+    shutil.rmtree(STATE_DIR)
+    if plan is not None:
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        PREV_PLAN_FILE.write_bytes(plan)
+
+
+def seed_plan() -> dict:
+    """
+    Copy the last finished release's plan into place for this run to edit.
+
+    Reported in the gate rather than applied silently: a seeded plan is the last
+    release's judgment and has to be re-read against this one's diff. Coverage is
+    the part that cannot rot unnoticed - ``prevalidate`` rejects an orphan path
+    and an empty group - so a stale glob fails loudly. The commit messages and
+    the CHANGELOG riders have no such backstop, which is what the note says.
+    """
+    # `is_symlink() or exists()` on the destination, not `is_file()`: a *broken*
+    # symlink is neither a file nor "exists", so it would slip past both and
+    # `shutil.copyfile` - which opens the destination for writing - would follow
+    # it and create the plan outside `.release/`. It is also the "already
+    # authored" check, and a symlink standing in for a plan is not one.
+    if PLAN_FILE.is_symlink() or PLAN_FILE.exists():
+        return {"seeded": False}
+    if PREV_PLAN_FILE.is_symlink() or not PREV_PLAN_FILE.is_file():
+        return {"seeded": False}
+    shutil.copyfile(PREV_PLAN_FILE, PLAN_FILE)
+    try:
+        groups = json.loads(PREV_PLAN_FILE.read_text()).get("groups", [])
+        subjects = [g.get("message", "") for g in groups if isinstance(g, dict)]
+    except (OSError, json.JSONDecodeError, AttributeError):
+        subjects = []
+    return {
+        "seeded": True,
+        "from": str(PREV_PLAN_FILE),
+        "groups": subjects,
+        "note": (
+            "The previous release's plan has been copied to .release/commit-plan.json. "
+            "Re-read it against diff_name_status and edit it - do not resume on it "
+            "unread. Only glob coverage is machine-checked; the commit messages and "
+            "the docs(changelog) group's version still describe the last release."
+        ),
+    }
+
+
+def _load_pr_review():
+    """
+    Import the sibling skill's ``pr_review`` module, or None if it is absent.
+
+    By path rather than by name: the script lives under another skill and is not
+    importable off ``sys.path``. A missing copy degrades to "unknown" rather than
+    taking the finish down - the coda's own ``unresolved`` call is the primary
+    check and this is only the backstop.
+    """
+    if not PR_REVIEW_SCRIPT.is_file():
+        return None
+    spec = importlib.util.spec_from_file_location("pr_review", PR_REVIEW_SCRIPT)
+    if spec is None or spec.loader is None:
+        return None
+    module = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(module)
+    except Exception:
+        return None
+    return module
+
+
+def open_threads() -> list[dict] | None:
+    """
+    Every unresolved thread on this branch's PR, outdated ones included.
+
+    Outdated threads count. Filtering them out treats "already outdated" as
+    "already handled", which is the opposite of true: an outdated thread is one
+    an earlier force-push hid from ``pr_review.py state``, so it is *more* likely
+    to have been missed than a fresh one, not less.
+
+    Returns None when the question could not be answered - no vendored copy, no
+    ``gh``, an auth failure, no PR on the branch. None means "unknown" and ``[]``
+    means "nothing is open"; collapsing the two would report a failed lookup as
+    a clean PR, which is the exact defect this check exists to remove.
+    """
+    pr_review = _load_pr_review()
+    if pr_review is None:
+        return None
+    try:
+        owner, repo = pr_review._repo_info()
+        return pr_review.unresolved_threads(owner, repo, pr_review._auto_pr())
+    except SystemExit:
+        return None
 
 
 def _finish(state: dict, message: str) -> int:
-    """Delete the safety backup ref, wipe ``.release/``, and report success."""
+    """
+    Delete the safety backup ref, wipe ``.release/``, and report success.
+
+    The thread check runs here rather than being left to the agent to go and ask
+    for. This is the terminal command: after it the state is gone, so anything
+    still unresolved that is not in this payload is something nobody will see.
+    """
+    still_open = open_threads()
     delete_backup(state["version"])
     _wipe_state_dir()
     print(message)
+    if still_open is None:
+        print(
+            "WARNING: could not check for unresolved review threads - verify the "
+            "PR by hand before merging.",
+            file=sys.stderr,
+        )
+    elif still_open:
+        print(
+            f"WARNING: {len(still_open)} unresolved review thread(s) remain on the PR:",
+            file=sys.stderr,
+        )
+        for thread in still_open:
+            flag = " (outdated)" if thread["isOutdated"] else ""
+            print(
+                f"  {thread['path']}:{thread['line']}{flag} - {thread['id']}",
+                file=sys.stderr,
+            )
     return EXIT_OK
 
 
@@ -1090,7 +1252,27 @@ def cmd_recut(_args: argparse.Namespace) -> int:
 
 
 def cmd_push(args: argparse.Namespace) -> int:
-    """Handle ``release.py push`` - coda re-push + PR update (+ optional finish)."""
+    """
+    Handle ``release.py push`` - coda re-push + PR update (+ optional finish).
+
+    ``--done`` on a finished run is a no-op, not an error. A ``--skip-review``
+    run wipes its own state at the push gate, and a coda that ends on a clean
+    review may have already finished - so re-running the documented last step
+    landed on "no .release/state.json", which reads as a fault when the release
+    had simply already completed.
+    """
+    if args.done and not STATE_FILE.is_file():
+        print(
+            json.dumps(
+                {
+                    "done": True,
+                    "pushed": None,
+                    "note": "no run in progress; already finished",
+                },
+                indent=2,
+            )
+        )
+        return EXIT_OK
     state = load_state()
     guard_resume(state)
     # Guard: a fix edited but not re-cut would be silently left out of the push -

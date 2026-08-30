@@ -195,6 +195,9 @@ def test_wipe_state_dir_removes_decision_and_all(
     Regression for the 1.16.1 finalizer bug: _finish/_abort unlinked only
     state/plan/policy, leaving .release/decision.json behind, so the "state
     wiped" report lied and stale state leaked into the next `start`.
+
+    The commit plan is the one deliberate survivor (renamed - see below);
+    everything else must be gone.
     """
     monkeypatch.chdir(tmp_path)
     state_dir = tmp_path / ".release"
@@ -209,7 +212,118 @@ def test_wipe_state_dir_removes_decision_and_all(
 
     release._wipe_state_dir()
 
+    assert sorted(p.name for p in state_dir.iterdir()) == ["commit-plan.prev.json"]
+
+
+def test_wipe_state_dir_keeps_the_plan_under_a_different_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    The plan survives the wipe so `start --reopen` is an edit, not a re-derivation.
+
+    Renamed rather than left in place on purpose: a leftover `commit-plan.json`
+    would be picked up by load_plan() on a run that never authored one, turning
+    "the phase-1 gate must author it first" into shipping last release's plan.
+    """
+    monkeypatch.chdir(tmp_path)
+    state_dir = tmp_path / ".release"
+    state_dir.mkdir()
+    (state_dir / "state.json").write_text("{}")
+    (state_dir / "commit-plan.json").write_text('{"groups": [{"message": "feat: x"}]}')
+
+    release._wipe_state_dir()
+
+    assert not (state_dir / "commit-plan.json").exists()
+    assert (state_dir / "commit-plan.prev.json").read_text() == (
+        '{"groups": [{"message": "feat: x"}]}'
+    )
+
+
+def test_wipe_state_dir_leaves_nothing_when_there_was_no_plan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An aborted run that never authored a plan still wipes to nothing."""
+    monkeypatch.chdir(tmp_path)
+    state_dir = tmp_path / ".release"
+    state_dir.mkdir()
+    (state_dir / "state.json").write_text("{}")
+
+    release._wipe_state_dir()
+
     assert not state_dir.exists()
+
+
+# -- seed_plan ------------------------------------------------------------------
+
+
+def test_seed_plan_copies_the_previous_plan_and_reports_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    A seeded plan is announced, never applied silently.
+
+    It is the previous release's judgment and has to be re-read against this
+    release's diff before it is resumed on.
+    """
+    monkeypatch.chdir(tmp_path)
+    state_dir = tmp_path / ".release"
+    state_dir.mkdir()
+    (state_dir / "commit-plan.prev.json").write_text(
+        '{"groups": [{"message": "feat(nix): a"}, {"message": "docs(changelog): b"}]}'
+    )
+
+    seed = release.seed_plan()
+
+    assert seed["seeded"] is True
+    assert seed["groups"] == ["feat(nix): a", "docs(changelog): b"]
+    assert "edit it" in seed["note"]
+    assert (state_dir / "commit-plan.json").is_file()
+
+
+def test_seed_plan_never_overwrites_a_plan_this_run_already_authored(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The live plan wins - seeding must not clobber work already done this run."""
+    monkeypatch.chdir(tmp_path)
+    state_dir = tmp_path / ".release"
+    state_dir.mkdir()
+    (state_dir / "commit-plan.prev.json").write_text('{"groups": [{"message": "old"}]}')
+    (state_dir / "commit-plan.json").write_text('{"groups": [{"message": "mine"}]}')
+
+    assert release.seed_plan() == {"seeded": False}
+    assert (
+        state_dir / "commit-plan.json"
+    ).read_text() == '{"groups": [{"message": "mine"}]}'
+
+
+def test_seed_plan_is_absent_on_a_first_ever_release(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No previous plan on disk - the gate reports seeded=false rather than failing."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".release").mkdir()
+
+    assert release.seed_plan() == {"seeded": False}
+
+
+def test_seed_plan_survives_a_corrupt_previous_plan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    A malformed leftover still seeds the file, just with no subject list.
+
+    The plan is the agent's to fix; a truncated write from an interrupted run
+    must not make the next `start` unusable.
+    """
+    monkeypatch.chdir(tmp_path)
+    state_dir = tmp_path / ".release"
+    state_dir.mkdir()
+    (state_dir / "commit-plan.prev.json").write_text("{not json")
+
+    seed = release.seed_plan()
+
+    assert seed["seeded"] is True
+    assert seed["groups"] == []
 
 
 def test_wipe_state_dir_is_idempotent(
@@ -257,3 +371,122 @@ def test_wipe_state_dir_removes_a_stray_regular_file(
     release._wipe_state_dir()
 
     assert not (tmp_path / ".release").exists()
+
+
+def test_wipe_state_dir_does_not_follow_a_symlinked_plan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    A symlinked commit-plan.json is not read through.
+
+    Same stance the directory guard above takes: is_file() follows symlinks, so
+    without this an arbitrary file's contents land under the name the next
+    `start` seeds from.
+    """
+    monkeypatch.chdir(tmp_path)
+    secret = tmp_path / "secret.txt"
+    secret.write_text("do not copy me")
+    state_dir = tmp_path / ".release"
+    state_dir.mkdir()
+    (state_dir / "state.json").write_text("{}")
+    (state_dir / "commit-plan.json").symlink_to(secret)
+
+    release._wipe_state_dir()
+
+    assert not (state_dir / "commit-plan.prev.json").exists()
+    assert secret.read_text() == "do not copy me"
+
+
+def test_seed_plan_refuses_a_symlinked_destination(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    A broken symlink at commit-plan.json must not be seeded through.
+
+    `is_file()` is False for a broken link, so it slips past an "already
+    authored" check - and shutil.copyfile opens the *destination* for writing,
+    which follows the link and creates the plan wherever it points.
+    """
+    monkeypatch.chdir(tmp_path)
+    state_dir = tmp_path / ".release"
+    state_dir.mkdir()
+    (state_dir / "commit-plan.prev.json").write_text('{"groups": []}')
+    outside = tmp_path / "outside.txt"
+    (state_dir / "commit-plan.json").symlink_to(outside)
+
+    assert release.seed_plan() == {"seeded": False}
+    assert not outside.exists()
+
+
+# -- open_threads: the push --done backstop -------------------------------------
+
+
+def _fake_pr_review(
+    monkeypatch: pytest.MonkeyPatch,
+    threads: list[dict] | None = None,
+    boom: bool = False,
+) -> None:
+    """Stand in for the sibling skill's pr_review module."""
+
+    class Stub:
+        @staticmethod
+        def _repo_info() -> tuple[str, str]:
+            if boom:
+                raise SystemExit(1)
+            return ("szymonos", "envy-nx")
+
+        @staticmethod
+        def _auto_pr() -> int:
+            return 74
+
+        @staticmethod
+        def unresolved_threads(_o: str, _r: str, _p: int) -> list[dict]:
+            return threads or []
+
+    monkeypatch.setattr(release, "_load_pr_review", lambda: Stub)
+
+
+def test_open_threads_reports_outdated_ones(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    The backstop exists for exactly the threads `state` cannot see.
+
+    Every coda re-push force-pushes, which flips prior threads to isOutdated -
+    so filtering them here would blind the terminal command to the ones most
+    likely to have been missed.
+    """
+    _fake_pr_review(monkeypatch, [{"id": "PRRT_x", "isOutdated": True}])
+
+    assert release.open_threads() == [{"id": "PRRT_x", "isOutdated": True}]
+
+
+def test_open_threads_distinguishes_empty_from_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    `[]` means "nothing open"; None means the lookup failed.
+
+    Collapsing them would report an auth failure as a clean PR - the same defect
+    the check exists to remove, one layer down.
+    """
+    _fake_pr_review(monkeypatch, [])
+    assert release.open_threads() == []
+
+    _fake_pr_review(monkeypatch, boom=True)
+    assert release.open_threads() is None
+
+
+def test_open_threads_without_the_sibling_skill_is_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A missing vendored copy must degrade to "unknown", not take the finish down."""
+    monkeypatch.setattr(release, "_load_pr_review", lambda: None)
+
+    assert release.open_threads() is None
+
+
+def test_load_pr_review_finds_the_real_sibling_script() -> None:
+    """The hard-coded path must still resolve, or the backstop never fires."""
+    module = release._load_pr_review()
+
+    assert module is not None
+    assert callable(module.unresolved_threads)
