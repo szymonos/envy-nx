@@ -54,7 +54,7 @@ To opt out for a commit that genuinely yields no generalization (and that touche
 <!-- Tags populate as entries land via the post-merge workflow -->
 
 - **cache-staleness** - [L-002](#l-002---2026-05-23---cache-staleness)
-- **general** - [L-003](#l-003---2026-07-24---general), [L-004](#l-004---2026-08-22---general), [L-005](#l-005---2026-08-22---general), [L-006](#l-006---2026-08-22---general), [L-007](#l-007---2026-08-22---general), [L-008](#l-008---2026-08-22---general), [L-009](#l-009---2026-08-22---general), [L-010](#l-010---2026-08-22---general), [L-011](#l-011---2026-08-22---general), [L-012](#l-012---2026-08-22---general)
+- **general** - [L-003](#l-003---2026-07-24---general), [L-004](#l-004---2026-08-22---general), [L-005](#l-005---2026-08-22---general), [L-006](#l-006---2026-08-22---general), [L-007](#l-007---2026-08-22---general), [L-008](#l-008---2026-08-22---general), [L-009](#l-009---2026-08-22---general), [L-010](#l-010---2026-08-22---general), [L-011](#l-011---2026-08-22---general), [L-012](#l-012---2026-08-22---general), [L-013](#l-013---2026-08-30---general), [L-014](#l-014---2026-08-30---general), [L-015](#l-015---2026-08-30---general), [L-016](#l-016---2026-08-30---general), [L-017](#l-017---2026-08-30---general)
 - **meta** - [L-000](#l-000---2026-05-23---meta)
 - **render-heuristics** - [L-001](#l-001---2026-05-23---render-heuristics)
 
@@ -180,5 +180,45 @@ a REST reviewer list that omits Bots made a queued Copilot review read as never 
 **Source:** PR #62 (`5f778c8`)
 
 a comment that narrates the change reads as noise to everyone who never saw the old version
+
+---
+
+## L-013 - 2026-08-30 - general
+
+**Source:** PR #74 (`c49c0aa`)
+
+a green CI build gates nothing when users resolve their own dependency versions at install time
+
+---
+
+## L-014 - 2026-08-30 - general
+
+**Source:** PR #74 (`c49c0aa`)
+
+a PR opened with GITHUB_TOKEN never triggers pull_request workflows, so its own checks cannot be the gate
+
+---
+
+## L-015 - 2026-08-30 - general
+
+**Source:** PR #74 (`c49c0aa`)
+
+a status check that filters by freshness cannot also serve as the completeness check
+
+---
+
+## L-016 - 2026-08-30 - general
+
+**Source:** PR #74 (`c49c0aa`)
+
+a driver that deletes the one artifact the agent authored makes its own re-run workflow expensive
+
+---
+
+## L-017 - 2026-08-30 - general
+
+**Source:** PR #74 (`c49c0aa`)
+
+a relative link that works on GitHub still 404s once docs_dir scopes the published site
 
 ---
