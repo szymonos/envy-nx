@@ -211,6 +211,7 @@ Read-only health checks that don't touch state. Failing or warning checks print 
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | `nix_available`         | `nix` resolves on PATH and reports version ≥ 2.18 (older nix produces cryptic flake errors)                                          |
 | `flake_lock`            | `flake.lock` exists and the nixpkgs node is valid                                                                                    |
+| `nixpkgs_rev`           | Locked nixpkgs matches the validated revision; surfaces a failed upgrade that rolled back                                            |
 | `env_dir_files`         | `flake.nix`, `nx.sh`, `nx_{pkg,scope,profile,lifecycle,doctor}.sh`, `profile_block.sh`, `config.nix` present in `~/.config/nix-env/` |
 | `install_record`        | `install.json` exists and the last run succeeded                                                                                     |
 | `scope_binaries`        | Every binary declared by a scope's `# bins:` is found anywhere on `$PATH`                                                            |
@@ -239,16 +240,31 @@ nx rollback
 
 Reverts to the previous profile generation. If `nx upgrade` brought in a broken kubectl, one command and a shell restart later, the old kubectl is back.
 
+### `nx upgrade`
+
+```bash
+nx upgrade                              # move to the validated nixpkgs revision
+nx upgrade --latest                     # nixpkgs-unstable HEAD instead (unvalidated)
+```
+
+By default this moves to the revision recorded in `nix/nixpkgs_rev.json` - the one CI has built with every scope and installed end-to-end on Linux and macOS. That revision advances weekly, so an upgrade can lag real nixpkgs by a few days; that lag is the gate.
+
+`--latest` opts out and takes nixpkgs-unstable HEAD, which nothing in this repo has built. If `nix profile upgrade` then fails, the previous `flake.lock` is restored so the machine stays on the revision that was working, and `nx doctor` reports the failed attempt.
+
+An upgrade never moves you backwards: if the validated revision is older than what you already have (typical after `--latest` while the weekly bump is blocked), `nx upgrade` reports it and does nothing. Go back deliberately with `nx pin set <rev>`.
+
+The validated revision reaches your machine with the rest of the repo - `nx self update`, or any `nix/setup.sh` run, which auto-pulls. `nx upgrade` alone uses whatever was synced last.
+
 ### `nx pin`
 
 ```bash
 nx pin set                              # pin to whatever flake.lock currently has
 nx pin set 1234abcd...                  # pin to a specific nixpkgs commit
 nx pin show
-nx pin remove                           # back to nixpkgs-unstable HEAD
+nx pin remove                           # drop the pin (does not move the lock)
 ```
 
-Coordinates a team or fleet on a single nixpkgs revision without shipping a `flake.lock` in the repo. `nx upgrade` honors the pin transparently. Useful for reproducible builds, cohort rollouts, or freezing during a release window.
+Coordinates a team or fleet on a single nixpkgs revision without shipping a `flake.lock` in the repo. A pin outranks both the validated revision and `--latest`, so `nx upgrade` honors it transparently. Useful for reproducible builds, cohort rollouts, freezing during a release window, or deliberately staying on an older revision.
 
 ### `nx prune`
 
