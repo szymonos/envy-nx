@@ -19,8 +19,8 @@ function _nx() {
     'add:install packages from nixpkgs'
     'remove:remove installed packages'
     'uninstall:remove installed packages'
-    'upgrade:upgrade all packages'
-    'update:upgrade all packages'
+    'upgrade:upgrade all packages to the validated nixpkgs revision'
+    'update:upgrade all packages to the validated nixpkgs revision'
     'rollback:rollback to previous profile generation'
     'list:list installed packages'
     'ls:list installed packages'
@@ -48,6 +48,13 @@ function _nx() {
     local -a _pkgs
     _pkgs=("${(@f)$(sed -n 's/^[[:space:]]*"\([^"]*\)".*/\1/p' "$HOME/.config/nix-env/packages.nix" 2>/dev/null)}")
     [[ -n "${_pkgs[*]}" ]] && _describe 'package' _pkgs
+    ;;
+  upgrade|update)
+    local -a upgrade_flags
+    upgrade_flags=(
+      '--latest:use nixpkgs-unstable HEAD instead of the validated revision (unvalidated)'
+    )
+    _describe 'upgrade flag' upgrade_flags
     ;;
   scope)
     if (( CURRENT == 3 )); then

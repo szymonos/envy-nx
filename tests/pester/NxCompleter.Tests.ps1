@@ -162,6 +162,25 @@ Describe 'nx self completions' {
     }
 }
 
+Describe 'nx upgrade completions' {
+    It 'completes --latest at position 2' {
+        $completions = Get-NxCompletions 'nx upgrade '
+        $completions | Should -Contain '--latest'
+    }
+
+    It 'completes --latest under the update alias too' {
+        # bash and zsh both complete a verb's flags under its aliases; pwsh
+        # matching only the canonical name is the v1.6.3 parity asymmetry.
+        $completions = Get-NxCompletions 'nx update '
+        $completions | Should -Contain '--latest'
+    }
+
+    It 'completes --latest at position 3+ for both names' {
+        (Get-NxCompletions 'nx upgrade --latest ') | Should -Contain '--latest'
+        (Get-NxCompletions 'nx update --latest ') | Should -Contain '--latest'
+    }
+}
+
 Describe 'nx setup completions' {
     It 'completes setup flags at position 2' {
         $completions = Get-NxCompletions 'nx setup '

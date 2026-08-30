@@ -31,7 +31,14 @@
       "name": "upgrade",
       "family": "pkg",
       "aliases": ["update"],
-      "summary": "upgrade all packages"
+      "summary": "upgrade all packages to the validated nixpkgs revision",
+      "help_args": "[--latest]",
+      "flags": [
+        {
+          "long": "--latest",
+          "summary": "use nixpkgs-unstable HEAD instead of the validated revision (unvalidated)"
+        }
+      ]
     },
     {
       "name": "rollback",

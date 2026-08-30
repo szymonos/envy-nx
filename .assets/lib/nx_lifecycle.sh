@@ -274,7 +274,7 @@ Commands:
   search    <query>        search nixpkgs for a package
   install   <packages...>  install packages from nixpkgs
   remove    <packages...>  remove installed packages
-  upgrade                  upgrade all packages
+  upgrade   [--latest]     upgrade all packages to the validated nixpkgs revision
   rollback                 rollback to previous profile generation
   list                     list installed packages
   scope                    manage scopes (nx scope help)

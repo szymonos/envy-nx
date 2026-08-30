@@ -335,6 +335,9 @@ function _nx_read_install_field() {
 # Family files live next to nx.sh both at dev time (.assets/lib/) and at
 # runtime (~/.config/nix-env/, populated by phase_bootstrap_sync_env_dir).
 # `_nx_find_lib` does the lookup with the same BASH_SOURCE/zsh fallback.
+# nx_rev.sh carries no verbs but is loaded here because `nx upgrade` cannot
+# resolve a revision without it, and silently falling back to nixpkgs-unstable
+# HEAD would defeat the validated pin.
 #
 # If any family file is missing the install is in a broken intermediate
 # state (typically: cross-major upgrade where an old `_nx_self_sync` knew
@@ -343,7 +346,7 @@ function _nx_read_install_field() {
 # subsequent invocation - cleaner than letting `nx <verb>` fall through to
 # `command not found: _nx_<family>_<verb>`.
 _nx_missing_families=""
-for _nx_family in nx_pkg.sh nx_scope.sh nx_profile.sh nx_lifecycle.sh; do
+for _nx_family in nx_pkg.sh nx_scope.sh nx_profile.sh nx_lifecycle.sh nx_rev.sh; do
   _nx_family_path="$(_nx_find_lib "$_nx_family")" || {
     _nx_missing_families="$_nx_missing_families $_nx_family"
     continue
@@ -379,7 +382,7 @@ function nx_main() {
   search) _nx_pkg_search "$@" ;;
   install | add) _nx_pkg_install "$@" ;;
   remove | uninstall) _nx_pkg_remove "$@" ;;
-  upgrade | update) _nx_pkg_upgrade ;;
+  upgrade | update) _nx_pkg_upgrade "$@" ;;
   rollback) _nx_pkg_rollback ;;
   list | ls) _nx_pkg_list ;;
   scope) _nx_scope_dispatch "$@" ;;
