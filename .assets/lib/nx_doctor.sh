@@ -32,6 +32,7 @@ DEV_ENV_DIR="${DEV_ENV_DIR:-$HOME/.config/dev-env}"
 CHECKS="
   nix_available
   flake_lock
+  nixpkgs_rev
   env_dir_files
   install_record
   scope_binaries
@@ -106,6 +107,84 @@ _check_flake_lock() {
   fi
 }
 
+# Reports whether this machine is running the nixpkgs revision the repo has
+# validated, and surfaces a failed upgrade attempt.
+#
+# The failure report is the point of the check: `nx upgrade` restores the
+# previous flake.lock when `nix profile upgrade` fails, which is correct but
+# invisible - without a signal here a machine can sit on an old revision
+# indefinitely while the user believes they are current.
+#
+# `last_upgrade_error` is written by _nx_pkg_upgrade; the name is duplicated
+# rather than shared because this script stays standalone after install (no
+# source dependency on nx.sh - see _nx_has_cmd above and ARCHITECTURE.md §5).
+_check_nixpkgs_rev() {
+  local _rev_file="$ENV_DIR/nixpkgs_rev.json" _err_file="$ENV_DIR/last_upgrade_error"
+  if [ -f "$_err_file" ]; then
+    local _when _target
+    _when="$(cut -f1 <"$_err_file" 2>/dev/null)"
+    _target="$(cut -f2 <"$_err_file" 2>/dev/null)"
+    printf 'warn\tlast upgrade to %s failed on %s - still on the previous revision\trun nx upgrade again; if it keeps failing, nx doctor --strict and check disk space or proxy certs\n' \
+      "${_target:-unknown}" "${_when:-unknown}"
+    return
+  fi
+  if [ ! -f "$_rev_file" ]; then
+    printf 'warn\tno validated nixpkgs revision on disk\trun nx self update to sync nixpkgs_rev.json into %s\n' "$ENV_DIR"
+    return
+  fi
+  local _want
+  _want="$(sed -n 's/.*"rev"[[:space:]]*:[[:space:]]*"\([0-9a-f]*\)".*/\1/p' "$_rev_file" | head -1)"
+  if [ -z "$_want" ]; then
+    printf 'warn\t%s has no readable rev field\tre-run nix/setup.sh to re-sync it\n' "$_rev_file"
+    return
+  fi
+  if [ ! -f "$ENV_DIR/flake.lock" ]; then
+    # flake_lock already fails for this; don't double-report.
+    echo "pass"
+    return
+  fi
+  if ! _nx_has_cmd jq; then
+    printf 'warn\tcannot compare locked rev without jq\tinstall jq, then re-run nx doctor\n'
+    return
+  fi
+  local _have
+  _have="$(jq -r '.nodes.nixpkgs.locked.rev // empty' "$ENV_DIR/flake.lock" 2>/dev/null)" || _have=""
+  if [ -z "$_have" ] || [ "$_have" = "$_want" ]; then
+    echo "pass"
+    return
+  fi
+  # A mismatch is not necessarily "behind" - `nx pin set` and `nx upgrade
+  # --latest` both leave the lock legitimately off the validated rev.
+  # Non-empty, not merely present: _nx_rev_resolve strips whitespace and
+  # ignores an empty pin file, so keying off `-f` alone would report "pinned"
+  # for a file the ladder does not honour - suppressing the drift warning on a
+  # machine that is genuinely behind.
+  local _pin=""
+  [ -f "$ENV_DIR/pinned_rev" ] && _pin="$(tr -d '[:space:]' <"$ENV_DIR/pinned_rev")"
+  if [ -n "$_pin" ]; then
+    printf 'pass\tpinned to %s by nx pin - validated rev %s not applied\n' \
+      "$(printf '%s' "$_pin" | cut -c1-12)" "$(printf '%s' "$_want" | cut -c1-12)"
+    return
+  fi
+  # Order the two by lastModified rather than just comparing revs. After
+  # `nx upgrade --latest` the lock is *newer* than the validated rev, and
+  # warning there would never clear: `nx upgrade` refuses to downgrade, so the
+  # remediation provably does nothing and `--strict` would fail forever.
+  local _want_epoch _have_epoch _ordered=false
+  _want_epoch="$(sed -n 's/.*"lastModified"[[:space:]]*:[[:space:]]*\([0-9]*\).*/\1/p' "$_rev_file" | head -1)"
+  _have_epoch="$(jq -r '.nodes.nixpkgs.locked.lastModified // empty' "$ENV_DIR/flake.lock" 2>/dev/null)" || _have_epoch=""
+  case "$_want_epoch" in '' | *[!0-9]*) ;; *)
+    case "$_have_epoch" in '' | *[!0-9]*) ;; *) _ordered=true ;; esac
+    ;;
+  esac
+  if [ "$_ordered" = true ] && [ "$_have_epoch" -ge "$_want_epoch" ]; then
+    printf 'pass\tahead of the validated rev %s (nx upgrade --latest) - nothing to do\n' "$(printf '%s' "$_want" | cut -c1-12)"
+    return
+  fi
+  printf 'warn\tlocked nixpkgs %s is behind validated %s\trun nx upgrade to move to the validated revision\n' \
+    "$(printf '%s' "$_have" | cut -c1-12)" "$(printf '%s' "$_want" | cut -c1-12)"
+}
+
 _check_env_dir_files() {
   # Verify durable nix-env state files exist. Sync'd by
   # phase_bootstrap_sync_env_dir on every setup run; missing files mean a
@@ -113,7 +192,7 @@ _check_env_dir_files() {
   # in opaque ways.
   local _missing="" _f
   # >>> nx-libs generated >>> (regenerate: python3 -m tests.hooks.gen_nx_completions)
-  for _f in flake.nix nx.sh nx_lifecycle.sh nx_pkg.sh nx_profile.sh nx_scope.sh nx_doctor.sh profile_block.sh cert_probe.sh config.nix; do
+  for _f in flake.nix nx.sh nx_lifecycle.sh nx_pkg.sh nx_profile.sh nx_scope.sh nx_doctor.sh profile_block.sh cert_probe.sh nx_rev.sh config.nix; do
     # <<< nx-libs generated <<<
     [ -f "$ENV_DIR/$_f" ] || _missing="${_missing:+$_missing, }$_f"
   done
