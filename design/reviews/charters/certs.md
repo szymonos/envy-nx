@@ -13,7 +13,6 @@ The cert/proxy path is the highest-blast-radius surface in this repo. A regressi
 | `nix/lib/phases/nix_profile.sh`        | MITM detection via `openssl s_client`; cert extraction on TLS failure; `NIX_SSL_CERT_FILE` / `SSL_CERT_FILE` export |
 | `nix/configure/nodejs.sh`              | `NODE_EXTRA_CA_CERTS` env wiring; npm cafile pinning post-install                                                   |
 | `.assets/lib/nx_profile.sh`            | CA bundle render in user shell profile; `ca-custom.crt` managed-block injection                                     |
-| `.assets/lib/env_block.sh`             | Per-tool env exports (`CURL_CA_BUNDLE`, `PIP_CERT`, `REQUESTS_CA_BUNDLE`, `NODE_EXTRA_CA_CERTS`, etc.)              |
 | `.assets/lib/nx_doctor.sh`             | Health check for cert managed-block presence                                                                        |
 | `.assets/setup/setup_profile_user.ps1` | WSL-side cert injection hook into PowerShell profile                                                                |
 | `wsl/wsl_certs_add.ps1`                | Windows-host extraction of certs from Windows trust store; serial-format headers (matches certs.sh dedup)           |
