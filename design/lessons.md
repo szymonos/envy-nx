@@ -54,7 +54,8 @@ To opt out for a commit that genuinely yields no generalization (and that touche
 <!-- Tags populate as entries land via the post-merge workflow -->
 
 - **cache-staleness** - [L-002](#l-002---2026-05-23---cache-staleness)
-- **general** - [L-003](#l-003---2026-07-24---general), [L-004](#l-004---2026-08-22---general), [L-005](#l-005---2026-08-22---general), [L-006](#l-006---2026-08-22---general), [L-007](#l-007---2026-08-22---general), [L-008](#l-008---2026-08-22---general), [L-009](#l-009---2026-08-22---general), [L-010](#l-010---2026-08-22---general), [L-011](#l-011---2026-08-22---general), [L-012](#l-012---2026-08-22---general)
+- **do-not-repeat** - [L-014](#l-014---2026-08-30---do-not-repeat)
+- **general** - [L-003](#l-003---2026-07-24---general), [L-004](#l-004---2026-08-22---general), [L-005](#l-005---2026-08-22---general), [L-006](#l-006---2026-08-22---general), [L-007](#l-007---2026-08-22---general), [L-008](#l-008---2026-08-22---general), [L-009](#l-009---2026-08-22---general), [L-010](#l-010---2026-08-22---general), [L-011](#l-011---2026-08-22---general), [L-012](#l-012---2026-08-22---general), [L-013](#l-013---2026-08-30---general)
 - **meta** - [L-000](#l-000---2026-05-23---meta)
 - **render-heuristics** - [L-001](#l-001---2026-05-23---render-heuristics)
 
@@ -180,5 +181,21 @@ a REST reviewer list that omits Bots made a queued Copilot review read as never 
 **Source:** PR #62 (`5f778c8`)
 
 a comment that narrates the change reads as noise to everyone who never saw the old version
+
+---
+
+## L-013 - 2026-08-30 - general
+
+**Source:** PR #72 (`79b7055`)
+
+buildEnv fails the whole env on a duplicate path and only breaks ties on meta.priority - resolve known conflicts with lib.lowPrio, never ignoreCollisions
+
+---
+
+## L-014 - 2026-08-30 - do-not-repeat
+
+**Source:** PR #72 (`79b7055`)
+
+a bare `# bins:` entry asserts the binary lives in ~/.nix-profile/bin - use `%` when a manager or the system provides it
 
 ---
