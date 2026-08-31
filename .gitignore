@@ -13,6 +13,8 @@
 # local settings
 settings.local.json
 /.claude/rules/openwolf.md
+/.claude/skills/openwolf
+/.claude/commands/
 /.claude/settings.json
 /.claude/worktrees/
 /.wolf
