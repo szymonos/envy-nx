@@ -5,6 +5,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.21.0] - 2026-08-31
+
+Two silent failures, both found by looking rather than by being reported. The weekly
+cross-version upgrade walk had been cancelled at its runner's execution cap for ten
+consecutive weeks - validating nothing, and saying nothing. And `ARCHITECTURE.md`, the
+file every contributor and agent is told to read before changing a subsystem, had
+drifted: dead file paths, stale counts, and review charters naming files that no longer
+exist. Both now fail loudly.
+
+### Added
+
+- `check-arch-drift` pre-commit hook fails the commit when an agent-facing design doc names a repo path that no longer exists.
+- The same hook checks stated numbers against the tree: `<!-- arch:max-lines <path> <max> -->` budgets and `<!-- arch:count <path> '<regex>' <n> -->` claims.
+- A design proposal names files that do not exist yet by definition, and opts out of the path check with `<!-- arch-drift: proposal -->`.
+- `WALK_DRY_RUN` prints the upgrade walk's resolved tag list and exits, so a floor/window pair can be previewed without running it.
+
+### Changed
+
+- The upgrade walk keeps every patch of the newest N minor lines and only the oldest patch of older lines (`WALK_WINDOW`, default 3, input `patch-window`). 31 tags become 19.
+- The upgrade walk runs on `ubuntu-latest` rather than `ubuntu-slim`, and its default floor rose from `v1.5.0` to `v1.10.0`.
+
+### Fixed
+
+- The weekly upgrade walk had been cancelled at ~15.5 minutes on every run since 2026-06-22, ten weeks validating nothing, once patch releases pushed it past the runner's execution cap.
+- The upgrade walk paid a live `git ls-remote` per iteration: the old-version install ran on a named branch and missed the detached-HEAD short-circuit. It now passes `--skip-repo-update`.
+- `WALK_FLOOR` filtered an explicitly requested `WALK_VERSIONS`, and an empty walk exited 0 - green having tested nothing. An empty version list is now a hard failure.
+- `ARCHITECTURE.md` §7.10 listed the deleted `env_block.sh` in the interactive-shell file scope and omitted `nx_doctor.sh`, contradicting `tests/hooks/_file_scopes.py`, its own stated source of truth.
+- `ARCHITECTURE.md` §3h cited `design/wsl_setup_modularization.md`, which was never committed, and the §13 runtime-layout table still carried the deleted `.assets/lib/env_block.sh`.
+- Review charters named files that do not exist - three `pwsh_cfg/` entries in `config-templates.md`, `env_block.sh` in `certs.md`. A dead row makes that shard silently under-review.
+- `CQ-001` item 3 targeted `.assets/lib/env_block.sh`, whose migration code went with the file; the item is dropped and the entry's scope corrected to 8 hunks across 7 files.
+- Stale counts in `ARCHITECTURE.md`: `nx.sh` was described as ~211 lines when it is 413, and `WslSetupPhases.Tests.ps1` was credited with 52 unit tests rather than 56.
+
 ## [1.20.0] - 2026-08-30
 
 Users no longer track `nixpkgs-unstable` HEAD. The flake still follows unstable, but
