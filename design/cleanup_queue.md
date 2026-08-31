@@ -27,7 +27,7 @@ Pick ONE signal per item (all are reasonable for a single-maintainer project):
 - **Status:** open
 - **Added:** 2026-05-02
 - **Trigger:** 60-90 days after v1.5.0 (rename shipped 2026-05-02)
-- **Scope:** 9 hunks across 8 files, annotated with `# MIGRATION:`
+- **Scope:** 8 hunks across 7 files, annotated with `# MIGRATION:`
 
 ### Context
 
@@ -61,12 +61,7 @@ arms back to single-marker logic.
 - In the `uninstall` arm, drop the two extra `manage_block ...
   legacy_marker remove` calls (~lines 288-290).
 
-#### 3. `.assets/lib/env_block.sh`
-
-Remove `ENV_BLOCK_LEGACY_MARKER="managed env"` declaration and its
-preceding `# MIGRATION:` comment block (~lines 14-18).
-
-#### 4. `.assets/setup/setup_profile_user.zsh`
+#### 3. `.assets/setup/setup_profile_user.zsh`
 
 Remove the strip-before-write block (~lines 104-107):
 
@@ -79,14 +74,14 @@ fi
 
 The script then just writes the new block via `manage_block ... upsert`.
 
-#### 5. `.assets/lib/nx_doctor.sh` - `_check_shell_profile`
+#### 4. `.assets/lib/nx_doctor.sh` - `_check_shell_profile`
 
 Replace the dual-count with a single `grep -cF '# >>> nix:managed >>>'`.
 Drop the `_legacy_count` line and the comment block explaining the
 transition (~lines 243-251). The simpler single-line count is what the
 pre-rename code looked like.
 
-#### 6. `nix/uninstall.sh`
+#### 5. `nix/uninstall.sh`
 
 - Remove `BLOCK_MARKER_LEGACY="nix-env managed"` constant + comment
   (~lines 126-129).
@@ -100,7 +95,7 @@ elsewhere in `uninstall.sh` are about the **`nix-env` profile**
 (the actual nix profile name in `nix profile list`), not the marker.
 Leave those alone.
 
-#### 7. `.assets/docker/Dockerfile.test-nix`
+#### 6. `.assets/docker/Dockerfile.test-nix`
 
 Drop the legacy marker assertion line (~line 79):
 
@@ -110,7 +105,7 @@ Drop the legacy marker assertion line (~line 79):
 
 Keep the `! grep -qF '# >>> nix:managed >>>'` assertion.
 
-#### 8. `tests/bats/test_profile_migration.bats`
+#### 7. `tests/bats/test_profile_migration.bats`
 
 Remove three migration-specific tests (helper + 3 tests):
 
@@ -122,7 +117,7 @@ Remove three migration-specific tests (helper + 3 tests):
 The remaining tests in `test_profile_migration.bats` stay - they test
 current behavior, not migration.
 
-#### 9. `.github/workflows/test_linux.yml` + `test_macos.yml`
+#### 8. `.github/workflows/test_linux.yml` + `test_macos.yml`
 
 In both files, find the `Verify uninstaller (env-only)` step and remove
 the legacy assertion (~6 lines):

@@ -1,3 +1,5 @@
+<!-- arch-drift: proposal -->
+
 # Enterprise integration design
 
 _Single design source of truth for upstream's enterprise-readiness work. Fed by the [`enterprise-readiness`](reviews/charters/enterprise-readiness.md) review shard's `design-backlog` findings; consumed by maintainers when implementing extension seams. When work in this document is shipped, sections move to git history; new design entries grow the backlog over time._

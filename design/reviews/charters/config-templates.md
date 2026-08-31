@@ -12,10 +12,7 @@ Templates rendered into user shell profiles via managed blocks. The key concerns
 | `.assets/config/shell_cfg/functions.sh`       | Shell utility functions                                                             |
 | `.assets/config/shell_cfg/completions.bash`   | Bash tab completions for `nx` (auto-generated from `nx_surface.json`)               |
 | `.assets/config/shell_cfg/completions.zsh`    | Zsh tab completions for `nx` (auto-generated)                                       |
-| `.assets/config/pwsh_cfg/profile.ps1`         | PowerShell base profile                                                             |
 | `.assets/config/pwsh_cfg/profile_nix.ps1`     | PowerShell Nix-managed profile (dot-sourced from `$PROFILE`)                        |
-| `.assets/config/pwsh_cfg/_aliases_common.ps1` | Common PowerShell aliases and functions                                             |
-| `.assets/config/pwsh_cfg/_aliases_linux.ps1`  | Linux-specific PowerShell aliases                                                   |
 | `.assets/config/pwsh_cfg/_aliases_nix.ps1`    | Nix-specific PowerShell aliases (also hosts the fnm self-heal block)                |
 | `.assets/config/omp_cfg/*.omp.json`           | Oh My Posh prompt theme configurations (4 themes: base, nerd, nerdplain, powerline) |
 
