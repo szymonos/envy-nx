@@ -21,7 +21,11 @@ on:
       floor-version:
         description: "Skip tags older than this. Bump as the user base retires old installs."
         type: string
-        default: "v1.5.0"
+        default: "v1.10.0"
+      patch-window:
+        description: "Walk every patch of the newest N minor lines; older lines test only their oldest patch. 0 = every tag."
+        type: string
+        default: "3"
   schedule:
     - cron: "0 6 * * 1" # Mondays 06:00 UTC
 
@@ -35,7 +39,9 @@ concurrency:
 jobs:
   walk:
     name: "upgrade walk (newest → oldest)"
-    runs-on: ubuntu-slim
+    # Not ubuntu-slim: scheduled runs there were killed at ~15.5 min regardless of
+    # timeout-minutes below, every week from 2026-06-22 (see the WALK_FLOOR note).
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
       NIX_CONFIG: "access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}"
@@ -60,5 +66,13 @@ jobs:
           WALK_VERSIONS: ${{ github.event.inputs.from-version }}
           # Default applies to both manual dispatch (input default) and cron
           # (where inputs.* are null) - bump as the user base retires old installs.
-          WALK_FLOOR: ${{ github.event.inputs.floor-version || 'v1.5.0' }}
+          #
+          # Floor and window together are the runtime budget: the walk costs ~25s per
+          # tag, so the tag count decides whether the job finishes. Measured on the
+          # old ubuntu-slim runner, 30 tags took 764s and passed while 32 tags was
+          # killed at ~930s. Floor v1.10.0 alone is 31 tags (~15 min); with window 3
+          # it is 19 (~10 min), and it then grows with minor releases rather than
+          # patch releases. Raise the floor or lower the window if it creeps back up.
+          WALK_FLOOR: ${{ github.event.inputs.floor-version || 'v1.10.0' }}
+          WALK_WINDOW: ${{ github.event.inputs.patch-window || '3' }}
         run: bash .github/scripts/upgrade_walk.sh
