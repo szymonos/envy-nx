@@ -71,11 +71,47 @@ _zsh() {
   done
 }
 
-@test "completions.zsh sources cleanly under zsh (compdef/compinit guard fires)" {
-  # compinit prints a warning about insecure dirs in some envs; -i suppresses it.
-  # The test passes as long as zsh doesn't error out on `compdef` itself.
-  run _zsh "source $REPO_ROOT/.assets/config/shell_cfg/completions.zsh && type _nx >/dev/null"
-  [ "$status" -eq 0 ]
+# Drive an interactive zsh from a generated .zshrc so precmd hooks actually
+# fire, then report whether `nx` ended up bound to `_nx`. Sourcing cleanly is
+# not enough of an assertion: a compdef stub that silently drops the call also
+# sources cleanly and leaves the user with no completion.
+_zsh_rc() {
+  printf '%s\n' "$1" >"$TEST_DIR/.zshrc"
+  # -d skips the global rc files: some distros run compinit from /etc/zsh/zshrc,
+  # which would satisfy the "nothing runs compinit" case from outside the SUT.
+  HOME="$HOME" ZDOTDIR="$TEST_DIR" zsh -d -i 2>&1 <<<'print "NXCOMP=${_comps[nx]:-NONE}"'
+}
+
+@test "completions.zsh registers _nx when compinit already ran" {
+  run _zsh "autoload -Uz compinit && compinit -i -d $TEST_DIR/zcompdump &&
+    source $REPO_ROOT/.assets/config/shell_cfg/completions.zsh &&
+    [[ \${_comps[nx]} == _nx ]]"
+  [ "$status" -eq 0 ] || fail "not registered: $output"
+}
+
+@test "completions.zsh registers _nx on a zsh where nothing runs compinit" {
+  # macOS' default zsh setup never calls compinit, so the deferred hook has to
+  # bootstrap it - otherwise `nx <TAB>` does nothing on a fresh machine.
+  run _zsh_rc "source $REPO_ROOT/.assets/config/shell_cfg/completions.zsh"
+  [ "$status" -eq 0 ] || fail "shell exited $status: $output"
+  [[ "$output" == *"NXCOMP=_nx"* ]] || fail "not registered: $output"
+  [[ "$output" != *"not found"* ]] || fail "error on shell start: $output"
+}
+
+@test "completions.zsh does not pre-empt a plugin that defers its own compinit" {
+  # zsh-autocomplete runs compinit from a precmd hook and skips it entirely if
+  # _comp_setup is already set. Sourcing order in _nx_render_nix_block puts the
+  # plugins first for this reason; the stand-in below reproduces the skip.
+  run _zsh_rc "_fake_ac() {
+    add-zsh-hook -d precmd _fake_ac
+    (( \${+_comp_setup} )) && { print PLUGIN_SKIPPED; return }
+    autoload -Uz compinit && compinit -i -d $TEST_DIR/zcompdump
+  }
+  autoload -Uz add-zsh-hook && add-zsh-hook precmd _fake_ac
+  source $REPO_ROOT/.assets/config/shell_cfg/completions.zsh"
+  [ "$status" -eq 0 ] || fail "shell exited $status: $output"
+  [[ "$output" != *"PLUGIN_SKIPPED"* ]] || fail "nx ran compinit first: $output"
+  [[ "$output" == *"NXCOMP=_nx"* ]] || fail "not registered: $output"
 }
 
 # -- dispatcher routing -------------------------------------------------------

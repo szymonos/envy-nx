@@ -807,7 +807,7 @@ Invoke-Pester -Configuration @pesterCfg
 
 ### 9.3. Runtime zsh smoke (`tests/bats/test_nx_zsh.bats`)
 
-13 tests <!-- arch:count tests/bats/test_nx_zsh.bats '^@test' 13 --> verify `nx.sh` and family files actually source and dispatch correctly under zsh (catches issues `check-zsh-compat` cannot - e.g. the 1.3.1 glob-nomatch trip). Skipped when zsh is not installed. Test setup copies lib files into `$ENV_DIR` because `_nx_find_lib`'s zsh fallback looks there (BASH_SOURCE is empty in zsh).
+15 tests <!-- arch:count tests/bats/test_nx_zsh.bats '^@test' 15 --> verify `nx.sh` and family files actually source and dispatch correctly under zsh (catches issues `check-zsh-compat` cannot - e.g. the 1.3.1 glob-nomatch trip). Skipped when zsh is not installed. Test setup exports `NX_LIB_DIR` at the repo's `.assets/lib/` rather than copying files into `$ENV_DIR`; the fallback test uses a `marker.sh` absent from `NX_LIB_DIR` so it still exercises `_nx_find_lib`'s `$ENV_DIR` lookup (BASH_SOURCE is empty in zsh).
 
 ### 9.4. Smoke tests (Docker)
 
