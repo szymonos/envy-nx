@@ -40,6 +40,7 @@ distrobox
 distros
 dotdir
 dpkg
+dumpfile
 eacces
 egsave
 eledath
@@ -130,6 +131,7 @@ pipestatus
 pkgs
 platformdirs
 powerline
+precmd
 prek
 prio
 pscustomobject
@@ -152,6 +154,7 @@ rollouts
 runspace
 runspaces
 scaffolder
+sdkman
 setsid
 setuid
 shellcheck

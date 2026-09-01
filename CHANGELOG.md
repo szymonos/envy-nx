@@ -5,6 +5,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.21.1] - 2026-09-01
+
+### Fixed
+
+- `completions.zsh` no longer runs `compinit` at source time, which had broken `zsh-autocomplete` for every zsh user since 1.4.0 by making it skip its own `compinit` and leave the `_autocomplete__*` helpers undefined.
+- `compdef _nx nx` now registers from a one-shot `precmd` hook, after `.zshrc` has finished and whoever owns `compinit` has run it. `completions.zsh` bootstraps `compinit` itself only when nothing else did (stock zsh, the macOS default).
+- `_nx_render_nix_block` now emits a `# :compinit` guard after the zsh plugin block, so the `fzf`, `uv`, `uvx` and `kubectl` completion snippets stop printing `command not found: compdef` on a framework-less zsh.
+- `_nx_render_nix_block` now sources `completions.zsh` after the `# :zsh plugins` block. `precmd` hooks fire in registration order, so sourcing it first re-introduced the same race.
+- `_nx_render_nix_block` now emits `unset _comp_setup _comp_dumpfile` before sourcing `zsh-autocomplete`, so an earlier `compinit` from SDKMAN or Docker Desktop cannot make it skip its own run.
+- Zsh completion tests now assert `_comps[nx]` is actually bound across three `compinit` orderings, instead of only that the file sources cleanly.
+
 ## [1.21.0] - 2026-08-31
 
 Two silent failures, both found by looking rather than by being reported. The weekly
