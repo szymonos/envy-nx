@@ -300,16 +300,31 @@ def emit_bash(manifest):  # noqa: C901 -- structural: bash completer has many sh
 # ---------------------------------------------------------------------------
 
 ZSH_PREAMBLE = """# zsh tab completions for the nx command
-
-# Ensure the completion system is initialized so `compdef` is defined.
-# macOS' default zsh setup does not run compinit, which causes
-# `command not found: compdef` when this file is sourced from .zshrc.
-# The guard makes the call a no-op when compinit has already run elsewhere.
-if (( ! ${+functions[compdef]} )); then
-  autoload -Uz compinit
-  compinit -i
-fi
 """
+
+# `compdef` is created by compinit; zsh ships no autoloadable `compdef` of its
+# own, so the fallback below has to bootstrap compinit or there is no
+# completion at all on a stock zsh.
+ZSH_REGISTER = """\
+# compinit is owned by the user's shell config or a plugin - zsh-autocomplete
+# defers its own to a precmd hook and skips it entirely if something else ran
+# compinit first, which then leaves its Completions/ directory unscanned.
+# Running compinit here would pre-empt that, so defer the registration to the
+# first prompt: .zshrc has finished by then and whoever owns compinit has run
+# it. Bootstrap compinit only if nobody else did - `compdef` is defined inside
+# the compinit function file, it is not autoloadable on its own, so without
+# this fallback a zsh with no framework (macOS default) gets no completion.
+if (( ${+functions[compdef]} )); then
+  compdef _nx nx
+else
+  _nx_compdef() {
+    add-zsh-hook -d precmd _nx_compdef
+    (( ${+functions[compdef]} )) || { autoload -Uz compinit && compinit -i }
+    compdef _nx nx
+    unfunction _nx_compdef
+  }
+  autoload -Uz add-zsh-hook && add-zsh-hook precmd _nx_compdef
+fi"""
 
 ZSH_COMPLETER = {
     "installed_packages": (
@@ -465,7 +480,7 @@ def emit_zsh(manifest):  # noqa: C901 -- structural: zsh completer has many shel
 
     out.append("  esac")
     out.append("}")
-    out.append("compdef _nx nx")
+    out.append(ZSH_REGISTER)
     out.append("")
     return "\n".join(out)
 

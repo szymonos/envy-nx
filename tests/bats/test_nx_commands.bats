@@ -713,6 +713,41 @@ EOF
   [[ "$output" != *"zsh-autosuggestions/zsh-autosuggestions.zsh"* ]]
 }
 
+@test "profile regenerate clears _comp_setup before sourcing zsh-autocomplete" {
+  # The plugin skips its own compinit when the marker is set, which leaves its
+  # Completions/ dir unscanned. Anything earlier in .zshrc that ran compinit
+  # (sdkman-init.sh, Docker Desktop) sets it.
+  mkdir -p "$HOME/.zsh/zsh-autocomplete" "$HOME/.zsh/zsh-autosuggestions"
+  touch "$HOME/.zsh/zsh-autocomplete/zsh-autocomplete.plugin.zsh"
+  touch "$HOME/.zsh/zsh-autosuggestions/zsh-autosuggestions.zsh"
+  run nx profile regenerate --dry-run --shell zsh
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"unset _comp_setup _comp_dumpfile"$'\n'"source \"\$HOME/.zsh/zsh-autocomplete/"* ]] ||
+    fail "marker not cleared immediately before the plugin: $output"
+  # only zsh-autocomplete needs it - one occurrence, not one per plugin
+  [ "$(printf '%s\n' "$output" | grep -c 'unset _comp_setup')" -eq 1 ]
+}
+
+@test "profile regenerate guards compdef after the plugins, before the consumers" {
+  # `fzf --zsh`, `uv generate-shell-completion zsh` and `kubectl completion zsh`
+  # all end in a compdef call. Without the guard a plain zsh reports
+  # "(eval):N: command not found: compdef" for each one on every shell start.
+  mkdir -p "$HOME/.zsh/zsh-autocomplete" "$HOME/.nix-profile/bin" "$HOME/.config/shell"
+  touch "$HOME/.zsh/zsh-autocomplete/zsh-autocomplete.plugin.zsh"
+  touch "$HOME/.config/shell/completions.zsh"
+  printf '#!/bin/sh\nexit 0\n' >"$HOME/.nix-profile/bin/uv"
+  chmod +x "$HOME/.nix-profile/bin/uv"
+  run nx profile regenerate --dry-run --shell zsh
+  [ "$status" -eq 0 ]
+  # the guard has to land after the plugins (so it cannot pre-empt one that
+  # owns compinit) and before every consumer
+  [[ "$output" == *"# :zsh plugins"*"# :compinit"*"# :completions"*"# :uv"* ]]
+  [[ "$output" == *'(( ${+functions[compdef]} )) || { autoload -Uz compinit && compinit -i }'* ]]
+  # bash has no compdef - the guard is zsh-only
+  run nx profile regenerate --dry-run --shell bash
+  [[ "$output" != *"# :compinit"* ]]
+}
+
 @test "profile regenerate --dry-run --shell bash succeeds when rc file does not exist" {
   rm -f "$HOME/.bashrc" "$HOME/.zshrc"
   run nx profile regenerate --dry-run --shell bash

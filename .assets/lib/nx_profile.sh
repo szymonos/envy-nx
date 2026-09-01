@@ -169,9 +169,6 @@ function _nx_render_nix_block() {
   if [ "$shell" = "bash" ] && [ -f "$HOME/.config/shell/completions.bash" ]; then
     printf '[ -f "$HOME/.config/shell/completions.bash" ] && . "$HOME/.config/shell/completions.bash"\n'
   fi
-  if [ "$shell" = "zsh" ] && [ -f "$HOME/.config/shell/completions.zsh" ]; then
-    printf '[ -f "$HOME/.config/shell/completions.zsh" ] && . "$HOME/.config/shell/completions.zsh"\n'
-  fi
 
   if [ "$shell" = "zsh" ]; then
     local _zsh_dir="$HOME/.zsh"
@@ -182,9 +179,44 @@ function _nx_render_nix_block() {
       _plugin="${_plugin%%:*}"
       if [ -f "$_zsh_dir/$_plugin/$_file" ]; then
         [ "$_has_plugins" = false ] && printf '\n# :zsh plugins\n' && _has_plugins=true
+        if [ "$_plugin" = zsh-autocomplete ]; then
+          # zsh-autocomplete adds its Completions/ dir to fpath and relies on
+          # its own compinit run to scan it, but skips that run when
+          # `_comp_setup` is set and its dumpfile is readable - leaving every
+          # _autocomplete__* helper undefined and erroring on each keystroke.
+          # Any earlier compinit in .zshrc sets both; sdkman-init.sh and
+          # Docker Desktop's injected block are the common ones and neither is
+          # under our control (SDKMAN rewrites its block on upgrade). Clearing
+          # them makes the plugin take the branch it would have taken in a
+          # shell where nothing pre-empted it, and keeps its dump in its own
+          # cache rather than hijacking the earlier tool's dumpfile.
+          printf 'unset _comp_setup _comp_dumpfile\n'
+        fi
         printf 'source "$HOME/.zsh/%s/%s"\n' "$_plugin" "$_file"
       fi
     done
+  fi
+
+  # Everything below that registers a completion - completions.zsh, and the
+  # snippets `fzf --zsh`, `uv generate-shell-completion zsh` and `kubectl
+  # completion zsh` emit - ends in a `compdef` call, and `compdef` only exists
+  # once compinit has run. The zsh plugins above provide it when installed
+  # (zsh-autocomplete defines it as it loads); this is the fallback for a plain
+  # zsh, where nothing else ever runs compinit. It goes after the plugin block
+  # so it cannot pre-empt a plugin that defers its own compinit - if one loaded,
+  # `compdef` already exists and this is a no-op.
+  if [ "$shell" = "zsh" ]; then
+    printf '\n# :compinit\n'
+    printf '(( ${+functions[compdef]} )) || { autoload -Uz compinit && compinit -i }\n'
+  fi
+
+  # After the plugin block, not with the other config files: completions.zsh
+  # registers via a precmd hook, and zsh runs precmd hooks in registration
+  # order. Sourced first, its hook would fire before zsh-autocomplete's and
+  # bootstrap compinit out from under it.
+  if [ "$shell" = "zsh" ] && [ -f "$HOME/.config/shell/completions.zsh" ]; then
+    printf '\n# :completions\n'
+    printf '[ -f "$HOME/.config/shell/completions.zsh" ] && . "$HOME/.config/shell/completions.zsh"\n'
   fi
 
   if [ -x "$HOME/.nix-profile/bin/fzf" ]; then
