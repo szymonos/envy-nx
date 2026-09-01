@@ -238,3 +238,5 @@ __marimo__/
 
 # /release-auto skill working state (version-keyed, wiped on success)
 .release/
+.specstory*
+.vscode/
