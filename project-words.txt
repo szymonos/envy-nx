@@ -61,6 +61,7 @@ footgun
 frontmatter
 gbda
 gheof
+grunrefresh
 gtimeout
 gtkd
 hackathons
@@ -74,6 +75,8 @@ incompat
 intune
 isatty
 jamf
+kapi
+kapishorts
 keyrings
 keytimeout
 koalaman

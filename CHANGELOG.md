@@ -5,6 +5,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.21.2] - 2026-09-06
+
+### Added
+
+- `Get-KubectlApiResources` in the vendored `aliases-kubectl` module returns full API resource details (plural name, short names, API version, namespaced flag, kind) with `-Table`/`-Json`/`-Object` output modes and `-Name`/`-Kind`/`-ApiGroup`/`-Namespaced` filters, aliased as `kapi`. `Get-KubectlApiResourceShortNames` (`kapishorts`) now delegates to it instead of parsing `kubectl api-resources` output itself.
+
+### Changed
+
+- `Remove-GitMergedBranches`/`Remove-GitLocalBranches` in the vendored `aliases-git` module gain a `-NoFetch` switch, and `grunrefresh` passes it since the branch was already fetched earlier in the same command.
+- Bumped pinned pre-commit hooks (`ruff-pre-commit` v0.16.6, `cspell-cli` v10.2.0) and refreshed transitive dependencies in `uv.lock`.
+
 ## [1.21.1] - 2026-09-01
 
 ### Fixed
