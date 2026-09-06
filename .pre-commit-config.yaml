@@ -121,7 +121,7 @@ repos:
       - id: trailing-whitespace
         exclude: \.md$
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.5
+    rev: v0.16.6
     hooks:
       - id: ruff-check
         types_or: [python, pyi]
@@ -137,7 +137,7 @@ repos:
         args: ["--fix"]
         files: \.md$
   - repo: https://github.com/streetsidesoftware/cspell-cli
-    rev: v10.1.0
+    rev: v10.2.0
     hooks:
       - id: cspell
         files: \.md$
