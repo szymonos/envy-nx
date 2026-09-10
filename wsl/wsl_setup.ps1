@@ -38,6 +38,11 @@ List of installation scopes. Valid values:
 Specify to install oh-my-posh prompt theme engine and name of the theme to be used.
 You can specify one of the three included profiles: base, powerline, nerd,
 or use any theme available on the page: https://ohmyposh.dev/docs/themes/
+Mutually exclusive with StarshipTheme.
+.PARAMETER StarshipTheme
+Specify to install starship prompt theme engine and name of the theme to be used.
+You can specify one of the included profiles: base, nerd, omp_base, omp_nerd.
+Mutually exclusive with OmpTheme.
 .PARAMETER GtkTheme
 Specify gtk theme for wslg. Available values: light, dark.
 Default: automatically detects based on the system theme.
@@ -73,6 +78,9 @@ wsl/wsl_setup.ps1 $Distro -s $Scope -AddCertificate
 $OmpTheme = 'nerd'
 wsl/wsl_setup.ps1 $Distro -s $Scope -o $OmpTheme
 wsl/wsl_setup.ps1 $Distro -s $Scope -o $OmpTheme -AddCertificate
+# :set up shell with the specified starship theme (mutually exclusive with OmpTheme)
+$StarshipTheme = 'nerd'
+wsl/wsl_setup.ps1 $Distro -s $Scope -StarshipTheme $StarshipTheme
 # :set up WSL distro and clone specified GitHub repositories
 $Repos = @('szymonos/envy-nx')
 wsl/wsl_setup.ps1 $Distro -r $Repos -s $Scope -o $OmpTheme
@@ -111,6 +119,12 @@ param (
     [Parameter(ParameterSetName = 'GitHub')]
     [ValidateNotNullOrEmpty()]
     [string]$OmpTheme,
+
+    [Parameter(ParameterSetName = 'Update')]
+    [Parameter(ParameterSetName = 'Setup')]
+    [Parameter(ParameterSetName = 'GitHub')]
+    [ValidateNotNullOrEmpty()]
+    [string]$StarshipTheme,
 
     [Parameter(ParameterSetName = 'Update')]
     [Parameter(ParameterSetName = 'Setup')]
@@ -243,6 +257,7 @@ process {
                 -Check $chk `
                 -WslVersion $lx.Version `
                 -OmpTheme $OmpTheme `
+                -StarshipTheme $StarshipTheme `
                 -DistroRecord $script:distroRecords[$Distro]
         } catch {
             Show-LogContext -Message "Phase: 'scope-resolution'; $_" -Level ERROR -ErrorStackTrace $_.ScriptStackTrace
@@ -295,6 +310,7 @@ process {
             -SshKeyFp $script:sshKeyFp `
             -PwshEnvSet $script:pwshEnvSet `
             -OmpTheme $OmpTheme `
+            -StarshipTheme $StarshipTheme `
             -SkipModulesUpdate ([bool]$SkipModulesUpdate) `
             -DistroRecord $script:distroRecords[$Distro]
         $script:sshKeyFp = $scopeResult.SshKeyFp

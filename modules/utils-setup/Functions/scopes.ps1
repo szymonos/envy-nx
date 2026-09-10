@@ -8,17 +8,24 @@ function Resolve-ScopeDeps {
     nothing auto-detected legitimately reaches this function with an empty set.
     .PARAMETER OmpTheme
     If non-empty, implies oh_my_posh scope.
+    .PARAMETER StarshipTheme
+    If non-empty, implies starship scope.
     #>
     param(
         [Parameter(Mandatory)]
         [AllowEmptyCollection()]
         [System.Collections.Generic.HashSet[string]]$ScopeSet,
 
-        [string]$OmpTheme
+        [string]$OmpTheme,
+
+        [string]$StarshipTheme
     )
 
     if ($OmpTheme) {
         $ScopeSet.Add('oh_my_posh') | Out-Null
+    }
+    if ($StarshipTheme) {
+        $ScopeSet.Add('starship') | Out-Null
     }
 
     foreach ($rule in $Script:ScopeDependencyRules) {
