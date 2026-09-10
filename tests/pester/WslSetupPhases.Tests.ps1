@@ -46,6 +46,7 @@ BeforeAll {
             pwsh       = $false
             shell      = $false
             ssh_key    = $true
+            starship   = $false
             systemd    = $true
             terraform  = $false
             wsl_boot   = $true
@@ -105,6 +106,19 @@ Describe 'Resolve-WslDistroScopes' {
             $sorted | Should -Contain 'shell'
         }
 
+        It 'StarshipTheme on WSL2 implicitly adds starship' {
+            $check = New-CheckDistroHashtable
+            $rec = New-DistroRecord
+            $sorted = Resolve-WslDistroScopes `
+                -Scope @('shell') `
+                -Check $check `
+                -WslVersion 2 `
+                -StarshipTheme 'nerd' `
+                -DistroRecord $rec
+            $sorted | Should -Contain 'starship'
+            $sorted | Should -Contain 'shell'
+        }
+
         It 'merges -Scope with check-detected scopes' {
             $check = New-CheckDistroHashtable -Flags @{ shell = $true }
             $rec = New-DistroRecord
@@ -136,17 +150,18 @@ Describe 'Resolve-WslDistroScopes' {
     }
 
     Context 'WSL1 strips incompatible scopes' {
-        It 'removes distrobox/docker/k8s_ext/oh_my_posh on WSL1' {
+        It 'removes distrobox/docker/k8s_ext/oh_my_posh/starship on WSL1' {
             $check = New-CheckDistroHashtable
             $rec = New-DistroRecord
             $sorted = Resolve-WslDistroScopes `
-                -Scope @('docker', 'distrobox', 'k8s_ext', 'shell') `
+                -Scope @('docker', 'distrobox', 'k8s_ext', 'starship', 'shell') `
                 -Check $check `
                 -WslVersion 1 `
                 -DistroRecord $rec
             $sorted | Should -Not -Contain 'docker'
             $sorted | Should -Not -Contain 'distrobox'
             $sorted | Should -Not -Contain 'k8s_ext'
+            $sorted | Should -Not -Contain 'starship'
             $sorted | Should -Contain 'shell'
         }
 
@@ -160,6 +175,19 @@ Describe 'Resolve-WslDistroScopes' {
                 -OmpTheme 'nerd' `
                 -DistroRecord $rec
             $sorted | Should -Not -Contain 'oh_my_posh'
+            $sorted | Should -Contain 'shell'
+        }
+
+        It 'StarshipTheme is ignored on WSL1' {
+            $check = New-CheckDistroHashtable
+            $rec = New-DistroRecord
+            $sorted = Resolve-WslDistroScopes `
+                -Scope @('shell') `
+                -Check $check `
+                -WslVersion 1 `
+                -StarshipTheme 'nerd' `
+                -DistroRecord $rec
+            $sorted | Should -Not -Contain 'starship'
             $sorted | Should -Contain 'shell'
         }
     }
@@ -457,6 +485,27 @@ Describe 'Install-WslScopes' {
         $nixArgStr | Should -Match 'nerd'
         $nixArgStr | Should -Match '--unattended'
         $nixArgStr | Should -Match '--skip-repo-update'
+    }
+
+    It 'maps scopes to nix flags and forwards --starship-theme' {
+        $rec = New-DistroRecord
+        $check = New-CheckDistroHashtable
+        Install-WslScopes `
+            -Distro 'Ubuntu' `
+            -Scopes @('shell', 'starship') `
+            -Check $check `
+            -WslVersion 2 `
+            -SshKeyFp '' `
+            -PwshEnvSet $true `
+            -StarshipTheme 'nerd' `
+            -SkipModulesUpdate $false `
+            -DistroRecord $rec
+        $nixCall = $script:wslCalls.Where({ ($_ -join ' ') -match 'nix/setup\.sh' }) | Select-Object -First 1
+        $nixArgStr = $nixCall -join ' '
+        $nixArgStr | Should -Match '--shell'
+        $nixArgStr | Should -Not -Match '--starship(?!-theme)'    # starship handled via --starship-theme, not a generic flag
+        $nixArgStr | Should -Match '--starship-theme'
+        $nixArgStr | Should -Match 'nerd'
     }
 
     It 'omits --update-modules when SkipModulesUpdate is true' {

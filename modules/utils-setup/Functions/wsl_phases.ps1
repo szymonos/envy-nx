@@ -320,6 +320,8 @@ populate $env:NX_SSH_KEY_FP/$env:WSLENV before nix/setup.sh runs.
 True if the Windows User-scope env vars haven't been written yet.
 .PARAMETER OmpTheme
 Optional --omp-theme value forwarded to nix/setup.sh.
+.PARAMETER StarshipTheme
+Optional --starship-theme value forwarded to nix/setup.sh.
 .PARAMETER SkipModulesUpdate
 True if -SkipModulesUpdate was passed (suppresses --update-modules).
 .PARAMETER DistroRecord
@@ -348,6 +350,8 @@ function Install-WslScopes {
         [bool]$PwshEnvSet,
 
         [string]$OmpTheme,
+
+        [string]$StarshipTheme,
 
         [bool]$SkipModulesUpdate,
 
@@ -391,6 +395,9 @@ function Install-WslScopes {
     }
     if ($OmpTheme) {
         $nixArgs.AddRange([string[]]@('--omp-theme', $OmpTheme))
+    }
+    if ($StarshipTheme) {
+        $nixArgs.AddRange([string[]]@('--starship-theme', $StarshipTheme))
     }
 
     # -- run nix setup (packages + configure scripts + profiles) --
@@ -602,10 +609,10 @@ Compute the final, sorted, dependency-resolved scope list for a WSL distro.
 .DESCRIPTION
 Combines the user-supplied -Scope array with scopes auto-detected from the
 distro check (az/bun/conda/gcloud/k8s_*/pwsh/python/shell/terraform), applies
-the -OmpTheme implicit dependency on WSL2 only, resolves implicit
-dependencies via Resolve-ScopeDeps, strips WSL1-incompatible scopes
-(distrobox/docker/k8s_ext/oh_my_posh), and returns the result sorted by the
-shared install order. Mutates DistroRecord.scopes with the resolved list.
+the -OmpTheme/-StarshipTheme implicit dependency on WSL2 only, resolves
+implicit dependencies via Resolve-ScopeDeps, strips WSL1-incompatible scopes
+(distrobox/docker/k8s_ext/oh_my_posh/starship), and returns the result sorted
+by the shared install order. Mutates DistroRecord.scopes with the resolved list.
 .PARAMETER Scope
 User-supplied scope array (typically the script's -Scope parameter). Null
 and empty arrays are both accepted - the result still includes any scopes
@@ -613,8 +620,11 @@ auto-detected from the distro check.
 .PARAMETER Check
 Parsed check_distro.sh result hashtable.
 .PARAMETER WslVersion
-1 or 2. Drives WSL1 scope strip and the OmpTheme guard.
+1 or 2. Drives WSL1 scope strip and the OmpTheme/StarshipTheme guard.
 .PARAMETER OmpTheme
+If non-empty on WSL2, augments scope set via Resolve-ScopeDeps. Ignored on
+WSL1.
+.PARAMETER StarshipTheme
 If non-empty on WSL2, augments scope set via Resolve-ScopeDeps. Ignored on
 WSL1.
 .PARAMETER DistroRecord
@@ -637,6 +647,8 @@ function Resolve-WslDistroScopes {
 
         [string]$OmpTheme,
 
+        [string]$StarshipTheme,
+
         [Parameter(Mandatory)]
         [hashtable]$DistroRecord
     )
@@ -657,17 +669,22 @@ function Resolve-WslDistroScopes {
         }
     }
 
-    # *resolve implicit dependencies (omp resolution mirrors the inline ternary)
+    # *resolve implicit dependencies (omp/starship resolution mirrors the inline ternary)
     $resolveOmp = if ($WslVersion -eq 2 -and ($Check.oh_my_posh -or $OmpTheme)) {
         $OmpTheme ? $OmpTheme : 'detect'
     } else {
         ''
     }
-    Resolve-ScopeDeps -ScopeSet $scopeSet -OmpTheme $resolveOmp
+    $resolveStarship = if ($WslVersion -eq 2 -and ($Check.starship -or $StarshipTheme)) {
+        $StarshipTheme ? $StarshipTheme : 'detect'
+    } else {
+        ''
+    }
+    Resolve-ScopeDeps -ScopeSet $scopeSet -OmpTheme $resolveOmp -StarshipTheme $resolveStarship
 
     # *strip WSL1-incompatible scopes
     if ($WslVersion -eq 1) {
-        $wsl1Strip = [string[]]@('distrobox', 'docker', 'k8s_ext', 'oh_my_posh')
+        $wsl1Strip = [string[]]@('distrobox', 'docker', 'k8s_ext', 'oh_my_posh', 'starship')
         $wsl1Strip.ForEach({ $scopeSet.Remove($_) | Out-Null })
     }
 

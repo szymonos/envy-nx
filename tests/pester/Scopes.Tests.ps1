@@ -66,6 +66,21 @@ Describe 'Resolve-ScopeDeps' {
         $set | Should -Not -Contain 'oh_my_posh'
     }
 
+    It 'StarshipTheme parameter adds starship and shell' {
+        $set = [System.Collections.Generic.HashSet[string]]::new()
+        $set.Add('_placeholder') | Out-Null
+        Resolve-ScopeDeps -ScopeSet $set -StarshipTheme 'nerd'
+        $set | Should -Contain 'starship'
+        $set | Should -Contain 'shell'
+    }
+
+    It 'empty StarshipTheme does not add starship' {
+        $set = [System.Collections.Generic.HashSet[string]]::new()
+        $set.Add('rice') | Out-Null
+        Resolve-ScopeDeps -ScopeSet $set -StarshipTheme ''
+        $set | Should -Not -Contain 'starship'
+    }
+
     It 'unknown scope has no dependencies' {
         $set = [System.Collections.Generic.HashSet[string]]::new([string[]]@('rice'))
         Resolve-ScopeDeps -ScopeSet $set

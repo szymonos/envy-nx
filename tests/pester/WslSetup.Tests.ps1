@@ -197,6 +197,19 @@ Describe 'wsl_setup.ps1 orchestration' {
         }
     }
 
+    Context 'Nix mode with StarshipTheme' {
+        It 'passes --starship-theme to nix/setup.sh' {
+            $global:WslTestCheckDistroJson = New-CheckDistro
+
+            & "$Script:RepoRoot/wsl/wsl_setup.ps1" -Distro 'Ubuntu' -Scope @('shell') -StarshipTheme 'nerd' -SkipRepoUpdate 6>$null
+
+            $nixCall = $global:WslTestCalls | Where-Object { ($_ -join ' ') -match 'nix/setup\.sh' } | Select-Object -First 1
+            $nixArgs = $nixCall -join ' '
+            $nixArgs | Should -Match '--starship-theme'
+            $nixArgs | Should -Match 'nerd'
+        }
+    }
+
     Context 'Zsh scope installs system-wide before nix' {
         It 'calls install_zsh.sh and passes --zsh to nix/setup.sh' {
             $global:WslTestCheckDistroJson = New-CheckDistro
