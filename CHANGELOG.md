@@ -5,9 +5,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
-### Changed
+## [1.22.0] - 2026-09-10
 
-- Validated nixpkgs revision advanced to `0af3d1402dec` - built with every scope and installed end-to-end on Linux and macOS before landing.
+### Added
+
+- WSL now supports `-StarshipTheme` end-to-end, matching the existing `-OmpTheme` path: `wsl_setup.ps1` forwards it through `Resolve-WslDistroScopes`/`Resolve-ScopeDeps` (implicitly adding the `starship` scope, same as `oh_my_posh`) and `Install-WslScopes` (forwarding `--starship-theme` to `nix/setup.sh`, the same script the macOS/Coder installer uses). Previously `-Scope starship` validated but did nothing on WSL - `starship` was already a valid, fully-implemented scope on the nix side, just never wired through the Windows-host orchestrator. `check_distro.sh` now also auto-detects an existing `starship` install, mirroring the `oh_my_posh` probe. `wsl_install.ps1` forwards `-StarshipTheme` too, skipping its default `-OmpTheme 'base'` when starship is requested instead, so the two don't collide with `nix/setup.sh`'s mutual-exclusivity check.
+
+### Fixed
+
+- `wsl_install.ps1` only forwarded `-Scope` to `wsl_setup.ps1` when the caller passed it explicitly, so a plain `wsl_install.ps1 -Distro <name>` forwarded no scope at all - not even `shell` - because the `,'shell'` append lived inside that same conditional. `Scope` is now always forwarded with `shell` appended, regardless of whether the caller specified one. `-OmpTheme` and `-GtkTheme` were also missing as parameters (`OmpTheme` was hardcoded to `'base'`) and `-SkipModulesUpdate` had no way to reach `wsl_setup.ps1`; all three are now forwarded, giving `wsl_install.ps1` full parameter parity with `wsl_setup.ps1`.
+- The ad hoc `StringBuilder` command-string construction in `wsl_install.ps1` is replaced with a parameter hashtable, serialized to JSON in an environment variable and splatted by the child `pwsh` process. This removes the manual `Join-Str -SingleQuote` quoting for array/string values and makes forwarding a new parameter a one-line change.
 
 ## [1.21.2] - 2026-09-06
 
