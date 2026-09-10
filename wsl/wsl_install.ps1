@@ -12,6 +12,8 @@ The script will perform the following:
 - can fix networkin issues on VPN by rewriting DNS settings from selected Windows network interface,
 - can fix self-signed certificate in chain error, if the host is behind MITM proxy.
 
+All setup related parameters are forwarded to the wsl/wsl_setup.ps1 script.
+
 .PARAMETER Distro
 Name of the WSL distro to install and set up.
 .PARAMETER Scope
@@ -32,12 +34,27 @@ List of installation scopes. Valid values:
 - shell: bat, eza, oh-my-posh, ripgrep, yq, copilot-cli
 - terraform: terraform, terrascan, tflint, tfswitch
 - zsh: zsh shell with plugins
+The shell scope is always installed, regardless of the specified scopes.
+.PARAMETER OmpTheme
+Specify to install oh-my-posh prompt theme engine and name of the theme to be used.
+You can specify one of the three included profiles: base, powerline, nerd,
+or use any theme available on the page: https://ohmyposh.dev/docs/themes/
+Defaults to 'base' unless -StarshipTheme is specified instead.
+.PARAMETER StarshipTheme
+Specify to install starship prompt theme engine instead of oh-my-posh, and
+name of the theme to be used. You can specify one of the included profiles:
+base, nerd, omp_base, omp_nerd. Mutually exclusive with OmpTheme.
+.PARAMETER GtkTheme
+Specify gtk theme for wslg. Available values: light, dark.
+Default: automatically detects based on the system theme.
 .PARAMETER Repos
 List of GitHub repositories in format "Owner/RepoName" to clone into the WSL.
 .PARAMETER AddCertificate
 Intercept and add certificates from chain into selected distro.
 .PARAMETER FixNetwork
 Set network settings from the selected network interface in Windows.
+.PARAMETER SkipModulesUpdate
+Skip updating installed PowerShell modules (Az, PSReadLine, etc.).
 .PARAMETER SkipRepoUpdate
 Skip updating current repository before running the setup.
 .PARAMETER WebDownload
@@ -49,6 +66,8 @@ This is useful when the Store download is very slow or unavailable.
 wsl/wsl_install.ps1 -Distro 'Ubuntu'
 # :fix network in the Ubuntu WSL distro
 wsl/wsl_install.ps1 -Distro 'Ubuntu' -FixNetwork
+# :intercept and add certificates in chain
+wsl/wsl_install.ps1 -Distro 'Ubuntu' -AddCertificate
 # :set up WSL distro with specified installation scopes
 $Scope = @('python')
 $Scope = @('az', 'docker')
@@ -56,6 +75,12 @@ $Scope = @('az', 'conda', 'docker', 'gcloud', 'k8s_base')  # with gcloud cli
 $Scope = @('az', 'docker', 'pwsh')
 $Scope = @('az', 'docker', 'k8s_base', 'pwsh', 'terraform')
 wsl/wsl_install.ps1 -Distro 'Ubuntu' -s $Scope
+# :set up shell with the specified oh-my-posh theme
+$OmpTheme = 'nerd'
+wsl/wsl_install.ps1 -Distro 'Ubuntu' -s $Scope -o $OmpTheme
+# :set up shell with starship instead of oh-my-posh
+$StarshipTheme = 'nerd'
+wsl/wsl_install.ps1 -Distro 'Ubuntu' -s $Scope -StarshipTheme $StarshipTheme
 # :set up WSL distro and clone specified GitHub repositories
 $Repos = @('szymonos/envy-nx')
 wsl/wsl_install.ps1 -Distro 'Ubuntu' -r $Repos
@@ -76,15 +101,35 @@ param (
     [string]$Distro,
 
     [Alias('s')]
-    [ValidateScript({ $_.ForEach({ $_ -in @('az', 'bun', 'conda', 'distrobox', 'docker', 'gcloud', 'k8s_base', 'k8s_dev', 'k8s_ext', 'nodejs', 'oh_my_posh', 'pwsh', 'python', 'rice', 'shell', 'terraform', 'zsh') }) -notcontains $false })]
+    [ValidateScript(
+        {
+            $valid = ([System.IO.File]::ReadAllText("$PSScriptRoot/../.assets/lib/scopes.json") | ConvertFrom-Json).valid_scopes
+            $_.ForEach({ $_ -in $valid }) -notcontains $false
+        },
+        ErrorMessage = 'Wrong scope provided. Run with -? to see valid values.')
+    ]
     [string[]]$Scope,
 
-    [ValidateScript({ $_.ForEach({ $_ -match '^[\w-]+/[\w-]+$' }) -notcontains $false })]
+    [ValidateNotNullOrEmpty()]
+    [string]$OmpTheme = 'base',
+
+    [ValidateNotNullOrEmpty()]
+    [string]$StarshipTheme,
+
+    [ValidateSet('light', 'dark')]
+    [string]$GtkTheme,
+
+    [ValidateScript(
+        { $_.ForEach({ $_ -match '^[\w-]+/[\w-]+$' }) -notcontains $false },
+        ErrorMessage = 'Repos should be provided in "Owner/RepoName" format.')
+    ]
     [string[]]$Repos,
 
     [switch]$AddCertificate,
 
     [switch]$FixNetwork,
+
+    [switch]$SkipModulesUpdate,
 
     [switch]$SkipRepoUpdate,
 
@@ -116,6 +161,8 @@ begin {
     Update-SessionEnvironmentPath
     # WSL feature name
     $features = @('VirtualMachinePlatform', 'Microsoft-Windows-Subsystem-Linux')
+    # name of the environment variable used to pass parameters to the setup script
+    $paramsEnvVar = 'WSL_SETUP_PARAMS'
 }
 
 process {
@@ -162,25 +209,43 @@ process {
     }
 
     # *Set up WSL
-    # build command string
-    $sb = [System.Text.StringBuilder]::new("wsl/wsl_setup.ps1 -Distro '$Distro'")
-    if ($PSBoundParameters.Scope) {
-        $scopeStr = $Scope | Join-Str -Separator ',' -SingleQuote
-        $sb.Append(" -Scope @($scopeStr,'shell')") | Out-Null
+    # build parameters for the setup script, always including the shell scope
+    # and skipping the repository update, as it has been already done above
+    $setupParams = @{
+        Distro         = $Distro
+        Scope          = [string[]]($Scope + 'shell' | Sort-Object -Unique)
+        SkipRepoUpdate = $true
     }
-    if ($PSBoundParameters.Repos) {
-        $reposStr = $Repos | Join-Str -Separator ',' -SingleQuote
-        $sb.Append(" -Repos @($reposStr)") | Out-Null
+    # OmpTheme defaults to 'base', but that default must not be forwarded
+    # alongside an explicit -StarshipTheme, or wsl_setup.ps1/nix's mutual
+    # exclusivity check rejects the combination. Only skip the default when
+    # the caller opted into starship without also specifying -OmpTheme.
+    if ($PSBoundParameters.ContainsKey('OmpTheme') -or -not $PSBoundParameters.ContainsKey('StarshipTheme')) {
+        $setupParams['OmpTheme'] = $OmpTheme
     }
-    if ($PSBoundParameters.AddCertificate) { $sb.Append(' -AddCertificate') | Out-Null }
-    if ($PSBoundParameters.FixNetwork) { $sb.Append(' -FixNetwork') | Out-Null }
-    if ($PSBoundParameters.WebDownload) { $sb.Append(' -WebDownload') | Out-Null }
-    $sb.Append(" -OmpTheme 'base'") | Out-Null
-    $sb.Append(' -SkipRepoUpdate') | Out-Null
+    if ($PSBoundParameters.ContainsKey('StarshipTheme')) {
+        $setupParams['StarshipTheme'] = $StarshipTheme
+    }
+    # forward the specified optional parameters
+    foreach ($param in @('GtkTheme', 'Repos')) {
+        if ($PSBoundParameters.ContainsKey($param)) {
+            $setupParams[$param] = $PSBoundParameters[$param]
+        }
+    }
+    # forward the specified switches as booleans, so they can be splatted after deserialization
+    foreach ($param in @('AddCertificate', 'FixNetwork', 'SkipModulesUpdate', 'WebDownload')) {
+        if ($PSBoundParameters[$param]) {
+            $setupParams[$param] = $true
+        }
+    }
+    # pass the parameters as JSON in an environment variable, to splat them in the
+    # child process without building and escaping a command line string
+    [System.Environment]::SetEnvironmentVariable($paramsEnvVar, ($setupParams | ConvertTo-Json -Compress))
     # run the wsl_setup script
-    pwsh.exe -NoProfile -Command $sb.ToString()
+    pwsh.exe -NoProfile -Command "`$setupParams = `$env:$paramsEnvVar | ConvertFrom-Json -AsHashtable; wsl/wsl_setup.ps1 @setupParams"
 }
 
 end {
+    [System.Environment]::SetEnvironmentVariable($paramsEnvVar, $null)
     Pop-Location
 }
