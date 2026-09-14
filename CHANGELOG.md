@@ -5,6 +5,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.22.1] - 2026-09-14
+
+### Fixed
+
+- `wsl_install.ps1` - removed `ErrorMessage` from the input parameters for PowerShell 5.1 compatibility.
+- `wsl_restart.ps1` - removed obsolete `WSLService` service from the restart process.
+
 ## [1.22.0] - 2026-09-10
 
 ### Added
