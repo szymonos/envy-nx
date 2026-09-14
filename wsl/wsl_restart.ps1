@@ -46,4 +46,4 @@ if ($StopDockerDesktop) {
 Get-Process wsl* | Stop-Process -Force
 
 # restart services related to WSL
-Get-Service LxssManagerUser*, WSLService, vmcompute | Restart-Service -Force
+Get-Service LxssManagerUser*, vmcompute | Restart-Service -Force

@@ -105,8 +105,7 @@ param (
         {
             $valid = ([System.IO.File]::ReadAllText("$PSScriptRoot/../.assets/lib/scopes.json") | ConvertFrom-Json).valid_scopes
             $_.ForEach({ $_ -in $valid }) -notcontains $false
-        },
-        ErrorMessage = 'Wrong scope provided. Run with -? to see valid values.')
+        })
     ]
     [string[]]$Scope,
 
@@ -120,8 +119,7 @@ param (
     [string]$GtkTheme,
 
     [ValidateScript(
-        { $_.ForEach({ $_ -match '^[\w-]+/[\w-]+$' }) -notcontains $false },
-        ErrorMessage = 'Repos should be provided in "Owner/RepoName" format.')
+        { $_.ForEach({ $_ -match '^[\w-]+/[\w-]+$' }) -notcontains $false })
     ]
     [string[]]$Repos,
 
