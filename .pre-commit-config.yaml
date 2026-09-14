@@ -121,7 +121,7 @@ repos:
       - id: trailing-whitespace
         exclude: \.md$
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.6
+    rev: v0.16.7
     hooks:
       - id: ruff-check
         types_or: [python, pyi]
@@ -160,7 +160,7 @@ repos:
           - --no-summary
         stages: [commit-msg]
   - repo: https://github.com/scop/pre-commit-shfmt
-    rev: v3.13.1-1
+    rev: v3.14.1-1
     hooks:
       - id: shfmt
         exclude: \.zsh$
