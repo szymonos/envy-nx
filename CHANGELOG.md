@@ -5,9 +5,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.22.2] - 2026-09-15
+
 ### Changed
 
 - Validated nixpkgs revision advanced to `02f5696b0e60` - built with every scope and installed end-to-end on Linux and macOS before landing.
+- Refreshed transitive dev dependencies in `uv.lock` (`pymdown-extensions` 12.0).
+
+### Fixed
+
+- `wsl_distro_move.ps1` used the ternary operator with no `#Requires` statement, so Windows PowerShell 5.1 failed it with a parse error instead of a version message. It now pins `#Requires -PSEdition Core -Version 7.3`.
+- `wsl_systemd.ps1`, `wsl_wslg.ps1` (ternary) and `wsl_network_fix.ps1` (`Join-String`) declared only `#Requires -PSEdition Core`, which still admits PowerShell 6.x where those constructs do not exist; all three now pin `-Version 7.3`.
 
 ## [1.22.1] - 2026-09-14
 
