@@ -39,7 +39,7 @@ release.py resume  ──► [headless: recut, lint-diff]     ──► GATE pus
    agent: eyeball commits + PR body
 release.py resume  ──► [headless: force-push, PR upsert] ──► SPINE_COMPLETE (exit 0)
    ── review coda (unless --skip-review) ──
-   4a agent: /second-opinion (gpt-5.3-codex) → fold fixes → recut + push
+   4a agent: /second-opinion (gpt-5.6-terra) → fold fixes → recut + push
    4b agent: trigger Copilot PR review, triage vs review-policy.json, apply fixes
 release.py recut   ──► [reconcile + recut + lint-diff]   (silent unless the plan can't execute)
 release.py push --done ──► wipes .release/, release ready to merge
@@ -174,7 +174,7 @@ Copilot wait is detached so a non-responsive reviewer never blocks. The coda has
 **two review layers**, run in order - `--skip-review` skips **both**:
 
 - **4a - heterogeneous-model review** (`/second-opinion`): a different model
-  family (GitHub Copilot CLI, `gpt-5.3-codex`) reviews the diff at author time,
+  family (GitHub Copilot CLI, `gpt-5.6-terra`) reviews the diff at author time,
   before merge. Catches what a same-model PR review structurally cannot.
 - **4b - Copilot PR review** (`/address-pr-review`): the GitHub Copilot reviewer
   on the PR itself.
@@ -203,7 +203,7 @@ introduces over the last tag).
 
    ```bash
    copilot -p "Read .claude/skills/second-opinion/REVIEW-BRIEF.md AND the '## [<X.Y.Z>]' section of CHANGELOG.md (the author's stated intent), then review the branch's changes since <last-tag>. Run: git diff <last-tag>..HEAD. Dismiss findings that contradict the documented intent unless the code genuinely fails to deliver it (then flag the bullet-vs-code gap). Output findings using the brief's format and severities." \
-     -s --model gpt-5.3-codex --no-custom-instructions --allow-all-tools
+     -s --model gpt-5.6-terra --no-custom-instructions --allow-all-tools
    ```
 
 3. **Challenge every finding.** The reviewer has no project context beyond the

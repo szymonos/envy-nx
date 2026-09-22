@@ -1,12 +1,12 @@
 ---
 name: second-opinion
-description: Heterogeneous-model code review of the current branch's changes. Invokes GitHub Copilot CLI with gpt-5.3-codex to review git diff since merge-base with the repo's trunk branch (or user-specified commit). Reads .claude/skills/second-opinion/REVIEW-BRIEF.md for focused project context. Returns structured findings that Claude reads, summarizes, and acts on. Use when the user types `/second-opinion`, asks for a second opinion on a branch, wants GPT to review the work, or wants an independent review before pushing.
+description: Heterogeneous-model code review of the current branch's changes. Invokes GitHub Copilot CLI with gpt-5.6-terra to review git diff since merge-base with the repo's trunk branch (or user-specified commit). Reads .claude/skills/second-opinion/REVIEW-BRIEF.md for focused project context. Returns structured findings that Claude reads, summarizes, and acts on. Use when the user types `/second-opinion`, asks for a second opinion on a branch, wants GPT to review the work, or wants an independent review before pushing.
 disable-model-invocation: false
 ---
 
 # Second opinion
 
-Heterogeneous-model author-time review of the current branch. Runs **GitHub Copilot CLI** (`copilot`) with a GPT-family model (default `gpt-5.3-codex`) against the diff since `git merge-base "$TRUNK_REF" HEAD`, where `$TRUNK_REF` is a resolvable git ref for the repo's default branch - either a local branch (`main`) or a remote-tracking ref (`origin/main`), resolved in Phase 1. The reviewer returns structured findings; Claude reads them and acts.
+Heterogeneous-model author-time review of the current branch. Runs **GitHub Copilot CLI** (`copilot`) with a GPT-family model (default `gpt-5.6-terra`) against the diff since `git merge-base "$TRUNK_REF" HEAD`, where `$TRUNK_REF` is a resolvable git ref for the repo's default branch - either a local branch (`main`) or a remote-tracking ref (`origin/main`), resolved in Phase 1. The reviewer returns structured findings; Claude reads them and acts.
 
 The bias-control mechanism is **the process boundary itself**. Copilot runs as a separate binary, with a separate model family, returning only text. Claude (the implementer) cannot influence Copilot's review; Copilot cannot edit code. Tool restriction inside Copilot is unnecessary - the architecture enforces the separation.
 
@@ -96,7 +96,7 @@ Single Bash call. The prompt tells Copilot to read the brief, run `git diff` its
 ```bash
 copilot -p "Read .claude/skills/second-opinion/REVIEW-BRIEF.md, then review the current branch's changes since <base>. Run: git diff <base>..HEAD to see all changes. Read referenced files for context as needed. Output findings using the format and severities specified in the brief." \
   -s \
-  --model gpt-5.3-codex \
+  --model gpt-5.6-terra \
   --no-custom-instructions \
   --allow-all-tools
 ```
@@ -106,7 +106,7 @@ Flag rationale:
 - **`-s`** (silent) - strips UI chrome, leaves only the agent's response on stdout. Critical for parsing.
 - **`--no-custom-instructions`** - skips `AGENTS.md` and `.claude/skills/` auto-loading. The curated `REVIEW-BRIEF.md` is the only context Copilot needs. Loading everything would burn attention budget on irrelevant context.
 - **`--allow-all-tools`** - required for non-interactive `-p` mode. Safe here: Copilot's output is text-only back to Claude; any edits Copilot might attempt happen in its process, not Claude's. Even if Copilot wrote a file, Claude would not act on it - Claude only acts on the findings text.
-- **`--model gpt-5.3-codex`** - default. Override via skill arg (see model override below).
+- **`--model gpt-5.6-terra`** - default. Override via skill arg (see model override below).
 
 If Copilot exits non-zero, capture the error and surface to the user. Don't retry automatically.
 
@@ -129,7 +129,7 @@ Two modes, selected by the caller via context (the skill itself doesn't need to 
 1. Present a summary table to the user:
 
    ```text
-   ## Copilot review (gpt-5.3-codex) - 3 findings
+   ## Copilot review (gpt-5.6-terra) - 3 findings
 
    | ID | Severity | Location | Summary |
    |----|----------|----------|---------|
@@ -156,14 +156,14 @@ The caller selects automated mode by passing findings context (e.g., "act on fin
 
 ## Model override
 
-Pass `--model <id>` in the skill args. Claude extracts it and substitutes for `gpt-5.3-codex` in the Copilot invocation.
+Pass `--model <id>` in the skill args. Claude extracts it and substitutes for `gpt-5.6-terra` in the Copilot invocation.
 
 Currently available Copilot models (May 2026 - list with `copilot -p "list available models"`):
 
 | Model ID          | Tier       | Notes                                                                                                                              |
 | ----------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `gpt-5.3-codex`   | standard   | **Default** - code-focused, balanced cost                                                                                          |
-| `gpt-5.2-codex`   | standard   | Older codex; use only if 5.3 unavailable                                                                                           |
+| `gpt-5.6-terra`   | standard   | **Default** - code-focused, balanced cost                                                                                          |
+| `gpt-5.2-codex`   | standard   | Older codex; use only if 5.6-terra unavailable                                                                                     |
 | `gpt-5.5`         | premium    | Heavier; use for complex / security-sensitive diffs                                                                                |
 | `gpt-5.4`         | standard   | General-purpose; less code-specialized than codex variants                                                                         |
 | `gpt-5-mini`      | fast/cheap | Quick triage; expect more noise / missed nuance                                                                                    |
