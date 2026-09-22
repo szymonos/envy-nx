@@ -285,6 +285,31 @@ if (Test-Path "$HOME/$openCodePath/opencode" -PathType Leaf) {
     }
 }
 
+# set up Homebrew PATH - brew's installer only wires up bash/zsh rc files.
+# Appended rather than prepended (as `brew shellenv` does) so nix-managed tools
+# keep precedence regardless of the region order in the profile.
+$brewPrefix = @('/opt/homebrew', '/usr/local', '/home/linuxbrew/.linuxbrew') |
+    Where-Object { Test-Path "$_/bin/brew" -PathType Leaf } |
+    Select-Object -First 1
+if ($brewPrefix -and -not ($profileContent | Select-String '#region brew' -SimpleMatch -Quiet)) {
+    Write-Verbose 'adding Homebrew path...'
+    $profileContent.AddRange(
+        [string[]]@(
+            "`n#region brew"
+            ("if (Test-Path '{0}/bin/brew' -PathType Leaf) {{" -f $brewPrefix)
+            ("    `$env:HOMEBREW_PREFIX = '{0}'" -f $brewPrefix)
+            ("    foreach (`$brewPath in @('{0}/bin', '{0}/sbin')) {{" -f $brewPrefix)
+            '        if ($brewPath -notin $env:PATH.Split([IO.Path]::PathSeparator)) {'
+            "            [Environment]::SetEnvironmentVariable('PATH', [string]::Join([IO.Path]::PathSeparator, `$env:PATH, `$brewPath))"
+            '        }'
+            '    }'
+            '}'
+            '#endregion'
+        )
+    )
+    $isProfileModified = $true
+}
+
 # set up custom CA certs environment variables for MITM proxy certificates
 $certCustom = [IO.Path]::Combine($HOME, '.config', 'certs', 'ca-custom.crt')
 $certBundle = [IO.Path]::Combine($HOME, '.config', 'certs', 'ca-bundle.crt')
