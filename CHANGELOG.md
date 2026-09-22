@@ -5,9 +5,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.23.0] - 2026-09-22
+
+### Added
+
+- PowerShell profile setup now detects Homebrew (`/opt/homebrew`, `/usr/local`, `/home/linuxbrew/.linuxbrew`) and appends its `bin`/`sbin` to `PATH` in a `#region brew` block, so brew-installed tools resolve in pwsh.
+- The brew paths are appended after nix rather than prepended like `brew shellenv`, so nix-managed tools keep precedence and no `brew` process runs at shell startup.
+
 ### Changed
 
 - Validated nixpkgs revision advanced to `2e032a04454b` - built with every scope and installed end-to-end on Linux and macOS before landing.
+- Bumped pinned pre-commit hooks (`ruff-pre-commit` v0.16.8, `markdownlint-cli2` v0.23.3) and refreshed transitive dependencies in `uv.lock`.
 
 ## [1.22.2] - 2026-09-15
 

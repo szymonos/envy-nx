@@ -89,6 +89,7 @@ kustomize
 kyverno
 lastexitcode
 libicu
+linuxbrew
 lockfiles
 locpath
 logind
@@ -161,6 +162,7 @@ sdkman
 setsid
 setuid
 shellcheck
+shellenv
 shfmt
 sigstore
 sonoma
