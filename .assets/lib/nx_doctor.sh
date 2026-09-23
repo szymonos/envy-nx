@@ -360,24 +360,7 @@ _check_shell_profile() {
     echo "pass"
     return
   }
-  # Count BOTH the new marker (nix:managed, since 1.5) and the legacy marker
-  # (nix-env managed, <= 1.4) as a managed block. Users who upgraded but
-  # haven't yet run `nx profile regenerate` still have the legacy block;
-  # that's a valid transitional state, not a failure. Migration happens
-  # silently on the next regenerate call. After the legacy migration
-  # window closes, drop the _legacy_count line.
-  #
-  # Semantics of the count check below: legacy block alone OR new block
-  # alone -> PASS (transitional or post-migration). Both present, or any
-  # block kind appearing >1 times, -> FAIL because every present block
-  # would execute on every shell start - that's genuine duplication that
-  # `nx profile regenerate` would deduplicate. Don't simplify the
-  # `_new_count + _legacy_count` sum into a single grep without preserving
-  # this XOR-vs-AND distinction.
-  local _new_count _legacy_count
-  _new_count="$(grep -cF '# >>> nix:managed >>>' "$_rc" 2>/dev/null || true)"
-  _legacy_count="$(grep -cF '# >>> nix-env managed >>>' "$_rc" 2>/dev/null || true)"
-  _count=$((_new_count + _legacy_count))
+  _count="$(grep -cF '# >>> nix:managed >>>' "$_rc" 2>/dev/null || true)"
   _name="$(basename "$_rc")"
   if [ "$_count" = "0" ] 2>/dev/null; then
     printf 'fail\tno managed block in %s\trun nx profile regenerate to insert the managed block\n' "$_name"

@@ -123,10 +123,6 @@ SCRIPT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB="$SCRIPT_ROOT/.assets/lib"
 ENV_DIR="$HOME/.config/nix-env"
 BLOCK_MARKER="nix:managed"
-# MIGRATION: legacy marker name from <= 1.4.x. The uninstaller removes both
-# so users who never ran `nx profile regenerate` after upgrading still get
-# their nix block cleaned up. Safe to delete after the next major release.
-BLOCK_MARKER_LEGACY="nix-env managed"
 # Login-shell shim written to ~/.bash_profile on macOS only (see
 # _nx_profile_regenerate). Removing it on every platform is free - manage_block
 # remove is a no-op when the marker is absent.
@@ -146,9 +142,6 @@ run_phase1() {
   info "phase 1: removing nix-env managed environment..."
 
   # 1a. Remove nix-managed blocks from shell rc files (leaves certs block).
-  # Two markers handled: BLOCK_MARKER (current name) and BLOCK_MARKER_LEGACY
-  # (the <= 1.4.x name). Removing both covers users who upgraded but never
-  # ran `nx profile regenerate` to migrate.
   info "removing managed blocks from shell profiles..."
   # Recorded before the removal below strips it: an empty ~/.bash_profile is
   # only ours to delete if it actually carried the shim.
@@ -162,7 +155,7 @@ run_phase1() {
     source "$LIB/profile_block.sh"
     for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.bash_profile"; do
       [[ -f "$rc" ]] || continue
-      for marker in "$BLOCK_MARKER" "$BLOCK_MARKER_LEGACY" "$BLOCK_MARKER_BASH_PROFILE"; do
+      for marker in "$BLOCK_MARKER" "$BLOCK_MARKER_BASH_PROFILE"; do
         if [[ "$DRY_RUN" == "true" ]]; then
           if manage_block "$rc" "$marker" inspect >/dev/null 2>&1; then
             printf "\e[90m  would remove '%s' block from %s\e[0m\n" "$marker" "$rc"
@@ -179,7 +172,7 @@ run_phase1() {
     warn "profile_block.sh not found - falling back to manual block removal"
     for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.bash_profile"; do
       [[ -f "$rc" ]] || continue
-      for marker in "$BLOCK_MARKER" "$BLOCK_MARKER_LEGACY" "$BLOCK_MARKER_BASH_PROFILE"; do
+      for marker in "$BLOCK_MARKER" "$BLOCK_MARKER_BASH_PROFILE"; do
         if grep -q "# >>> $marker >>>" "$rc" 2>/dev/null; then
           if [[ "$DRY_RUN" == "true" ]]; then
             printf "\e[90m  would remove '%s' block from %s\e[0m\n" "$marker" "$rc"

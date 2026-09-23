@@ -208,7 +208,7 @@ Every shell configuration tool eventually reaches for `~/.bashrc`. The naive app
 Configuration is written between sentinel markers and **fully regenerated** on each run:
 
 ```bash
-# >>> nix-env managed >>>
+# >>> nix:managed >>>
 # :path
 . $HOME/.nix-profile/etc/profile.d/nix.sh
 export PATH="$HOME/.nix-profile/bin:$PATH"
@@ -217,26 +217,26 @@ export NIX_SSL_CERT_FILE="$HOME/.config/certs/ca-bundle.crt"
 . "$HOME/.config/shell/aliases_nix.sh"
 # :oh-my-posh
 [ -x "$HOME/.nix-profile/bin/oh-my-posh" ] && eval "$(oh-my-posh init bash ...)"
-# <<< nix-env managed <<<
+# <<< nix:managed <<<
 
-# >>> managed env >>>
+# >>> env:managed >>>
 # :local path
 if [ -d "$HOME/.local/bin" ]; then
   export PATH="$HOME/.local/bin:$PATH"
 fi
 # :certs
 export NODE_EXTRA_CA_CERTS="$HOME/.config/certs/ca-custom.crt"
-# <<< managed env <<<
+# <<< env:managed <<<
 ```
 
 Two blocks are written to each rc file, with an explicit purpose split:
 
-| Block             | Contents                                             | Removed by uninstall? |
-| ----------------- | ---------------------------------------------------- | --------------------- |
-| `nix-env managed` | Nix-specific: PATH, nix aliases, completions, prompt | Yes                   |
-| `managed env`     | Generic: local PATH, cert env vars, shared functions | No (preserved)        |
+| Block         | Contents                                             | Removed by uninstall? |
+| ------------- | ---------------------------------------------------- | --------------------- |
+| `nix:managed` | Nix-specific: PATH, nix aliases, completions, prompt | Yes                   |
+| `env:managed` | Generic: local PATH, cert env vars, shared functions | No (preserved)        |
 
-The split means **uninstalling Nix-specific config preserves things other tools need**: certificates configured in `managed env` keep working for any future package manager; the `~/.local/bin` PATH addition keeps working for `pip install --user` and similar.
+The split means **uninstalling Nix-specific config preserves things other tools need**: certificates configured in `env:managed` keep working for any future package manager; the `~/.local/bin` PATH addition keeps working for `pip install --user` and similar.
 
 PowerShell uses the same pattern with `#region nix:* / #endregion` markers, managed natively in PowerShell rather than proxied to bash. The `$PROFILE` path and region syntax are PowerShell-specific - implementing them natively keeps each side idiomatic. The user-facing `nx profile` subverb surface stays in sync via a pre-commit parity hook.
 
@@ -279,7 +279,7 @@ flowchart LR
     UV_SYSTEM_CERTS"]
 ```
 
-A single merged CA bundle and a small set of well-known environment variables - set in the `managed env` block - cover every tool ecosystem the project supports. On macOS, certificates are exported directly from the Keychain to capture corporate CAs deployed via MDM. The two helper functions `cert_intercept` and `fixcertpy` are available afterward for ongoing certificate management (new VPN, additional hosts, fresh Python virtualenv).
+A single merged CA bundle and a small set of well-known environment variables - set in the `env:managed` block - cover every tool ecosystem the project supports. On macOS, certificates are exported directly from the Keychain to capture corporate CAs deployed via MDM. The two helper functions `cert_intercept` and `fixcertpy` are available afterward for ongoing certificate management (new VPN, additional hosts, fresh Python virtualenv).
 
 VS Code Server has a separate problem: it does not source `~/.bashrc`, so shell-profile env vars are invisible to extensions. The setup writes `~/.vscode-server/server-env-setup`, which VS Code Server sources before launching extensions, eliminating `SELF_SIGNED_CERT_IN_CHAIN` errors in GitHub Actions, GitHub Pull Requests, and similar HTTPS-using extensions.
 

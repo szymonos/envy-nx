@@ -255,13 +255,9 @@ jobs:
           echo "--- Running nix/uninstall.sh --env-only ---"
           nix/uninstall.sh --env-only
 
-          echo "--- Checking nix:managed block removed (and legacy too) ---"
+          echo "--- Checking nix:managed block removed ---"
           if grep -qF '# >>> nix:managed >>>' ~/.bashrc; then
             echo "ERROR: nix:managed block still present"
-            exit 1
-          fi
-          if grep -qF '# >>> nix-env managed >>>' ~/.bashrc; then
-            echo "ERROR: legacy nix-env managed block still present"
             exit 1
           fi
 
