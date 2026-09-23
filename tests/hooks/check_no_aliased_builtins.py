@@ -42,7 +42,7 @@ import re
 import sys
 from pathlib import Path
 
-from tests.hooks._file_scopes import ALIASED_BUILTINS_FILES
+from tests.hooks._file_scopes import INTERACTIVE_SHELL
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -120,9 +120,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         # Standalone: scan the file list from _file_scopes.py - the same
         # source the pre-commit `files:` regex is derived from.
-        files = [
-            REPO_ROOT / p for p in ALIASED_BUILTINS_FILES if (REPO_ROOT / p).is_file()
-        ]
+        files = [REPO_ROOT / p for p in INTERACTIVE_SHELL if (REPO_ROOT / p).is_file()]
 
     failures: list[tuple[Path, int, str, str]] = []
     for f in files:

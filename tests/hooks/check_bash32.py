@@ -173,11 +173,6 @@ def _resolve_nix_path_files(repo_root: Path) -> set[Path]:
     return files
 
 
-def _is_nix_path_file(filepath: Path, nix_files: set[Path]) -> bool:
-    """Check if a resolved filepath is in the nix-path set."""
-    return filepath.resolve() in nix_files
-
-
 def check_file(filepath: Path) -> list[str]:
     """Check a single file for bash 3.2 / BSD compatibility violations."""
     problems: list[str] = []

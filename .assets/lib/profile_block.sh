@@ -25,16 +25,6 @@
 function _pb_begin_tag() { printf '# >>> %s >>>' "$1"; }
 function _pb_end_tag() { printf '# <<< %s <<<' "$1"; }
 
-# _pb_count_occurrences <rc-file> <marker>
-# prints the number of begin-tag lines found
-function _pb_count_occurrences() {
-  local rc="$1" marker="$2"
-  local tag
-  tag="$(_pb_begin_tag "$marker")"
-  # grep -c returns 0 when no match on some implementations; guard with || true
-  grep -cF "$tag" "$rc" 2>/dev/null || true
-}
-
 # manage_block <rc-file> <marker> <action> [<content-file>]
 function manage_block() {
   local rc="$1" marker="$2" action="$3" content_file="${4:-}"
@@ -60,7 +50,8 @@ function manage_block() {
 
   remove)
     local count
-    count="$(_pb_count_occurrences "$rc" "$marker")"
+    # grep -c exits 1 on zero matches; || true keeps the count
+    count="$(grep -cF "$begin_tag" "$rc" 2>/dev/null || true)"
     if [ "$count" -eq 0 ]; then
       return 0
     fi
@@ -90,7 +81,7 @@ function manage_block() {
     }
 
     local count
-    count="$(_pb_count_occurrences "$rc" "$marker")"
+    count="$(grep -cF "$begin_tag" "$rc" 2>/dev/null || true)"
     if [ "$count" -gt 1 ]; then
       printf '\e[33mwarning: found %s occurrences of managed block "%s" in %s; replacing all with one\e[0m\n' \
         "$count" "$marker" "$rc" >&2

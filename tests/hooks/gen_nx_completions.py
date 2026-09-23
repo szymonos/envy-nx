@@ -82,22 +82,6 @@ def all_names(verb_or_subverb):
     return [verb_or_subverb["name"]] + list(verb_or_subverb.get("aliases", []))
 
 
-def find_verb(manifest, name):
-    """Return the verb dict whose canonical name or alias matches `name`."""
-    for v in manifest["verbs"]:
-        if name in all_names(v):
-            return v
-    return None
-
-
-def find_subverb(verb, name):
-    """Return the subverb dict under `verb` matching `name` or an alias."""
-    for sv in verb.get("subverbs", []):
-        if name in all_names(sv):
-            return sv
-    return None
-
-
 def verbs_with_subverbs(manifest):
     """Return verbs that declare a non-empty `subverbs` list."""
     return [v for v in manifest["verbs"] if v.get("subverbs")]
