@@ -5,6 +5,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.23.1] - 2026-09-23
+
+### Changed
+
+- Refreshed transitive dev dependencies in `uv.lock` (`pymdown-extensions` 12.1).
+
+### Removed
+
+- `nx profile`, `nx doctor`, `setup_profile_user.zsh` and `nix/uninstall.sh` no longer recognize the pre-1.5 managed-block names `nix-env managed` / `managed env`.
+- **Action required** only if you last ran setup on 1.4.x or older: delete the `nix-env managed` and `managed env` blocks from `~/.bashrc` / `~/.zshrc` by hand, then run `nx profile regenerate`.
+- Post-install no longer removes the `do-linux` PowerShell module renamed to `do-unix` in 1.12.0; if it is still installed, remove it with `Uninstall-Module do-linux`.
+- The `check-arch-drift` hook no longer supports `<!-- arch:count -->` markers; ARCHITECTURE.md now leaves exact test counts out of its prose, and `arch:max-lines` budgets are unchanged.
+
 ## [1.23.0] - 2026-09-22
 
 ### Added
