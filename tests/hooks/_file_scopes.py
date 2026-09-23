@@ -52,8 +52,3 @@ INTERACTIVE_SHELL: tuple[str, ...] = (
     # certs.sh is sourced from $HOME/.config/shell/certs.sh in functions.sh
     ".assets/lib/certs.sh",
 )
-
-# Alias for the alias-builtins hook. Reuses INTERACTIVE_SHELL as-is today;
-# named separately so future divergence (e.g. a subset that needs a different
-# rule) doesn't require touching the importer.
-ALIASED_BUILTINS_FILES: tuple[str, ...] = INTERACTIVE_SHELL
