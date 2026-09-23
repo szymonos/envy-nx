@@ -533,9 +533,9 @@ EOF
   _write_flake_lock
   _write_install_json
   cat >"$HOME/.bashrc" <<'EOF'
-# >>> nix-env managed >>>
+# >>> nix:managed >>>
 some content
-# <<< nix-env managed <<<
+# <<< nix:managed <<<
 EOF
   run bash "$DOCTOR_SCRIPT"
   [[ "$output" == *"PASS  shell_profile"* ]]
@@ -545,12 +545,12 @@ EOF
   _write_flake_lock
   _write_install_json
   cat >"$HOME/.bashrc" <<'EOF'
-# >>> nix-env managed >>>
+# >>> nix:managed >>>
 block 1
-# <<< nix-env managed <<<
-# >>> nix-env managed >>>
+# <<< nix:managed <<<
+# >>> nix:managed >>>
 block 2
-# <<< nix-env managed <<<
+# <<< nix:managed <<<
 EOF
   run bash "$DOCTOR_SCRIPT"
   [[ "$output" == *"FAIL  shell_profile"* ]]
@@ -561,9 +561,9 @@ EOF
   _write_flake_lock
   _write_install_json
   cat >"$HOME/.bashrc" <<'EOF'
-# >>> nix-env managed >>>
+# >>> nix:managed >>>
 some content
-# <<< nix-env managed <<<
+# <<< nix:managed <<<
 EOF
   # broken .zshrc must NOT cause a failure when invoked from bash
   cat >"$HOME/.zshrc" <<'EOF'
@@ -581,9 +581,9 @@ EOF
 # legacy bashrc, no managed block
 EOF
   cat >"$HOME/.zshrc" <<'EOF'
-# >>> nix-env managed >>>
+# >>> nix:managed >>>
 some content
-# <<< nix-env managed <<<
+# <<< nix:managed <<<
 EOF
   NX_INVOKING_SHELL=zsh run bash "$DOCTOR_SCRIPT"
   [[ "$output" == *"PASS  shell_profile"* ]]
@@ -594,9 +594,9 @@ EOF
   _write_install_json
   # valid .bashrc, broken .zshrc - and we're auditing zsh
   cat >"$HOME/.bashrc" <<'EOF'
-# >>> nix-env managed >>>
+# >>> nix:managed >>>
 some content
-# <<< nix-env managed <<<
+# <<< nix:managed <<<
 EOF
   cat >"$HOME/.zshrc" <<'EOF'
 # legacy zshrc, no managed block
@@ -614,9 +614,9 @@ EOF
 # legacy bashrc, no managed block
 EOF
   cat >"$HOME/.zshrc" <<'EOF'
-# >>> nix-env managed >>>
+# >>> nix:managed >>>
 some content
-# <<< nix-env managed <<<
+# <<< nix:managed <<<
 EOF
   unset NX_INVOKING_SHELL
   SHELL=/usr/bin/zsh run bash "$DOCTOR_SCRIPT"
@@ -783,9 +783,9 @@ _write_env_dir_files() {
   _write_flake_lock
   _write_install_json
   cat >"$HOME/.bashrc" <<'EOF'
-# >>> nix-env managed >>>
+# >>> nix:managed >>>
 echo hello
-# <<< nix-env managed <<<
+# <<< nix:managed <<<
 EOF
   run bash "$DOCTOR_SCRIPT"
   [[ "$output" == *"PASS  shell_config_files"* ]]
@@ -797,9 +797,9 @@ EOF
   mkdir -p "$HOME/.config/shell"
   : >"$HOME/.config/shell/aliases_nix.sh"
   cat >"$HOME/.bashrc" <<'EOF'
-# >>> nix-env managed >>>
+# >>> nix:managed >>>
 . "$HOME/.config/shell/aliases_nix.sh"
-# <<< nix-env managed <<<
+# <<< nix:managed <<<
 EOF
   run bash "$DOCTOR_SCRIPT"
   [[ "$output" == *"PASS  shell_config_files"* ]]
@@ -812,10 +812,10 @@ EOF
   : >"$HOME/.config/shell/aliases_nix.sh"
   # aliases_git.sh is referenced but doesn't exist
   cat >"$HOME/.bashrc" <<'EOF'
-# >>> nix-env managed >>>
+# >>> nix:managed >>>
 . "$HOME/.config/shell/aliases_nix.sh"
 [ -f "$HOME/.config/shell/aliases_git.sh" ] && . "$HOME/.config/shell/aliases_git.sh"
-# <<< nix-env managed <<<
+# <<< nix:managed <<<
 EOF
   run bash "$DOCTOR_SCRIPT"
   [[ "$output" == *"FAIL  shell_config_files"* ]]
@@ -959,9 +959,9 @@ EOF
   _write_install_json
   _write_env_dir_files
   cat >"$HOME/.bashrc" <<'EOF'
-# >>> nix-env managed >>>
+# >>> nix:managed >>>
 some content
-# <<< nix-env managed <<<
+# <<< nix:managed <<<
 EOF
   run bash "$DOCTOR_SCRIPT"
   # flake_lock passes -> must not have a Fix line for it

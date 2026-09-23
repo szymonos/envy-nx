@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Integration tests for nx profile subcommand and legacy cleanup during regenerate
+# Integration tests for nx profile subcommand
 bats_require_minimum_version 1.5.0
 
 REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd)"
@@ -71,27 +71,6 @@ alias gs='git status'
 RC
 }
 
-# Pre-1.5 marker names; used to test the silent migration in regenerate.
-_write_legacy_marker_bashrc() {
-  cat >"$HOME/.bashrc" <<'RC'
-# pre-existing user content
-alias ll='ls -la'
-
-# >>> managed env >>>
-if [ -d "$HOME/.local/bin" ]; then
-  export PATH="$HOME/.local/bin:$PATH"
-fi
-# <<< managed env <<<
-
-# >>> nix-env managed >>>
-export PATH="$HOME/.nix-profile/bin:$PATH"
-# <<< nix-env managed <<<
-
-# trailing user content
-alias gs='git status'
-RC
-}
-
 # Force `uname -s` to report a given kernel so the Darwin-only ~/.bash_profile
 # shim can be exercised on Linux CI. Other flags fall through to the real uname.
 _stub_uname() {
@@ -121,17 +100,6 @@ EOF
 
 @test "profile doctor passes when managed block present" {
   _write_clean_bashrc_with_block
-  run nx profile doctor
-  [ "$status" -eq 0 ]
-  [[ "$output" =~ "healthy" ]]
-}
-
-@test "profile doctor passes for users with legacy marker names (silent migration)" {
-  # Existing users who upgraded to >=1.5 but haven't run regenerate yet
-  # still have the old "nix-env managed" / "managed env" marker names.
-  # Doctor must not flag this as broken - migration happens automatically
-  # on the next regenerate.
-  _write_legacy_marker_bashrc
   run nx profile doctor
   [ "$status" -eq 0 ]
   [[ "$output" =~ "healthy" ]]
@@ -268,31 +236,6 @@ RC
   grep -q 'uv generate-shell-completion bash' "$HOME/.bashrc"
 }
 
-@test "profile regenerate migrates legacy marker names to nix:managed / env:managed" {
-  _write_legacy_marker_bashrc
-  # sanity: rc starts with legacy markers
-  grep -qF '# >>> nix-env managed >>>' "$HOME/.bashrc"
-  grep -qF '# >>> managed env >>>' "$HOME/.bashrc"
-
-  nx profile regenerate
-
-  # legacy markers gone
-  run grep -cF '# >>> nix-env managed >>>' "$HOME/.bashrc"
-  [ "$output" -eq 0 ]
-  run grep -cF '# >>> managed env >>>' "$HOME/.bashrc"
-  [ "$output" -eq 0 ]
-
-  # new markers present, exactly once each
-  run grep -cF '# >>> nix:managed >>>' "$HOME/.bashrc"
-  [ "$output" -eq 1 ]
-  run grep -cF '# >>> env:managed >>>' "$HOME/.bashrc"
-  [ "$output" -eq 1 ]
-
-  # user content outside the blocks survived the migration
-  grep -q "alias ll='ls -la'" "$HOME/.bashrc"
-  grep -q "alias gs='git status'" "$HOME/.bashrc"
-}
-
 # ---------------------------------------------------------------------------
 # nx profile uninstall
 # ---------------------------------------------------------------------------
@@ -304,17 +247,6 @@ RC
   run grep -cF "# >>> nix:managed >>>" "$HOME/.bashrc"
   [ "$output" -eq 0 ]
   run grep -cF "# >>> env:managed >>>" "$HOME/.bashrc"
-  [ "$output" -eq 0 ]
-}
-
-@test "profile uninstall also removes legacy-named blocks (transitional users)" {
-  _write_legacy_marker_bashrc
-  run nx profile uninstall
-  [ "$status" -eq 0 ]
-  # both legacy markers removed
-  run grep -cF "# >>> nix-env managed >>>" "$HOME/.bashrc"
-  [ "$output" -eq 0 ]
-  run grep -cF "# >>> managed env >>>" "$HOME/.bashrc"
   [ "$output" -eq 0 ]
 }
 

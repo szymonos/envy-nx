@@ -113,12 +113,6 @@ source "${0:A:h}/../lib/nx_profile.sh"
 # Managed-block marker names (formerly defined in the now-consolidated
 # env_block.sh; kept here with their sole remaining consumer).
 ENV_BLOCK_MARKER="env:managed"
-ENV_BLOCK_LEGACY_MARKER="managed env"  # legacy name from <= 1.4.x, stripped below
-# MIGRATION: strip legacy-named block before upserting the new one to avoid
-# duplicates for users transitioning from the old marker convention.
-if grep -qF "# >>> $ENV_BLOCK_LEGACY_MARKER >>>" "$HOME/.zshrc" 2>/dev/null; then
-  manage_block "$HOME/.zshrc" "$ENV_BLOCK_LEGACY_MARKER" remove
-fi
 _env_tmp="$(mktemp)"
 _nx_render_env_block >"$_env_tmp"
 manage_block "$HOME/.zshrc" "$ENV_BLOCK_MARKER" upsert "$_env_tmp"

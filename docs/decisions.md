@@ -260,7 +260,7 @@ The `grep -q 'pattern' || echo 'line' >> ~/.bashrc` pattern is the most common a
 - Uninstallation leaves orphaned lines that can cause errors after the tool is removed
 - There is no way to update configuration in place - only append more
 
-This tool uses a **managed block** pattern instead. Configuration is written between sentinel markers (`# >>> nix-env managed >>>` / `# <<< nix-env managed <<<`) and fully regenerated on each run:
+This tool uses a **managed block** pattern instead. Configuration is written between sentinel markers (`# >>> nix:managed >>>` / `# <<< nix:managed <<<`) and fully regenerated on each run:
 
 - **Idempotent** - running setup any number of times produces identical results, validated by CI on every PR
 - **Updatable** - the block is replaced atomically, not appended to
