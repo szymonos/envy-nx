@@ -137,56 +137,15 @@ EOF
   [[ "$output" == *"does not exist"* ]]
 }
 
-# ---- C. exact counts --------------------------------------------------------
-
-@test "count: matching count => pass" {
-  printf '@test "a" {\n}\n@test "b" {\n}\n' >"$FIXTURE/tests/bats/sample.bats"
-  _arch <<'EOF'
-2 tests <!-- arch:count tests/bats/sample.bats '^@test' 2 --> cover it.
-EOF
-  run _run_hook
-  [[ "$status" -eq 0 ]]
-}
-
-@test "count: mismatched count => fail with actual and claimed" {
-  printf '@test "a" {\n}\n@test "b" {\n}\n@test "c" {\n}\n' >"$FIXTURE/tests/bats/sample.bats"
-  _arch <<'EOF'
-2 tests <!-- arch:count tests/bats/sample.bats '^@test' 2 --> cover it.
-EOF
-  run _run_hook
-  [[ "$status" -eq 1 ]]
-  [[ "$output" == *"has 3 lines matching"* ]]
-  [[ "$output" == *"claims 2"* ]]
-}
-
-@test "count: quoted regex containing a space parses" {
-  printf '    It "one" {\n    }\n    It "two" {\n    }\n' >"$FIXTURE/tests/bats/sample.bats"
-  _arch <<'EOF'
-2 tests <!-- arch:count tests/bats/sample.bats '^\s*It ' 2 --> cover it.
-EOF
-  run _run_hook
-  [[ "$status" -eq 0 ]]
-}
-
-@test "count: glob target sums across files" {
-  printf '@test "a" {\n}\n' >"$FIXTURE/tests/bats/one.bats"
-  printf '@test "b" {\n}\n' >"$FIXTURE/tests/bats/two.bats"
-  _arch <<'EOF'
-2 tests <!-- arch:count tests/bats/*.bats '^@test' 2 --> cover it.
-EOF
-  run _run_hook
-  [[ "$status" -eq 0 ]]
-}
-
 # ---- marker hygiene ---------------------------------------------------------
 
 @test "malformed marker: too few arguments => fail loudly" {
   _arch <<'EOF'
-Broken <!-- arch:count tests/bats/sample.bats -->
+Broken <!-- arch:max-lines .assets/lib/real.sh -->
 EOF
   run _run_hook
   [[ "$status" -eq 1 ]]
-  [[ "$output" == *"arch:count takes"* ]]
+  [[ "$output" == *"arch:max-lines takes"* ]]
 }
 
 @test "malformed marker: non-numeric budget => fail loudly" {
@@ -198,15 +157,6 @@ EOF
   [[ "$output" == *"must be a number"* ]]
 }
 
-@test "malformed marker: invalid regex => fail loudly" {
-  _arch <<'EOF'
-Broken <!-- arch:count .assets/lib/real.sh '[unclosed' 1 -->
-EOF
-  run _run_hook
-  [[ "$status" -eq 1 ]]
-  [[ "$output" == *"is invalid"* ]]
-}
-
 @test "clean tree with no docs at all => pass" {
   run _run_hook
   [[ "$status" -eq 0 ]]
@@ -215,7 +165,7 @@ EOF
 @test "marker inside backticks is documentation, not a claim" {
   # ARCHITECTURE.md §8 documents the marker syntax; it must not self-trigger.
   _arch <<'INNER'
-Use `<!-- arch:max-lines -->` and `<!-- arch:count -->` to state a claim.
+Use `<!-- arch:max-lines -->` to state a claim.
 INNER
   run _run_hook
   [[ "$status" -eq 0 ]]
