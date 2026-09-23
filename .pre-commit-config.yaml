@@ -44,9 +44,8 @@ repos:
         name: Forbid bare `mv`/`cp` in interactively-sourced shell files
         entry: python3 -m tests.hooks.check_no_aliased_builtins
         language: system
-        # File list owned by tests/hooks/_file_scopes.py::ALIASED_BUILTINS_FILES.
-        # Keep this regex in sync when you add or remove an INTERACTIVE_SHELL
-        # entry there. (Future: gen_pre_commit_scopes.py will codegen this.)
+        # File list owned by tests/hooks/_file_scopes.py::INTERACTIVE_SHELL.
+        # Keep this regex in sync when you add or remove an entry there. (Future: gen_pre_commit_scopes.py will codegen this.)
         files: (\.assets/config/shell_cfg/(aliases_git|aliases_kubectl|aliases_nix|functions)\.sh$|\.assets/lib/(nx|nx_pkg|nx_scope|nx_profile|nx_lifecycle|nx_doctor|profile_block|helpers|certs|env_block)\.sh$)
         types: [file]
       - id: check-distro-case-arm
@@ -103,7 +102,7 @@ repos:
         language: script
         files: ^\.(claude|github)/skills/[^/]+/SKILL\.md$
       - id: check-arch-drift
-        name: Check design docs for dead paths and stale counts
+        name: Check design docs for dead paths and line budgets
         entry: python3 -m tests.hooks.check_arch_drift
         language: system
         # always_run: a line budget must fail when the code grows, not only

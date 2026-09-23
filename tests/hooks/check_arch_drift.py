@@ -12,7 +12,7 @@ check list, the wsl function split) survives editing because changing it
 requires understanding it. What rots is what nobody re-derives: a file path
 that outlived its file, and a count that was true once.
 
-Three assertions, all opt-in-free or annotation-local:
+Two assertions, both opt-in-free or annotation-local:
 
 A. **Dead path references.** Every backtick-quoted path in a doc must exist.
    Only paths rooted at a real repo top-level directory are judged, which is
@@ -23,11 +23,8 @@ A. **Dead path references.** Every backtick-quoted path in a doc must exist.
 
 B. **Line budgets** - `<!-- arch:max-lines <path> <max> -->`. For counts that
    state design intent ("slim ~190-line orchestrator"). Widening one past the
-   budget then has to be a deliberate edit to the number.
-
-C. **Exact counts** - `<!-- arch:count <path> '<regex>' <n> -->`. Fails when
-   the number of lines matching `<regex>` is not `<n>`. `<path>` may be a
-   glob, in which case matches are summed across files.
+   budget then has to be a deliberate edit to the number. Exact counts (tests
+   in a file, hooks in a config) are not guarded: state none in prose.
 
 Markers live inline next to the claim they guard so the two cannot drift
 apart. HTML comments are safe in these files: `check-md-html-tags` scopes to
@@ -92,11 +89,11 @@ REPO_DIRS = (
 # the closing backtick.
 PATH_RE = re.compile(r"`([.\w-]+(?:/[.\w*-]+)+)(?:::[\w.]+|:\d+)?`")
 
-MARKER_RE = re.compile(r"<!--\s*arch:(max-lines|count)\s+(.*?)\s*-->")
+MARKER_RE = re.compile(r"<!--\s*arch:max-lines\s+(.*?)\s*-->")
 
 # A design proposal describes files that do not exist yet - that is its job, not
 # drift. Such a doc declares itself with `<!-- arch-drift: proposal -->`, which
-# exempts it from the path check only. Counts and budgets still apply, and the
+# exempts it from the path check only. Line budgets still apply, and the
 # opt-out lives in the document rather than in an allowlist here so it is visible
 # to whoever is reading the proposal.
 PROPOSAL_RE = re.compile(r"<!--\s*arch-drift:\s*proposal\s*-->")
@@ -150,19 +147,17 @@ def _check_paths(doc: Path, root: Path) -> list[tuple[int, str]]:
 
 
 def _check_markers(doc: Path, root: Path) -> list[tuple[int, str]]:
-    """Evaluate every arch:max-lines / arch:count marker in *doc*."""
+    """Evaluate every arch:max-lines marker in *doc*."""
     failures = []
     for lineno, line in enumerate(doc.read_text(encoding="utf-8").splitlines(), 1):
         prose = CODE_SPAN_RE.sub(lambda m: " " * len(m.group(0)), line)
         for match in MARKER_RE.finditer(prose):
-            kind, rest = match.group(1), match.group(2)
             try:
-                args = shlex.split(rest)
+                args = shlex.split(match.group(1))
             except ValueError as exc:
-                failures.append((lineno, f"malformed arch:{kind} marker: {exc}"))
+                failures.append((lineno, f"malformed arch:max-lines marker: {exc}"))
                 continue
-            handler = _check_max_lines if kind == "max-lines" else _check_count
-            failures.extend((lineno, msg) for msg in handler(root, args))
+            failures.extend((lineno, msg) for msg in _check_max_lines(root, args))
     return failures
 
 
@@ -185,38 +180,8 @@ def _check_max_lines(root: Path, args: list[str]) -> list[str]:
     return []
 
 
-def _check_count(root: Path, args: list[str]) -> list[str]:
-    if len(args) != 3:
-        return ["arch:count takes <path> '<regex>' <n>, got: " + " ".join(args)]
-    spec, pattern, raw_expected = args
-    if not raw_expected.isdigit():
-        return [f"arch:count expects a number, got `{raw_expected}`"]
-    try:
-        regex = re.compile(pattern)
-    except re.error as exc:
-        return [f"arch:count regex `{pattern}` is invalid: {exc}"]
-    targets = _resolve(root, spec)
-    if not targets:
-        return [f"arch:count target `{spec}` does not exist"]
-    expected = int(raw_expected)
-    actual = sum(
-        sum(
-            1
-            for line in t.read_text(encoding="utf-8").splitlines()
-            if regex.search(line)
-        )
-        for t in targets
-    )
-    if actual != expected:
-        return [
-            f"`{spec}` has {actual} lines matching /{pattern}/, "
-            f"but the doc claims {expected}. Update the prose and the marker."
-        ]
-    return []
-
-
 def main(argv: list[str] | None = None) -> int:
-    """Check every agent-facing doc for dead paths and stale counts."""
+    """Check every agent-facing doc for dead paths and blown line budgets."""
     del argv  # pre-commit passes no filenames; budgets must fire on code edits too
     root = _root()
     failures: list[tuple[Path, int, str]] = []
