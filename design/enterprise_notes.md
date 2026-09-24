@@ -15,16 +15,16 @@ Base (this repo, immutable)
 ```
 
 The base repo provides the overlay skeleton (directory discovery, scope
-copy with `local_` prefix, hook directories). The org tier and its
+copy with `local_` prefix). Overlays do not ship hooks - setup runs them only
+from `~/.config/nix-env/hooks/` (see `overlay_catalog.md` 3.7). The org tier and its
 distribution/signing infrastructure are enterprise-specific.
 
 ### Extension points (already working for base + user tiers)
 
-| Extension point | Base location               | Overlay location                |
-| --------------- | --------------------------- | ------------------------------- |
-| Nix scopes      | `nix/scopes/*.nix`          | `<overlay>/scopes/*.nix`        |
-| Shell aliases   | `.assets/config/shell_cfg/` | `<overlay>/shell_cfg/`          |
-| Post-install    | `nix/configure/*.sh`        | `<overlay>/hooks/post-setup.d/` |
+| Extension point | Base location               | Overlay location         |
+| --------------- | --------------------------- | ------------------------ |
+| Nix scopes      | `nix/scopes/*.nix`          | `<overlay>/scopes/*.nix` |
+| Shell aliases   | `.assets/config/shell_cfg/` | `<overlay>/shell_cfg/`   |
 
 ### What the org tier adds (not implemented)
 

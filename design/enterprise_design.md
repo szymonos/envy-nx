@@ -26,11 +26,34 @@ Each section follows the same shape: **Re-review → Design → Acceptance crite
 
 `phase_platform_run_hooks` and `NIX_ENV_OVERLAY_DIR` already exist (`nix/lib/phases/platform.sh:31-49`). The overlay directory is discovered; `.nix` files under `scopes/` are listed in the summary. But:
 
-- **Nothing in `nix/flake.nix` actually consumes the overlay scopes.** Listing is not loading.
+- ~~**Nothing in `nix/flake.nix` actually consumes the overlay scopes.** Listing is not loading.~~
+  **Resolved.** `phase_platform_discover_overlay` copies each `$OVERLAY_DIR/scopes/*.nix` to
+  `$ENV_DIR/scopes/local_<name>.nix` and sweeps orphans, so the flake's existing
+  `import ./scopes/${scope}.nix` picks them up. The flake needed no change.
 - **No `overlay.yaml` metadata schema.** An org overlay dropped into `$OVERLAY_DIR` has no way to declare its name, version, or minimum core version - so the core can't refuse an incompatible overlay.
 - **No verification of overlay integrity.** Dropped-in scopes are trusted without signature checks. `enterprise_notes.md:30-35` pushes this to the fork; that's fine, but the **seam** for verification (a hook point that runs before overlay consumption) doesn't exist yet.
 - **User-tier overlay writable path is implicit** (`$ENV_DIR/local`). Never documented as a public contract.
 - **`docs/customization.md`** exists but doesn't yet describe the overlay contract at the level a fork would need to rely on it.
+
+### 1.1a Scope of the tier split
+
+> The distribution half of this section is superseded by
+> [`overlay_catalog.md`](overlay_catalog.md) (subscriptions, catalogs, several
+> overlays at once). What remains here is the policy half.
+
+Independent team distribution already works with the single overlay directory: a
+team publishes a git repo, each member exports `NIX_ENV_OVERLAY_DIR`, and the copy
+step syncs the scopes. The tiers below are not needed for that. They answer a
+different question - how an organization imposes a baseline that a user cannot
+bypass - and only earn their cost when signing and precedence are real
+requirements.
+
+One consequence of the single directory is live today and is documented in
+`docs/customization.md`: `NIX_ENV_OVERLAY_DIR` replaces `$ENV_DIR/local` instead of
+adding to it, so a user who joins a team overlay loses their personal overlay
+scopes from the build. If that becomes a real complaint, the cheap fix is to let
+the variable hold a `PATH`-style list and to loop the copy step over the entries -
+not the full tier contract below.
 
 ### 1.2 Design
 
@@ -62,7 +85,8 @@ Promote the overlay from a "skeleton" into a **documented three-tier contract** 
 
    The core parses `overlay.yaml` (python stdlib yaml isn't stdlib - use a tiny bash YAML shim or require `yq` for overlay-aware features; absence = skip).
 
-3. **Wire overlay scopes into the flake.** Extend `nix/flake.nix` to read `$NIX_ENV_ORG_OVERLAY_DIR/scopes` and `$NIX_ENV_USER_OVERLAY_DIR/scopes` as additional import roots. Missing dirs = no-op.
+3. ~~**Wire overlay scopes into the flake.** Extend `nix/flake.nix` to read `$NIX_ENV_ORG_OVERLAY_DIR/scopes` and `$NIX_ENV_USER_OVERLAY_DIR/scopes` as additional import roots. Missing dirs = no-op.~~
+   **Superseded.** Solved by the copy step in `phase_platform_discover_overlay`, not by new import roots. If the tier split is ever built, extend that copy loop to walk several directories in order - do not teach the flake about overlay paths.
 
 4. **Pre-overlay verification hook**: `$ENV_DIR/hooks/pre-overlay.d/`. Runs before overlay scopes are loaded. If any hook exits non-zero, overlay is rejected for that run. This is the seam where a fork plugs in signature verification, minisign checks, or policy gates - none of which live in the core.
 
@@ -89,7 +113,7 @@ Promote the overlay from a "skeleton" into a **documented three-tier contract** 
 ### 1.4 Tasks
 
 - [ ] Split `NIX_ENV_OVERLAY_DIR` into `NIX_ENV_ORG_OVERLAY_DIR` + `NIX_ENV_USER_OVERLAY_DIR` in `platform.sh`; keep legacy var as deprecated alias with warning.
-- [ ] Extend `nix/flake.nix` to import scopes from org + user overlay paths when present.
+- [x] ~~Extend `nix/flake.nix` to import scopes from org + user overlay paths when present.~~ Done differently: the copy step in `phase_platform_discover_overlay` syncs overlay scopes into `$ENV_DIR/scopes/`, so the flake is unchanged.
 - [ ] Write `nix/lib/phases/overlay.sh` (or extend platform.sh) with `phase_overlay_load_metadata` (parses `overlay.yaml`) and `phase_overlay_check_compat` (version constraints).
 - [ ] Add `pre-overlay.d` hook point invocation before overlay scope load.
 - [ ] Implement `nx overlay info` + `nx overlay verify` subcommands.
