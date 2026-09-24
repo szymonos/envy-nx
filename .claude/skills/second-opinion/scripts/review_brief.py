@@ -2,21 +2,24 @@
 """
 Review brief management for the /second-opinion skill.
 
-Three subcommands:
+Four subcommands:
   check    - verify REVIEW-BRIEF.md repo tag matches current repo
   discover - scan repo for context to generate/update the brief
   parse    - parse Copilot's raw output into structured JSON findings
+  model    - pick the reviewer model for the diff since <base>
 
 Usage:
     uv run --frozen python scripts/review_brief.py check
     uv run --frozen python scripts/review_brief.py discover
     uv run --frozen python scripts/review_brief.py parse <raw-output-file>
     echo "<copilot output>" | uv run --frozen python scripts/review_brief.py parse -
+    uv run --frozen python scripts/review_brief.py model <base>
 """
 
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import json
 import re
 import subprocess
@@ -45,6 +48,14 @@ SKIP_DIRS = {
     "site",
 }
 MAX_CONTEXT_LINES = 80
+
+DEFAULT_MODEL = "gpt-6-luna"
+PREMIUM_MODEL = "gpt-6-sol"
+# Changed lines of code above which a diff gets the premium reviewer even when
+# it touches no trigger path. Calibrated so that, with this repo's trigger list,
+# about a third of releases qualify.
+COMPLEX_LINES = 1200
+NON_CODE = ("*.md", "*.lock", "*.txt", "*.svg", "*.png")
 
 
 def _find_brief(start: Path | None = None) -> Path | None:
@@ -306,6 +317,65 @@ def cmd_parse(args: argparse.Namespace) -> int:
     return 0
 
 
+def premium_globs(brief_text: str) -> list[str]:
+    """Backticked globs listed under the brief's `## Premium review triggers`."""
+    section = re.search(
+        r"^## Premium review triggers\n(.*?)(?=^## |\Z)", brief_text, re.M | re.S
+    )
+    return re.findall(r"^- `([^`]+)`", section.group(1), re.M) if section else []
+
+
+def choose_model(numstat: str, globs: list[str]) -> dict:
+    """
+    Pick the reviewer from `git diff --numstat --no-renames` output.
+
+    fnmatch's `*` also matches `/`, so `dir/*` covers the whole subtree.
+    """
+    sensitive: list[str] = []
+    code_lines = 0
+    for line in numstat.splitlines():
+        added, deleted, path = line.split("\t", 2)
+        if any(fnmatch.fnmatchcase(path, g) for g in globs):
+            sensitive.append(path)
+        if added == "-" or any(fnmatch.fnmatchcase(path, p) for p in NON_CODE):
+            continue
+        code_lines += int(added) + int(deleted)
+    reasons = []
+    if sensitive:
+        reasons.append(f"touches trigger paths: {', '.join(sensitive)}")
+    if code_lines > COMPLEX_LINES:
+        reasons.append(f"{code_lines} changed lines of code (> {COMPLEX_LINES})")
+    return {
+        "model": PREMIUM_MODEL if reasons else DEFAULT_MODEL,
+        "reasons": reasons,
+        "code_lines": code_lines,
+    }
+
+
+def cmd_model(args: argparse.Namespace) -> int:
+    """Print the reviewer model for the diff since args.base, with reasons."""
+    root = Path(args.repo_root).resolve()
+    brief = _find_brief(root / ".claude" / "skills" / "second-opinion")
+    globs = premium_globs(brief.read_text(encoding="utf-8")) if brief else []
+    numstat = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(root),
+            "diff",
+            "--numstat",
+            "--no-renames",
+            f"{args.base}..HEAD",
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    json.dump(choose_model(numstat, globs), sys.stdout, indent=2)
+    print()
+    return 0
+
+
 def main() -> int:
     """CLI entry point."""
     parser = argparse.ArgumentParser(description="Review brief management")
@@ -322,12 +392,16 @@ def main() -> int:
     parse_p = sub.add_parser("parse", help="Parse Copilot output into JSON findings")
     parse_p.add_argument("input", help="Path to raw output file, or '-' for stdin")
 
+    model_p = sub.add_parser("model", help="Pick the reviewer model for a diff")
+    model_p.add_argument("base", help="Diff base ref (reviews <base>..HEAD)")
+
     args = parser.parse_args()
 
     commands = {
         "check": cmd_check,
         "discover": cmd_discover,
         "parse": cmd_parse,
+        "model": cmd_model,
     }
     return commands[args.command](args)
 
