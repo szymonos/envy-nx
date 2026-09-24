@@ -5,6 +5,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.25.0] - 2026-09-24
+
+Playwright browser tests now run on any Linux host without root, and setup stops reporting a registered SSH key as missing.
+
+### Added
+
+- `playwright` scope (`--playwright`, pulls in `python`) installs the Playwright CLI as a uv tool. On macOS it takes the latest release and downloads its own Chromium.
+- On Linux the `playwright` scope adds Nix-built Chromium that runs on any distro and in rootless containers without `playwright install-deps`, and exports `PLAYWRIGHT_BROWSERS_PATH` in bash, zsh and PowerShell.
+- On Linux the Playwright CLI is pinned to the browsers' version, recorded in `$PLAYWRIGHT_BROWSERS_PATH.version`, so `playwright --version` shows the version a project must pin.
+
+### Fixed
+
+- Setup without `--register-ssh-key` no longer reports a registered SSH key as not registered. It now checks the key list on GitHub first and shows the opt-in hint only when the key is missing or the token cannot list keys.
+
 ## [1.24.0] - 2026-09-24
 
 Overlay scopes can now ship tools that are not in nixpkgs, the overlay documentation matches what the code actually does, and `/second-opinion` picks a stronger reviewer only where the risk warrants it.
