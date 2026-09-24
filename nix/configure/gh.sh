@@ -60,21 +60,30 @@ if [[ ! -f "$SSH_KEY" ]]; then
   ssh-keygen -t ed25519 -f "$SSH_KEY" -N "" -q
 fi
 
+# empty when the .pub is missing; guards below keep `grep -F ""` from matching every key
+pub_key_fp=$(awk '{print $2}' "$SSH_KEY.pub" 2>/dev/null || true)
 if [[ "$authed" != "true" ]]; then
   info "SSH key generated; skipped GitHub registration (not authenticated)."
 elif [[ "$register_ssh_key" != "true" ]]; then
-  info "SSH key not registered with GitHub (opt in with --register-ssh-key)."
-  info "  register manually: gh ssh-key add $SSH_KEY.pub"
-  info "  SSO orgs must also authorize the key for SSO."
+  # read-only check; a token without read:public_key lands on the hint
+  if [[ -n "$pub_key_fp" ]] && gh ssh-key list 2>/dev/null | grep -qF "$pub_key_fp"; then
+    ok "SSH key already registered on GitHub"
+  else
+    info "SSH key not registered with GitHub (opt in with --register-ssh-key)."
+    info "  register manually: gh ssh-key add $SSH_KEY.pub"
+    info "  SSO orgs must also authorize the key for SSO."
+  fi
 elif [[ -n "${GITHUB_TOKEN:-}" ]]; then
   # external token (CI, containers) - can't control its scopes
   info "skipping SSH key registration (using external GITHUB_TOKEN)."
+elif [[ -z "$pub_key_fp" ]]; then
+  warn "SSH key not registered: $SSH_KEY.pub is missing."
+  warn "  fix: ssh-keygen -y -f $SSH_KEY >$SSH_KEY.pub && gh ssh-key add $SSH_KEY.pub"
 else
   host_label="${USER}@$(uname -n)"
-  pub_key_fp=$(awk '{print $2}' "$SSH_KEY.pub")
   if [[ -n "${NX_SSH_KEY_FP:-}" && "$NX_SSH_KEY_FP" == "$pub_key_fp" ]]; then
     ok "SSH key already registered on GitHub (matched by fingerprint)"
-  elif ! gh ssh-key list 2>/dev/null | grep -q "$pub_key_fp"; then
+  elif ! gh ssh-key list 2>/dev/null | grep -qF "$pub_key_fp"; then
     info "adding SSH key to GitHub..."
     if ! gh ssh-key add "$SSH_KEY.pub" --title "$host_label $(date +%Y-%m-%d)"; then
       # existing token may lack admin:public_key scope. The refresh is an
