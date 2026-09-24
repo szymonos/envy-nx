@@ -1004,7 +1004,9 @@ Discovery order: `$NIX_ENV_OVERLAY_DIR` (if set and exists), then `~/.config/nix
 | -------------- | ------------------------------------------------- |
 | `scopes/*.nix` | Extra nix packages (copied as `local_*.nix`)      |
 | `shell_cfg/*`  | Extra shell config (copied to `~/.config/shell/`) |
-| `hooks/*.d/`   | Hook scripts (see 13.2)                           |
+
+An overlay's `hooks/` folder is ignored: setup runs hooks only from `~/.config/nix-env/hooks/`
+(13.2), and `nx overlay` reports overlay hook scripts as ignored. See `design/overlay_catalog.md` 3.7.
 
 ### 13.4. Shell config (`~/.config/shell/`)
 

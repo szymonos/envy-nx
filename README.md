@@ -43,7 +43,7 @@ nx doctor               # run health checks
 - **Corporate proxy handling** - MITM certificates detected and resolved automatically across Nix, Python, Node.js, and all other framework trust stores
 - **Composable scopes** - pick what you need (`--shell --k8s-dev --terraform`), skip what you don't
 - **Full lifecycle** - install, upgrade, rollback, and clean uninstall with `--dry-run` preview
-- **Extensible without forking** - team overlays, custom scopes, and setup hooks via `NIX_ENV_OVERLAY_DIR`
+- **Extensible without forking** - team overlays and custom scopes via `NIX_ENV_OVERLAY_DIR`, plus per-machine setup hooks
 - **Comprehensive test suites** (bats + Pester), custom pre-commit hooks, CI-validated on macOS and Linux on every PR
 
 ## Available scopes

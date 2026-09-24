@@ -197,7 +197,7 @@ This design enables the three customization patterns without forking:
 
 - **Solo developer** - `nx install httpie` adds a package to layer 4, no scope involved.
 - **Team** - point `NIX_ENV_OVERLAY_DIR` at a shared git repo with team-specific scopes (layer 3).
-- **Organization** - distribute org-wide scopes, hooks, and pinned `nixpkgs` revisions through the same overlay mechanism.
+- **Organization** - distribute org-wide scopes and shell config through the same overlay mechanism.
 
 See [Customization](customization.md) for the full guide.
 
@@ -426,17 +426,16 @@ graph TD
     B -- "overlay/scopes/*.nix" --> E["Custom scopes
     (local_ prefix)"]
     B -- "overlay/shell_cfg/*" --> F["Extra shell config"]
-    B -- "overlay/hooks/*.d/" --> G["Pre/post-setup hooks"]
     C -- "packages.nix" --> H["nx install <pkg>"]
 ```
 
-| Level        | Mechanism                                | Use case                                          |
-| ------------ | ---------------------------------------- | ------------------------------------------------- |
-| Individual   | `nx install <pkg>` → `packages.nix`      | One-off tools                                     |
-| Team         | Shared overlay via `NIX_ENV_OVERLAY_DIR` | Team-specific scopes, aliases, hooks              |
-| Organization | Org-managed overlay repo                 | Org standards, pinned revisions, compliance hooks |
+| Level        | Mechanism                                | Use case                         |
+| ------------ | ---------------------------------------- | -------------------------------- |
+| Individual   | `nx install <pkg>` → `packages.nix`      | One-off tools                    |
+| Team         | Shared overlay via `NIX_ENV_OVERLAY_DIR` | Team-specific scopes and aliases |
+| Organization | Org-managed overlay repo                 | Org-wide scopes and shell config |
 
-Overlay scopes are copied with a `local_` prefix to avoid collisions with base scope names. Hooks (`pre-setup.d/` and `post-setup.d/`) run during `nix/setup.sh` with documented environment variables (`NIX_ENV_VERSION`, `NIX_ENV_PLATFORM`, `NIX_ENV_SCOPES`, `NIX_ENV_PHASE`). A typical organization use case: a `pre-setup.d/pin_nixpkgs.sh` hook writes the org-approved `pinned_rev` so every developer resolves the same `nixpkgs` revision.
+Overlay scopes are copied with a `local_` prefix to avoid collisions with base scope names. Hooks (`pre-setup.d/` and `post-setup.d/`) are not part of the overlay: they are read only from `~/.config/nix-env/hooks/` on each machine, and run during `nix/setup.sh` with documented environment variables (`NIX_ENV_VERSION`, `NIX_ENV_PLATFORM`, `NIX_ENV_SCOPES`, `NIX_ENV_PHASE`). A typical organization use case: a `pre-setup.d/pin_nixpkgs.sh` hook writes the org-approved `pinned_rev` so every developer resolves the same `nixpkgs` revision.
 
 See [Customization](customization.md) for the full guide and worked examples.
 

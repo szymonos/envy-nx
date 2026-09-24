@@ -44,10 +44,10 @@ The complete install → configure → upgrade → rollback → uninstall lifecy
 The overlay system supports three levels of customization:
 
 - **Base layer** - curated scopes shipped with this repository
-- **Overlay layer** - organization or team scopes, shell config, and hooks distributed via `NIX_ENV_OVERLAY_DIR`
+- **Overlay layer** - organization or team scopes and shell config distributed via `NIX_ENV_OVERLAY_DIR`
 - **User layer** - individual packages via `nx install`
 
-An organization can maintain its own overlay repository with custom scopes (internal CLI tools, team-specific packages), shell aliases, and setup hooks - without modifying the base repository. Base updates are pulled independently of overlay changes.
+An organization can maintain its own overlay repository with custom scopes (internal CLI tools, team-specific packages) and shell aliases - without modifying the base repository. Base updates are pulled independently of overlay changes.
 
 ### IDP integration surface
 
@@ -99,7 +99,7 @@ Nix is the foundational dependency. Before organizational adoption, InfoSec and 
 - **Network requirements:** Nix downloads from `cache.nixos.org` (binary cache). Air-gapped environments need a local cache or binary mirror.
 - **MDM compatibility:** [Determinate Systems](https://determinate.systems/nix/macos/mdm/) provides a commercially supported installer with Jamf/Intune integration - the tool already uses their installer as the recommended method.
 
-**Mitigation:** `nx pin set <rev>` locks all packages to a specific nixpkgs commit SHA. Distributed via overlay hooks, this ensures every developer runs identical, audited package versions. The pin mechanism is already implemented and CI-tested.
+**Mitigation:** `nx pin set <rev>` locks all packages to a specific nixpkgs commit SHA. Set on every machine by a pre-setup hook (placed by device management - overlays cannot ship hooks), this ensures every developer runs identical, audited package versions. The pin mechanism is already implemented and CI-tested.
 
 ### Fleet telemetry
 
@@ -112,14 +112,14 @@ The hook system (`post-setup.d/`) provides the injection point. The telemetry en
 
 ### Policy enforcement
 
-The overlay hook system provides the mechanism (code runs at defined phases with access to environment variables). Example policies an organization might enforce:
+The hook system provides the mechanism (code runs at defined phases with access to environment variables). Hooks are per-machine files under `~/.config/nix-env/hooks/`; overlays cannot ship them, so an organization places them through its own device management. Example policies an organization might enforce:
 
 - Minimum tool versions
 - Required scopes for specific teams
 - Mandatory proxy certificate configuration
 - Package allowlists or blocklists
 
-No enforcement logic is included. The mechanism exists; the rules belong in the organization's overlay repository.
+No enforcement logic is included. The mechanism exists; the rules belong to the organization and are deployed with its device management.
 
 ### Distribution
 
