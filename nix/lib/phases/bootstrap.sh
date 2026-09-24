@@ -443,6 +443,7 @@ Scope flags (add new packages - merged with existing config):
   --k8s-dev     argo rollouts, cilium, flux, helm, hubble, kustomize, trivy
   --k8s-ext     minikube, k3d, kind
   --nodejs      Node.js
+  --playwright  Playwright CLI (uv) + Chromium (nix on Linux)
   --pwsh        PowerShell
   --python      uv + prek (python managed by uv/conda, not nix)
   --rice        btop, cmatrix, cowsay, fastfetch
@@ -474,7 +475,7 @@ EOF
 NX_SETUP_FLAGS=(
   -h --help
   --az --bun --conda --docker --gcloud --k8s-base --k8s-dev --k8s-ext
-  --nodejs --pwsh --python --rice --shell --terraform --zsh
+  --nodejs --playwright --pwsh --python --rice --shell --terraform --zsh
   --all --omp-theme --starship-theme --remove
   --unattended --register-ssh-key --skip-repo-update --update-modules
   --allow-unfree --upgrade --latest --quiet-summary
@@ -544,7 +545,7 @@ phase_bootstrap_parse_args() {
       exit 0
       ;;
     --az | --bun | --conda | --docker | --gcloud | --k8s-base | --k8s-dev | --k8s-ext | \
-      --nodejs | --pwsh | --python | --rice | --shell | --terraform | --zsh)
+      --nodejs | --playwright | --pwsh | --python | --rice | --shell | --terraform | --zsh)
       scope_add "${1#--}"
       any_scope=true
       ;;

@@ -159,6 +159,7 @@ function _nx() {
         '--k8s-dev:argo, cilium, flux, helm, hubble, kustomize, trivy'
         '--k8s-ext:minikube, k3d, kind'
         '--nodejs:Node.js'
+        '--playwright:Playwright CLI + Chromium'
         '--pwsh:PowerShell'
         '--python:uv + prek'
         '--rice:btop, cmatrix, cowsay, fastfetch'

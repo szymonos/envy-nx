@@ -77,7 +77,7 @@ Packages are organized into **scopes** - curated groups that can be composed to 
 | `conda`     | Miniforge                                   |
 | `docker`    | Docker post-install configuration           |
 
-Prompt engines (oh-my-posh, starship) and additional scopes (gcloud, bun, rice, zsh) are also available. Run `nix/setup.sh --help` for the full list.
+Prompt engines (oh-my-posh, starship) and additional scopes (gcloud, bun, playwright, rice, zsh) are also available. Run `nix/setup.sh --help` for the full list.
 
 ## Extensibility
 

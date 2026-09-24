@@ -19,6 +19,12 @@ Describe 'Resolve-ScopeDeps' {
         $set | Should -Contain 'python'
     }
 
+    It 'playwright adds python' {
+        $set = [System.Collections.Generic.HashSet[string]]::new([string[]]@('playwright'))
+        Resolve-ScopeDeps -ScopeSet $set
+        $set | Should -Contain 'python'
+    }
+
     It 'k8s_ext adds docker, k8s_base, k8s_dev' {
         $set = [System.Collections.Generic.HashSet[string]]::new([string[]]@('k8s_ext'))
         Resolve-ScopeDeps -ScopeSet $set

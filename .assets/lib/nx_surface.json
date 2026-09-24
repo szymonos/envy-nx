@@ -117,6 +117,7 @@
         { "long": "--k8s-dev", "summary": "argo, cilium, flux, helm, hubble, kustomize, trivy" },
         { "long": "--k8s-ext", "summary": "minikube, k3d, kind" },
         { "long": "--nodejs", "summary": "Node.js" },
+        { "long": "--playwright", "summary": "Playwright CLI + Chromium" },
         { "long": "--pwsh", "summary": "PowerShell" },
         { "long": "--python", "summary": "uv + prek" },
         { "long": "--rice", "summary": "btop, cmatrix, cowsay, fastfetch" },

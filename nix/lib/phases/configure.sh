@@ -54,6 +54,9 @@ phase_configure_per_scope() {
     az)
       _io_run "$CONFIGURE_DIR/az.sh" || warn "az configuration failed"
       ;;
+    playwright)
+      _io_run "$CONFIGURE_DIR/playwright.sh" || warn "playwright configuration failed"
+      ;;
     gcloud)
       # Auto-install gke-gcloud-auth-plugin when k8s_base co-exists in scopes.
       # Decided at configure time (build-time-ish) since gcloud is sorted
