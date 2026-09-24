@@ -66,12 +66,21 @@ teardown() {
   [[ "$output" == *"custom.sh"* ]]
 }
 
-@test "overlay shows hook files" {
+@test "overlay flags hook files as ignored" {
   mkdir -p "$ENV_DIR/local/hooks/post-setup.d"
   touch "$ENV_DIR/local/hooks/post-setup.d/10-custom.sh"
   run nx overlay
-  [[ "$output" == *"Hooks (post-setup.d):"* ]]
-  [[ "$output" == *"10-custom.sh"* ]]
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Ignored hooks (overlays cannot ship hooks):"* ]]
+  [[ "$output" == *"hooks/post-setup.d/10-custom.sh"* ]]
+  [[ "$output" == *"Hooks run only from $ENV_DIR/hooks/"* ]]
+}
+
+@test "overlay prints no hook warning when the overlay has no hooks" {
+  mkdir -p "$ENV_DIR/local/scopes"
+  run nx overlay
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"Ignored hooks"* ]]
 }
 
 @test "overlay handles empty overlay directory" {
@@ -230,4 +239,113 @@ EOF
   run nx scope add my_tools
   [ "$status" -eq 0 ]
   [ -f "$custom_dir/scopes/my_tools.nix" ]
+}
+
+# -- hand-written scope protection -------------------------------------------
+
+@test "scope file shape check accepts a generated scope file" {
+  printf '{ pkgs }: with pkgs; [\n  bat\n  fd\n]\n' >"$TEST_DIR/gen.nix"
+  run _nx_scope_file_is_generated "$TEST_DIR/gen.nix"
+  [ "$status" -eq 0 ]
+}
+
+@test "scope file shape check accepts an empty generated scope file" {
+  printf '{ pkgs }: with pkgs; []\n' >"$TEST_DIR/empty.nix"
+  run _nx_scope_file_is_generated "$TEST_DIR/empty.nix"
+  [ "$status" -eq 0 ]
+}
+
+@test "scope file shape check rejects hand-written Nix" {
+  printf '{ pkgs }:\nlet tool = pkgs.stdenvNoCC.mkDerivation { };\nin [ tool ]\n' >"$TEST_DIR/hand.nix"
+  run _nx_scope_file_is_generated "$TEST_DIR/hand.nix"
+  [ "$status" -ne 0 ]
+}
+
+@test "scope file shape check rejects fragments without the generated frame" {
+  local body
+  for body in '  foo\n' ']\n' '' '{ pkgs }: with pkgs; []\n  foo\n' '{ pkgs }: with pkgs; [\n]\n  foo\n]\n'; do
+    printf "$body" >"$TEST_DIR/frag.nix"
+    run _nx_scope_file_is_generated "$TEST_DIR/frag.nix"
+    [ "$status" -ne 0 ] || {
+      printf 'accepted: %q\n' "$body"
+      return 1
+    }
+  done
+}
+
+@test "scope file shape check ignores a grep function in the shell" {
+  printf '{ pkgs }:\nlet tool = pkgs.stdenvNoCC.mkDerivation { };\nin [ tool ]\n' >"$TEST_DIR/hand.nix"
+  grep() { return 2; }
+  run _nx_scope_file_is_generated "$TEST_DIR/hand.nix"
+  unset -f grep
+  [ "$status" -ne 0 ]
+}
+
+@test "scope file shape check fails closed when the file cannot be read" {
+  [ "$(id -u)" -eq 0 ] && skip "root can read a mode-000 file"
+  printf '{ pkgs }: with pkgs; [\n  bat\n]\n' >"$TEST_DIR/locked.nix"
+  chmod 000 "$TEST_DIR/locked.nix"
+  run _nx_scope_file_is_generated "$TEST_DIR/locked.nix"
+  chmod 644 "$TEST_DIR/locked.nix"
+  [ "$status" -ne 0 ]
+}
+
+@test "scope add refuses to rewrite a hand-written scope file" {
+  local f="$TEST_DIR/hand.nix"
+  printf '{ pkgs }:\nlet tool = pkgs.stdenvNoCC.mkDerivation { };\nin [ tool ]\n' >"$f"
+  run _nx_scope_file_add "$f" bat
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"hand-written Nix"* ]]
+  [[ "$output" == *"nx scope edit"* ]]
+}
+
+@test "nx scope add exits non-zero when the scope file is hand-written" {
+  cat >"$ENV_DIR/config.nix" <<'EOF'
+{
+  isInit = false;
+  scopes = [];
+}
+EOF
+  mkdir -p "$ENV_DIR/local/scopes"
+  printf '{ pkgs }:\nlet tool = pkgs.stdenvNoCC.mkDerivation { };\nin [ tool ]\n' >"$ENV_DIR/local/scopes/mine.nix"
+  _nx_validate_pkgs() { printf '%s\n' "$@"; }
+  _nx_apply() { echo APPLY_CALLED; }
+  run nx scope add mine bat
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"hand-written Nix"* ]]
+  [[ "$output" != *"APPLY_CALLED"* ]]
+}
+
+@test "nx scope add exits zero without rebuilding when nothing changed" {
+  cat >"$ENV_DIR/config.nix" <<'EOF'
+{
+  isInit = false;
+  scopes = [];
+}
+EOF
+  mkdir -p "$ENV_DIR/local/scopes"
+  printf '{ pkgs }: with pkgs; [\n  bat\n]\n' >"$ENV_DIR/local/scopes/mine.nix"
+  _nx_validate_pkgs() { printf '%s\n' "$@"; }
+  _nx_apply() { echo APPLY_CALLED; }
+  run nx scope add mine bat
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"APPLY_CALLED"* ]]
+}
+
+@test "scope add leaves a hand-written scope file byte-identical" {
+  local f="$TEST_DIR/hand.nix"
+  printf '{ pkgs }:\nlet tool = pkgs.stdenvNoCC.mkDerivation { };\nin [ tool ]\n' >"$f"
+  cp "$f" "$TEST_DIR/before.nix"
+  _nx_scope_file_add "$f" bat || true
+  run diff "$TEST_DIR/before.nix" "$f"
+  [ "$status" -eq 0 ]
+}
+
+@test "scope add still appends to a generated scope file" {
+  local f="$TEST_DIR/gen.nix"
+  printf '{ pkgs }: with pkgs; [\n  bat\n]\n' >"$f"
+  run _nx_scope_file_add "$f" fd
+  [ "$status" -eq 0 ]
+  grep -q '^  fd$' "$f"
+  grep -q '^  bat$' "$f"
 }
