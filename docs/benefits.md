@@ -106,7 +106,7 @@ With this tool, the wiki page becomes one line - `nx/setup.sh --shell --python -
 
 ### Custom overlays without forking
 
-Team-specific scopes (your internal CLI tools, your team's preferred linters, service-specific clients), team aliases, and custom setup hooks live in an overlay repo distributed via `NIX_ENV_OVERLAY_DIR`. The overlay layers cleanly on top of the base, so each evolves independently. New base release with security fixes? Pull it without disturbing your overlay. New internal tool the team wants standardized? Add it to the overlay without touching the upstream repo. See [Customization](customization.md) for the full overlay model.
+Team-specific scopes (your internal CLI tools, your team's preferred linters, service-specific clients), and team aliases live in an overlay repo distributed via `NIX_ENV_OVERLAY_DIR`. The overlay layers cleanly on top of the base, so each evolves independently. New base release with security fixes? Pull it without disturbing your overlay. New internal tool the team wants standardized? Add it to the overlay without touching the upstream repo. See [Customization](customization.md) for the full overlay model.
 
 ### Coordinated tool versions
 
