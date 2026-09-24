@@ -1,12 +1,12 @@
 ---
 name: second-opinion
-description: Heterogeneous-model code review of the current branch's changes. Invokes GitHub Copilot CLI with gpt-5.6-terra to review git diff since merge-base with the repo's trunk branch (or user-specified commit). Reads .claude/skills/second-opinion/REVIEW-BRIEF.md for focused project context. Returns structured findings that Claude reads, summarizes, and acts on. Use when the user types `/second-opinion`, asks for a second opinion on a branch, wants GPT to review the work, or wants an independent review before pushing.
+description: Heterogeneous-model code review of the current branch's changes. Invokes GitHub Copilot CLI with gpt-6-luna (gpt-6-sol for security-sensitive or very large diffs) to review git diff since merge-base with the repo's trunk branch (or user-specified commit). Reads .claude/skills/second-opinion/REVIEW-BRIEF.md for focused project context. Returns structured findings that Claude reads, summarizes, and acts on. Use when the user types `/second-opinion`, asks for a second opinion on a branch, wants GPT to review the work, or wants an independent review before pushing.
 disable-model-invocation: false
 ---
 
 # Second opinion
 
-Heterogeneous-model author-time review of the current branch. Runs **GitHub Copilot CLI** (`copilot`) with a GPT-family model (default `gpt-5.6-terra`) against the diff since `git merge-base "$TRUNK_REF" HEAD`, where `$TRUNK_REF` is a resolvable git ref for the repo's default branch - either a local branch (`main`) or a remote-tracking ref (`origin/main`), resolved in Phase 1. The reviewer returns structured findings; Claude reads them and acts.
+Heterogeneous-model author-time review of the current branch. Runs **GitHub Copilot CLI** (`copilot`) with a GPT-family model (`gpt-6-luna`, or `gpt-6-sol` when the diff qualifies - see Phase 2) against the diff since `git merge-base "$TRUNK_REF" HEAD`, where `$TRUNK_REF` is a resolvable git ref for the repo's default branch - either a local branch (`main`) or a remote-tracking ref (`origin/main`), resolved in Phase 1. The reviewer returns structured findings; Claude reads them and acts.
 
 The bias-control mechanism is **the process boundary itself**. Copilot runs as a separate binary, with a separate model family, returning only text. Claude (the implementer) cannot influence Copilot's review; Copilot cannot edit code. Tool restriction inside Copilot is unnecessary - the architecture enforces the separation.
 
@@ -44,6 +44,7 @@ Returns JSON with `match`, `brief_repo`, `current_repo`, `needs_update`.
   - Updated `repo:` frontmatter tag matching the current repo
   - Project description derived from the discovered context
   - Focus areas appropriate for the detected tech stack
+  - A "Premium review triggers" section listing this repo's security-sensitive path globs (TLS trust, code run as root, files that write user config or delete user files)
   - Empty "Known patterns - do NOT flag" section (compounding loop will fill it)
   - Same output format and bias-control rules (these are repo-agnostic)
 
@@ -91,22 +92,32 @@ If `base == HEAD`, exit early: "Nothing to review - branch is at parity with the
 
 ### Phase 2 - invoke Copilot
 
-Single Bash call. The prompt tells Copilot to read the brief, run `git diff` itself, and produce findings in the brief's specified format:
+First pick the model. The script returns `gpt-6-sol` when the diff touches a path listed under the brief's "Premium review triggers", or changes more code than its `COMPLEX_LINES` threshold; otherwise `gpt-6-luna`:
+
+```bash
+uv run --frozen python <skill-path>/scripts/review_brief.py model "$base"
+```
+
+Substitute its `model` value for `<model>` in the command below, and state the choice and its `reasons` in one line before the review ("Reviewing with gpt-6-sol: touches trigger paths: ..."). An explicit `--model` in the skill args overrides it.
+
+Then a single Bash call. The prompt tells Copilot to read the brief, run `git diff` itself, and produce findings in the brief's specified format:
 
 ```bash
 copilot -p "Read .claude/skills/second-opinion/REVIEW-BRIEF.md, then review the current branch's changes since <base>. Run: git diff <base>..HEAD to see all changes. Read referenced files for context as needed. Output findings using the format and severities specified in the brief." \
   -s \
-  --model gpt-5.6-terra \
+  --model <model> \
   --no-custom-instructions \
+  --excluded-tools skill \
   --allow-all-tools
 ```
 
 Flag rationale:
 
 - **`-s`** (silent) - strips UI chrome, leaves only the agent's response on stdout. Critical for parsing.
-- **`--no-custom-instructions`** - skips `AGENTS.md` and `.claude/skills/` auto-loading. The curated `REVIEW-BRIEF.md` is the only context Copilot needs. Loading everything would burn attention budget on irrelevant context.
+- **`--no-custom-instructions`** - skips `AGENTS.md` auto-loading. The curated `REVIEW-BRIEF.md` is the only context Copilot needs. Loading everything would burn attention budget on irrelevant context.
+- **`--excluded-tools skill`** - `--no-custom-instructions` does not hide `.claude/skills/`. Without this flag the reviewer can invoke this very skill, which launches a nested `copilot` on a different model: the run then reviews with, and bills for, a model nobody chose.
 - **`--allow-all-tools`** - required for non-interactive `-p` mode. Safe here: Copilot's output is text-only back to Claude; any edits Copilot might attempt happen in its process, not Claude's. Even if Copilot wrote a file, Claude would not act on it - Claude only acts on the findings text.
-- **`--model gpt-5.6-terra`** - default. Override via skill arg (see model override below).
+- **`--model <model>`** - the `model` value from the Phase 2 `review_brief.py model` step, or the explicit `--model` from the skill args. Never substitute the default by hand.
 
 If Copilot exits non-zero, capture the error and surface to the user. Don't retry automatically.
 
@@ -129,7 +140,7 @@ Two modes, selected by the caller via context (the skill itself doesn't need to 
 1. Present a summary table to the user:
 
    ```text
-   ## Copilot review (gpt-5.6-terra) - 3 findings
+   ## Copilot review (gpt-6-luna) - 3 findings
 
    | ID | Severity | Location | Summary |
    |----|----------|----------|---------|
@@ -156,23 +167,24 @@ The caller selects automated mode by passing findings context (e.g., "act on fin
 
 ## Model override
 
-Pass `--model <id>` in the skill args. Claude extracts it and substitutes for `gpt-5.6-terra` in the Copilot invocation.
+Pass `--model <id>` in the skill args to override the Phase 2 choice. Only two models are used:
 
-Currently available Copilot models (May 2026 - list with `copilot -p "list available models"`):
+| Model ID     | Tier     | When                                                                                              |
+| ------------ | -------- | ------------------------------------------------------------------------------------------------- |
+| `gpt-6-luna` | standard | **Default** - ~1 AI Credit per review                                                             |
+| `gpt-6-sol`  | premium  | ~20x luna (~22 AI Credits per review); picked automatically by `review_brief.py model`, or forced |
 
-| Model ID          | Tier       | Notes                                                                                                                              |
-| ----------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `gpt-5.6-terra`   | standard   | **Default** - code-focused, balanced cost                                                                                          |
-| `gpt-5.2-codex`   | standard   | Older codex; use only if 5.6-terra unavailable                                                                                     |
-| `gpt-5.5`         | premium    | Heavier; use for complex / security-sensitive diffs                                                                                |
-| `gpt-5.4`         | standard   | General-purpose; less code-specialized than codex variants                                                                         |
-| `gpt-5-mini`      | fast/cheap | Quick triage; expect more noise / missed nuance                                                                                    |
-| `claude-opus-4-7` | premium    | **NOT heterogeneous** - same family as Claude (the implementer); only useful if you specifically want a same-family second context |
+Claude models are deliberately absent: they share a family with the implementer, which defeats the point of a heterogeneous review.
+
+Credit figures are measured on one ~500-line diff; one AI Credit is $0.006. `-s` hides the usage line - read `totalNanoAiu` (10^9 per credit) from the `session.shutdown` event in `~/.copilot/session-state/<id>/events.jsonl`.
+
+On a planted-bug comparison (2026-09-24) luna and sol found the same bugs with no false positives; sol added one minor documentation finding across two runs. Neither caught a bug that needed outside knowledge, so a stronger reviewer does not replace the challenge step.
 
 ## Anti-patterns
 
 - **Running `/second-opinion` repeatedly on the same diff.** Wastes Copilot API tokens. If the first run missed something, evolve `REVIEW-BRIEF.md` (add a focus area), don't re-run.
-- **Dropping `--no-custom-instructions`.** Copilot would auto-load `AGENTS.md` and every file under `.claude/skills/`. That's hundreds of lines of context unrelated to the actual diff review.
+- **Dropping `--no-custom-instructions`.** Copilot would auto-load `AGENTS.md` - hundreds of lines of context unrelated to the actual diff review.
+- **Dropping `--excluded-tools skill`.** The reviewer can then call `/second-opinion` itself and launch a nested review on another model.
 - **Piping the full diff into the `-p` argument.** Copilot's shell access lets it run `git diff` itself - piping risks shell-escape issues and prompt-size limits. Let Copilot run the command.
 - **Copying Copilot's patch verbatim.** Copilot's `Suggestion` is a direction; Claude writes the actual edit. Verbatim copies skip Claude's knowledge of the codebase's idiomatic patterns and accepted decisions.
 - **Adding `Co-Authored-By: Copilot` to fix commits.** Fixes derived from Copilot's review are Claude's edits informed by Copilot's review - same as a human reviewer's comment. No tooling attribution needed.
@@ -182,7 +194,7 @@ Currently available Copilot models (May 2026 - list with `copilot -p "list avail
 
 - `/second-opinion` - review against `git merge-base "$TRUNK_REF" HEAD` (trunk autodetected in Phase 1; works for both local and remote-only checkouts)
 - `/second-opinion abc1234` - review against an arbitrary commit
-- `/second-opinion --model gpt-5.5` - use a heavier model for a security-sensitive branch
+- `/second-opinion --model gpt-6-sol` - use the premium model for a security-sensitive branch
 - "Get a second opinion before I push" - same as `/second-opinion`
 
 ## Compounding loop

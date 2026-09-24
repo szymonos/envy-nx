@@ -39,7 +39,7 @@ release.py resume  ──► [headless: recut, lint-diff]     ──► GATE pus
    agent: eyeball commits + PR body
 release.py resume  ──► [headless: force-push, PR upsert] ──► SPINE_COMPLETE (exit 0)
    ── review coda (unless --skip-review) ──
-   4a agent: /second-opinion (gpt-5.6-terra) → fold fixes → recut + push
+   4a agent: /second-opinion (gpt-6-luna, or gpt-6-sol on trigger paths) → fold fixes → recut + push
    4b agent: trigger Copilot PR review, triage vs review-policy.json, apply fixes
 release.py recut   ──► [reconcile + recut + lint-diff]   (silent unless the plan can't execute)
 release.py push --done ──► wipes .release/, release ready to merge
@@ -174,7 +174,7 @@ Copilot wait is detached so a non-responsive reviewer never blocks. The coda has
 **two review layers**, run in order - `--skip-review` skips **both**:
 
 - **4a - heterogeneous-model review** (`/second-opinion`): a different model
-  family (GitHub Copilot CLI, `gpt-5.6-terra`) reviews the diff at author time,
+  family (GitHub Copilot CLI, `gpt-6-luna`) reviews the diff at author time,
   before merge. Catches what a same-model PR review structurally cannot.
 - **4b - Copilot PR review** (`/address-pr-review`): the GitHub Copilot reviewer
   on the PR itself.
@@ -197,23 +197,28 @@ introduces over the last tag).
    Do not assume it is missing without checking - in VS Code Server it lives at
    `~/.vscode-server/data/User/globalStorage/github.copilot-chat/copilotCli/copilot`.
 
-2. **Invoke with author intent.** Run the Copilot CLI against the release diff and
+2. **Pick the model.** Run `uv run --frozen python .claude/skills/second-opinion/scripts/review_brief.py model <last-tag>`
+   and substitute its `model` value for `<model>` below - it returns `gpt-6-sol`
+   when the release touches a "Premium review triggers" path in `REVIEW-BRIEF.md` or
+   is very large. Announce the choice and its `reasons` in one line.
+
+3. **Invoke with author intent.** Run the Copilot CLI against the release diff and
    point it at the freshly-composed CHANGELOG section so it judges against stated
    intent (per `.claude/skills/second-opinion/SKILL.md`):
 
    ```bash
    copilot -p "Read .claude/skills/second-opinion/REVIEW-BRIEF.md AND the '## [<X.Y.Z>]' section of CHANGELOG.md (the author's stated intent), then review the branch's changes since <last-tag>. Run: git diff <last-tag>..HEAD. Dismiss findings that contradict the documented intent unless the code genuinely fails to deliver it (then flag the bullet-vs-code gap). Output findings using the brief's format and severities." \
-     -s --model gpt-5.6-terra --no-custom-instructions --allow-all-tools
+     -s --model <model> --no-custom-instructions --excluded-tools skill --allow-all-tools
    ```
 
-3. **Challenge every finding.** The reviewer has no project context beyond the
+4. **Challenge every finding.** The reviewer has no project context beyond the
    brief - it will flag intentional patterns and misread intent. For each: read
    the flagged code; dismiss with a reason if clearly wrong, fix if clearly right,
    and surface via `AskUserQuestion` when uncertain - never auto-fix on doubt.
    Present a summary with a verdict per finding (`fixed` / `dismissed (reason)` /
    `needs-user-judgment`).
 
-4. **Fold fixes + re-cut.** Apply fixes with `Edit`, fold user-facing changes into
+5. **Fold fixes + re-cut.** Apply fixes with `Edit`, fold user-facing changes into
    the existing CHANGELOG bullet (never a `Fixed` bullet for a bug that never
    shipped - see **Section reclassification**), then `release.py recut` +
    `release.py push` (same zero-gate rules as 4b step 3 below). Optionally rerun

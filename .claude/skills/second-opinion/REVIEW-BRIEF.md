@@ -29,6 +29,19 @@ Platforms: macOS, Linux, WSL (Windows host), Coder / containers.
    - Bash: missing `set -eo pipefail`; unchecked exit code after a critical external command.
    - PowerShell: missing `$ErrorActionPreference = 'Stop'` in `begin` block; unchecked `$LASTEXITCODE` after `wsl.exe` or native binaries; missing `Show-LogContext` for structured errors.
 
+## Premium review triggers
+
+A diff that touches any of these paths is reviewed by the premium model
+(`review_brief.py model`). They handle TLS trust, run as root, write the user's
+shell rc files, or delete user files - review them with extra care.
+
+- `.assets/lib/certs.sh`
+- `nix/lib/phases/nix_profile.sh`
+- `.assets/provision/*`
+- `.assets/scripts/linux_setup.sh`
+- `.assets/lib/profile_block.sh`
+- `nix/uninstall.sh`
+
 ## Known patterns - do NOT flag
 
 These are deliberate. Flagging them is noise - they're documented project decisions:
