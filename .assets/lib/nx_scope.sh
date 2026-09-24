@@ -53,12 +53,47 @@ WRITE_CFG_EOF
   command mv "$tmp" "$config_nix"
 }
 
+# True when a scope file still has the exact shape `nx scope add` generates:
+# the `{ pkgs }: with pkgs; [` header, one bare package name per line, and the
+# closing bracket. Anything else - a derivation, a `let` block, a comment - is
+# hand-written and cannot survive a regenerate-from-package-names rewrite.
+function _nx_scope_file_is_generated() {
+  local file="$1"
+  [ -f "$file" ] || return 1
+  # `command` skips a grep function or alias from the interactive shell (ugrep
+  # wrappers reject an empty alternative). grep -v exits 1 only when every line
+  # matches; 0 (a foreign line) and 2 (an error) must both block the rewrite.
+  command grep -qvE '^(\{ pkgs \}: with pkgs; \[\]?|  [a-zA-Z][a-zA-Z0-9_-]*|\])?$' "$file"
+  [ $? -eq 1 ] || return 1
+  # Every line being allowed is not enough: the header must open the file and a
+  # single `]` must close it, or a fragment like `  foo` would pass and be lost.
+  local first last
+  first="$(head -n 1 "$file")"
+  last="$(tail -n 1 "$file")"
+  case "$first" in
+  '{ pkgs }: with pkgs; []') [ "$last" = "$first" ] ;;
+  '{ pkgs }: with pkgs; [')
+    [ "$last" = ']' ] && [ "$(command grep -c '^\]$' "$file")" -eq 1 ]
+    ;;
+  *) return 1 ;;
+  esac
+}
+
 # Append packages to a local scope .nix file. Caller passes the absolute
 # scope file path and the packages to add; we union with the existing
-# package list, sort, and rewrite. Returns 1 if nothing actually changed.
+# package list, sort, and rewrite. Returns 1 if nothing actually changed,
+# 2 if the file holds hand-written Nix and was left untouched.
 function _nx_scope_file_add() {
   local file="$1"
   shift
+  # The rewrite below rebuilds the file from parsed package names alone, so any
+  # hand-written Nix in it would be dropped without trace. Refuse instead.
+  if [ -f "$file" ] && ! _nx_scope_file_is_generated "$file"; then
+    printf "\e[31m%s contains hand-written Nix.\e[0m\n" "$file" >&2
+    printf "nx cannot add packages without discarding it - edit it instead: \e[1mnx scope edit %s\e[0m\n" \
+      "$(basename "$file" .nix)" >&2
+    return 2
+  fi
   local existing
   existing="$(_nx_scope_pkgs "$file")"
   local all_pkgs=()
@@ -278,9 +313,15 @@ function _nx_scope_dispatch() {
         fi
       done
       if [ ${#validated[@]} -gt 0 ]; then
-        _nx_scope_file_add "$scope_file" "${validated[@]}"
-        command cp "$scope_file" "$scopes_dir/local_$name.nix"
-        _nx_apply
+        local add_rc=0
+        _nx_scope_file_add "$scope_file" "${validated[@]}" || add_rc=$?
+        case $add_rc in
+        0)
+          command cp "$scope_file" "$scopes_dir/local_$name.nix"
+          _nx_apply
+          ;;
+        2) return 1 ;;
+        esac
       fi
     elif [ "$created" = true ]; then
       printf "Add packages: \e[1mnx scope add %s <pkg> [pkg...]\e[0m\n" "$name"
@@ -388,15 +429,19 @@ function _nx_overlay_dispatch() {
       printf "  \e[1m*\e[0m %s%b\n" "$bname" "$indicator"
     done < <(find "$ov_dir/shell_cfg" -maxdepth 1 -type f \( -name '*.sh' -o -name '*.bash' -o -name '*.zsh' \) 2>/dev/null)
   fi
-  local hook_dir
-  for hook_dir in pre-setup.d post-setup.d; do
-    hdr=false
-    while IFS= read -r f; do
-      [ -n "$f" ] || continue
-      [ "$hdr" = false ] && printf "\e[96mHooks (%s):\e[0m\n" "$hook_dir" && hdr=true
-      printf "  \e[1m*\e[0m %s\n" "$(basename "$f")"
-    done < <(find "$ov_dir/hooks/$hook_dir" -maxdepth 1 -type f -name '*.sh' 2>/dev/null)
-  done
+  # Setup reads hooks only from $env_dir/hooks; overlay hooks are listed so an
+  # author who shipped one learns why it never runs.
+  hdr=false
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    if [ "$hdr" = false ]; then
+      printf "\e[33mIgnored hooks (overlays cannot ship hooks):\e[0m\n"
+      hdr=true
+    fi
+    printf "  \e[1m*\e[0m %s\n" "${f#"$ov_dir/"}"
+  done < <(find "$ov_dir/hooks" -type f -name '*.sh' 2>/dev/null | sort)
+  [ "$hdr" = true ] && printf "Hooks run only from %s/hooks/ on this machine.\n" "$env_dir"
+  return 0
 }
 
 function _nx_pin_dispatch() {
