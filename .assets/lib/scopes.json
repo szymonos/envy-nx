@@ -11,6 +11,7 @@
     "k8s_ext",
     "nodejs",
     "oh_my_posh",
+    "playwright",
     "pwsh",
     "python",
     "rice",
@@ -30,6 +31,7 @@
     "gcloud",
     "bun",
     "nodejs",
+    "playwright",
     "terraform",
     "oh_my_posh",
     "starship",
@@ -42,6 +44,12 @@
   "dependency_rules": [
     {
       "if": "az",
+      "add": [
+        "python"
+      ]
+    },
+    {
+      "if": "playwright",
       "add": [
         "python"
       ]

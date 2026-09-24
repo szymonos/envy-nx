@@ -1609,3 +1609,18 @@ EOF
   [[ "$output" == *"Repo:"* ]]
   [[ "$output" == *"/home/user/envy-nx"* ]]
 }
+
+@test "profile regenerate exports the nix playwright browsers only when installed" {
+  run nx profile regenerate --dry-run --shell bash
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"PLAYWRIGHT_BROWSERS_PATH"* ]]
+  mkdir -p "$HOME/.nix-profile/share/playwright-browsers"
+  local sh
+  for sh in bash zsh; do
+    run nx profile regenerate --dry-run --shell "$sh"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'export PLAYWRIGHT_BROWSERS_PATH="$HOME/.nix-profile/share/playwright-browsers"'* ]] ||
+      fail "$sh: missing browsers path: $output"
+    [[ "$output" == *"export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true"* ]]
+  done
+}

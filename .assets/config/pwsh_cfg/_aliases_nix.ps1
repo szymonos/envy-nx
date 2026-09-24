@@ -371,6 +371,28 @@ function _NxProfileRegenerate {
         }
     }
 
+    # -- nix:playwright - nix-built Playwright browsers ---
+    # Mirrors the bash/zsh :playwright block, which disappears with the scope,
+    # so the region is dropped once the directory is gone. The scope installs
+    # nothing on macOS and native Windows pwsh has no nix profile, so on both
+    # the region is never written.
+    $pwBrowsers = [IO.Path]::Combine([Environment]::GetFolderPath('UserProfile'), '.nix-profile/share/playwright-browsers')
+    if ([IO.Directory]::Exists($pwBrowsers)) {
+        $playwrightRegion = [string[]]@(
+            '#region nix:playwright'
+            'if (Test-Path "$HOME/.nix-profile/share/playwright-browsers" -PathType Container) {'
+            '    $env:PLAYWRIGHT_BROWSERS_PATH = "$HOME/.nix-profile/share/playwright-browsers"'
+            '    $env:PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = ''true'''
+            '}'
+            '#endregion'
+        )
+        if (_NxUpdateProfileRegion -Lines $profileContent -RegionName 'nix:playwright' -Content $playwrightRegion) {
+            Write-Host "`e[32m  updated nix:playwright`e[0m"
+        }
+    } elseif (_NxRemoveProfileRegion -Lines $profileContent -RegionName 'nix:playwright') {
+        Write-Host "`e[32m  removed nix:playwright`e[0m"
+    }
+
     # -- nix:gcloud - Google Cloud CLI (tarball install at $HOME/google-cloud-sdk) ---
     # Mirrors the bash/zsh :gcloud env-block section. gcloud is installed via
     # the official tarball (not Nix) so `gcloud components install` works
@@ -486,7 +508,7 @@ function _NxProfileUninstall {
             [IO.File]::ReadAllLines($profilePath)
         )
         foreach ($region in @('nix:base', 'nix:path', 'nix:locale', 'nix:certs',
-                'nix:starship', 'nix:oh-my-posh', 'nix:uv', 'nix:fnm', 'nix:gcloud',
+                'nix:starship', 'nix:oh-my-posh', 'nix:uv', 'nix:fnm', 'nix:playwright', 'nix:gcloud',
                 'local-path')) {
             _NxRemoveProfileRegion -Lines $content -RegionName $region | Out-Null
         }
@@ -560,7 +582,7 @@ Register-ArgumentCompleter -CommandName nx -Native -ScriptBlock {
                 '--latest'
             }
             elseif ($tokens[1].Value -in 'setup') {
-                '--az', '--bun', '--conda', '--docker', '--gcloud', '--k8s-base', '--k8s-dev', '--k8s-ext', '--nodejs', '--pwsh', '--python', '--rice', '--shell', '--terraform', '--zsh', '--all', '--upgrade', '--allow-unfree', '--unattended', '--register-ssh-key', '--skip-repo-update', '--update-modules', '--omp-theme', '--starship-theme', '--remove', '--help'
+                '--az', '--bun', '--conda', '--docker', '--gcloud', '--k8s-base', '--k8s-dev', '--k8s-ext', '--nodejs', '--playwright', '--pwsh', '--python', '--rice', '--shell', '--terraform', '--zsh', '--all', '--upgrade', '--allow-unfree', '--unattended', '--register-ssh-key', '--skip-repo-update', '--update-modules', '--omp-theme', '--starship-theme', '--remove', '--help'
             }
             elseif ($tokens[1].Value -in 'doctor') {
                 '--strict', '--json'
@@ -609,7 +631,7 @@ Register-ArgumentCompleter -CommandName nx -Native -ScriptBlock {
                                         $scopeNames
                     }
                     default {
-                        '--az', '--bun', '--conda', '--docker', '--gcloud', '--k8s-base', '--k8s-dev', '--k8s-ext', '--nodejs', '--pwsh', '--python', '--rice', '--shell', '--terraform', '--zsh', '--all', '--upgrade', '--allow-unfree', '--unattended', '--register-ssh-key', '--skip-repo-update', '--update-modules', '--omp-theme', '--starship-theme', '--remove', '--help'
+                        '--az', '--bun', '--conda', '--docker', '--gcloud', '--k8s-base', '--k8s-dev', '--k8s-ext', '--nodejs', '--playwright', '--pwsh', '--python', '--rice', '--shell', '--terraform', '--zsh', '--all', '--upgrade', '--allow-unfree', '--unattended', '--register-ssh-key', '--skip-repo-update', '--update-modules', '--omp-theme', '--starship-theme', '--remove', '--help'
                     }
                 }
             }

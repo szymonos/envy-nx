@@ -250,6 +250,16 @@ function _nx_render_nix_block() {
     printf 'fi\n'
   fi
 
+  # Nix-built browsers from the playwright scope (Linux only). Skipping the host
+  # check is safe: they resolve their libraries from the nix store.
+  if [ -d "$HOME/.nix-profile/share/playwright-browsers" ]; then
+    printf '\n# :playwright\n'
+    printf 'if [ -d "$HOME/.nix-profile/share/playwright-browsers" ]; then\n'
+    printf '  export PLAYWRIGHT_BROWSERS_PATH="$HOME/.nix-profile/share/playwright-browsers"\n'
+    printf '  export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true\n'
+    printf 'fi\n'
+  fi
+
   if [ -x "$HOME/.nix-profile/bin/kubectl" ]; then
     printf '\n# :kubectl\n'
     printf 'if [ -x "$HOME/.nix-profile/bin/kubectl" ]; then\n'
