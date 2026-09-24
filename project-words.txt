@@ -51,6 +51,7 @@ euid
 execvpe
 fakeroot
 fastfetch
+fetchurl
 fileno
 findutils
 fixability
@@ -127,6 +128,7 @@ openwolf
 otbs
 pacman
 pasteable
+patchelf
 pathspec
 pcre
 pdca
@@ -134,6 +136,7 @@ pipefail
 pipestatus
 pkgs
 platformdirs
+pname
 powerline
 precmd
 prek
@@ -165,6 +168,7 @@ shellcheck
 shellenv
 shfmt
 sigstore
+sofka
 sonoma
 soupsieve
 sourceable

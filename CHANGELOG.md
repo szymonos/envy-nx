@@ -5,6 +5,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.24.0] - 2026-09-24
+
+Overlay scopes can now ship tools that are not in nixpkgs, the overlay documentation matches what the code actually does, and `/second-opinion` picks a stronger reviewer only where the risk warrants it.
+
+### Added
+
+- `docs/customization.md` documents that an overlay scope file can build its own derivation, with a prebuilt-binary example, so an overlay can ship a tool nixpkgs does not carry.
+- `design/overlay_catalog.md` proposes subscribing to overlays with one command, from a whole repository or from one directory of a curated catalog repository.
+
+### Changed
+
+- `/second-opinion` and `/release-auto` now review with `gpt-6-luna`, switching to `gpt-6-sol` via `review_brief.py model` when a diff touches a trigger path listed in `REVIEW-BRIEF.md` or is very large.
+- The docs no longer claim an overlay can ship setup hooks. Setup reads hooks only from `~/.config/nix-env/hooks/`, and a `hooks/` folder in an overlay is ignored by design.
+- `docs/customization.md` records that `NIX_ENV_OVERLAY_DIR` replaces `~/.config/nix-env/local/` instead of adding to it; personal packages from `nx install` are unaffected.
+- `docs/customization.md` spells out the real team-overlay steps: `nx setup` copies cloned scopes, but each must still be enabled in `config.nix` before `nx upgrade` builds it.
+- `design/enterprise_design.md` marks the "flake does not consume overlay scopes" finding as resolved and limits the tier split to policy enforcement.
+- Refreshed transitive dev dependencies in `uv.lock` (`soupsieve` 2.10).
+
+### Fixed
+
+- `nx scope add` rebuilt a scope file from its package names, silently discarding hand-written Nix such as a derivation. It now refuses with a non-zero exit, even when `grep` is a shell function.
+- `nx overlay` listed an overlay's hook scripts as if setup ran them. It now reports them as ignored and says where hooks run from.
+- `nx scope add` no longer re-syncs the scope and triggers a rebuild when the package list did not change.
+- The `/second-opinion` reviewer could load the skill itself and launch a nested review on another model; both skills now pass `--excluded-tools skill`.
+
 ## [1.23.1] - 2026-09-23
 
 ### Changed
