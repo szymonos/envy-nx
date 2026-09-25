@@ -827,14 +827,14 @@ Coverage is **not** measured as a percentage (bash makes line coverage misleadin
 
 GitHub Actions workflows under `.github/workflows/` encode validated deployment targets. Each matrix entry is a real install scenario; passing the job is the compatibility guarantee for that scenario.
 
-| Workflow             | Runner / Matrix                          | Scenario it validates                                                                           |
-| -------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `test_linux.yml`     | `ubuntu-slim`, `daemon`                  | Multi-user Nix install (WSL, bare-metal Linux, managed macOS via equivalent path)               |
-| `test_linux.yml`     | `ubuntu-slim`, `no-daemon`               | Single-user rootless Nix install. Covers Coder / devcontainer (no systemd, no root at runtime)  |
-| `test_macos.yml`     | `macos-15` (default), `26`               | Apple Silicon macOS via Determinate installer. Validates bash 3.2 + BSD sed constraints         |
-| `test_scope_env.yml` | `ubuntu-slim` (+ `macos-15` on dispatch) | Every scope enabled at once: `pkgs.buildEnv` package collisions and declared `# bins:` coverage |
-| `repo_checks.yml`    | pre-commit hooks                         | `check_bash32`, `check_zsh_compat`, `validate_scopes`, ShellCheck, lint                         |
-| `release.yml`        | Full test matrix                         | Build tarball + SBOM + sign + publish (triggers on `v*` tags)                                   |
+| Workflow             | Runner / Matrix                            | Scenario it validates                                                                           |
+| -------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| `test_linux.yml`     | `ubuntu-latest`, `daemon`                  | Multi-user Nix install (WSL, bare-metal Linux, managed macOS via equivalent path)               |
+| `test_linux.yml`     | `ubuntu-latest`, `no-daemon`               | Single-user rootless Nix install. Covers Coder / devcontainer (no systemd, no root at runtime)  |
+| `test_macos.yml`     | `macos-26`                                 | Apple Silicon macOS via Determinate installer. Validates bash 3.2 + BSD sed constraints         |
+| `test_scope_env.yml` | `ubuntu-latest` (+ `macos-26` on dispatch) | Every scope enabled at once: `pkgs.buildEnv` package collisions and declared `# bins:` coverage |
+| `repo_checks.yml`    | pre-commit hooks                           | `check_bash32`, `check_zsh_compat`, `validate_scopes`, ShellCheck, lint                         |
+| `release.yml`        | Full test matrix                           | Build tarball + SBOM + sign + publish (triggers on `v*` tags)                                   |
 
 **Test-per-run assertions** (both integration workflows):
 

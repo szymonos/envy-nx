@@ -114,11 +114,11 @@ The release workflow runs three jobs sequentially:
 
 The full test suite runs unconditionally (not gated on PR labels like `test:integration`):
 
-| Job          | Runner      | Nix method    | What it validates                                     |
-| ------------ | ----------- | ------------- | ----------------------------------------------------- |
-| `test-linux` | ubuntu-slim | Determinate   | Daemon mode: full scope install, `nx doctor --strict` |
-| `test-linux` | ubuntu-slim | `--no-daemon` | Rootless/Coder mode: same validation without systemd  |
-| `test-macos` | macos-15    | Determinate   | macOS: bash 3.2 + BSD sed, Keychain cert extraction   |
+| Job          | Runner        | Nix method    | What it validates                                     |
+| ------------ | ------------- | ------------- | ----------------------------------------------------- |
+| `test-linux` | ubuntu-latest | Determinate   | Daemon mode: full scope install, `nx doctor --strict` |
+| `test-linux` | ubuntu-latest | `--no-daemon` | Rootless/Coder mode: same validation without systemd  |
+| `test-macos` | macos-26      | Determinate   | macOS: bash 3.2 + BSD sed, Keychain cert extraction   |
 
 All three must pass before the release job runs.
 

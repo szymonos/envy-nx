@@ -13,8 +13,8 @@
 # check_zsh_compat hook missed, add a test here.
 #
 # Skipped when zsh isn't installed (bats sees `skip` and treats them as
-# passes - keeps developer machines without zsh happy; CI always runs
-# them since zsh is on ubuntu-slim and macos-15 by default).
+# passes - keeps developer machines without zsh happy). GitHub's Ubuntu
+# runners have no zsh, so in CI they run only on macOS.
 bats_require_minimum_version 1.5.0
 
 REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd)"

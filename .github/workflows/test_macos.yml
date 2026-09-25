@@ -12,9 +12,8 @@ on:
       runner:
         description: "macOS runner"
         type: choice
-        default: macos-15
+        default: macos-26
         options:
-          - macos-15
           - macos-26
       scopes:
         description: "Scope flags for setup.sh (space-separated)"
@@ -38,14 +37,9 @@ jobs:
     # default on macOS), BSD sed, single-user Nix install. Passing this job is
     # the macOS compatibility guarantee.
     #
-    # Runner choice:
-    #   - macos-15 (default) - Sequoia. Current broadly-deployed corporate
-    #                          baseline; tests what most fleets actually run.
-    #   - macos-26           - Tahoe (released Sept 2025, year-based versioning).
-    #                          Forward-signal runner - opt-in via
-    #                          workflow_dispatch. Flip to default when org
-    #                          enforcement date is <=3 months out.
-    # Re-evaluate default every ~6 months or on macOS enforcement changes.
+    # Runner choice: macos-26 (Tahoe), the macOS version the org fleet runs.
+    # Add the next major to the dispatch options as soon as GitHub publishes
+    # its runner image, and make it the default when the fleet upgrades.
     # See ARCHITECTURE.md "CI pipelines and validated targets" for the full map.
     #
     # Run on label trigger only when the label is "test:integration"
@@ -53,8 +47,8 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' && github.event.label.name == 'test:integration') ||
       (github.event_name == 'pull_request' && github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'test:integration'))
-    name: "nix/setup.sh on ${{ github.event.inputs.runner || 'macos-15' }}"
-    runs-on: ${{ github.event.inputs.runner || 'macos-15' }}
+    name: "nix/setup.sh on ${{ github.event.inputs.runner || 'macos-26' }}"
+    runs-on: ${{ github.event.inputs.runner || 'macos-26' }}
     timeout-minutes: 30
     env:
       NIX_CONFIG: "access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}"
@@ -94,7 +88,7 @@ jobs:
       - name: Run setup.sh (auto-installs Nix)
         # Invoke /bin/bash explicitly - the script's `#!/usr/bin/env bash`
         # shebang would otherwise resolve to whatever bash is first on
-        # PATH, which on macos-15 may be brewed bash 5. We need bash 3.2
+        # PATH, which on GitHub macOS runners may be brewed bash 5. We need bash 3.2
         # to honor the constraint everyone's first-time setup runs under.
         run: |
           /bin/bash nix/setup.sh \
