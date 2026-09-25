@@ -54,11 +54,11 @@ jobs:
   scope-env:
     # macOS is skipped on PRs (slow, paid minutes). Darwin - where the package
     # set and its collisions differ - is covered weekly by bump_nixpkgs_rev.yml's
-    # macos-15 gate, and on demand via workflow_dispatch here.
+    # macos-26 gate, and on demand via workflow_dispatch here.
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-slim"]') || fromJSON('["ubuntu-slim", "macos-15"]') }}
+        os: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-latest"]') || fromJSON('["ubuntu-latest", "macos-26"]') }}
 
     name: "all scopes on ${{ matrix.os }}"
     runs-on: ${{ matrix.os }}
