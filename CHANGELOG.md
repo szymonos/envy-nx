@@ -5,6 +5,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.26.1] - 2026-09-25
+
+### Fixed
+
+- `make test-unit` no longer stops at a zsh prompt when run from a terminal; `test_nx_zsh.bats` starts zsh with its line editor off, so it reads the test commands from stdin.
+- Failing assertions in `test_nx_zsh.bats` and `test_nx_commands.bats` print their message instead of `fail: command not found`.
+
 ## [1.26.0] - 2026-09-25
 
 New WSL distros now inherit package registry credentials, such as JFrog Artifactory, from the default distro, and CI validates on faster Linux runners and on macOS 26.
