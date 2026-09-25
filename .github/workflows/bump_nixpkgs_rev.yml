@@ -103,7 +103,7 @@ jobs:
     strategy:
       fail-fast: false # a Linux-only failure should still show the macOS result
       matrix:
-        os: [ubuntu-slim, macos-15]
+        os: [ubuntu-latest, macos-26]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     env:
@@ -240,7 +240,7 @@ jobs:
             --title "chore(nix): validate nixpkgs ${short}" \
             --body "Advances the validated nixpkgs revision to \`${REV}\`.
 
-          Gated before this PR was opened - the all-scopes \`buildEnv\` and a real \`setup.sh\` install both passed on **ubuntu-slim** and **macos-15** against this revision. See the \`gate\` jobs in [this run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}).
+          Gated before this PR was opened - the all-scopes \`buildEnv\` and a real \`setup.sh\` install both passed on **ubuntu-latest** and **macos-26** against this revision. See the \`gate\` jobs in [this run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}).
 
           Users move to it on their next \`nx self update\` + \`nx upgrade\`. To stay put, \`nx pin set <rev>\`."
 

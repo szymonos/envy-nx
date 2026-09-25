@@ -54,7 +54,7 @@ jobs:
             tarball: true
 
     name: "nix/setup.sh (${{ matrix.name }})"
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
       NIX_CONFIG: "access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}"
@@ -63,6 +63,12 @@ jobs:
       # ---- critical steps (fail-fast) ----------------------------------------
       - name: Checkout code
         uses: actions/checkout@v6
+
+      # The ubuntu-latest image ships Miniconda on PATH. configure/conda.sh adopts
+      # an existing conda instead of installing Miniforge, so remove it to test
+      # the install a fresh machine gets.
+      - name: Remove the runner image's Miniconda
+        run: sudo rm -rf "${CONDA:-/usr/share/miniconda}"
 
       - name: Install Nix (Determinate)
         if: matrix.nix-method == 'determinate'
