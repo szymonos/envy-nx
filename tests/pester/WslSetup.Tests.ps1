@@ -80,6 +80,9 @@ Describe 'wsl_setup.ps1 orchestration' {
             if ($argStr -match 'hosts\.yml') {
                 return 'github.com'
             }
+            if ($argStr -match 'cat \$HOME/\.netrc') {
+                return 'machine png.jfrog.io login alice password s3cret'
+            }
             if ($argStr -match 'command -v pwsh') {
                 return 'true'
             }
@@ -261,6 +264,32 @@ Describe 'wsl_setup.ps1 orchestration' {
             $scripts | Should -Not -Contain '.assets/provision/install_docker.sh'
             # shell should still be installed (via nix)
             $scripts | Should -Contain 'nix/setup.sh'
+        }
+    }
+
+    Context 'New distro inherits ~/.netrc from the default distro' {
+        BeforeEach {
+            Mock Get-WslDistro {
+                [PSCustomObject]@{ Default = $true; Name = 'Ubuntu'; State = 'Running'; Version = 2 }
+                [PSCustomObject]@{ Default = $false; Name = 'Debian'; State = 'Running'; Version = 2 }
+            }
+            Mock Get-WslDistro -ParameterFilter { $FromRegistry } {
+                [PSCustomObject]@{
+                    Name = 'Debian'; DefaultUid = 1000; Version = 2
+                    Flags = 15; BasePath = 'C:\fake'; Default = $false
+                }
+            }
+        }
+
+        It 'reads ~/.netrc from the default distro and writes it to the target without exposing it in arguments' {
+            $global:WslTestCheckDistroJson = New-CheckDistro
+
+            & "$Script:RepoRoot/wsl/wsl_setup.ps1" -Distro 'Debian' -Scope @('shell') -SkipRepoUpdate 6>$null
+
+            $calls = $global:WslTestCalls | ForEach-Object { $_ -join ' ' }
+            $calls | Where-Object { $_ -match '--distribution Ubuntu .*cat \$HOME/\.netrc' } | Should -Not -BeNullOrEmpty
+            $calls | Where-Object { $_ -match '--distribution Debian --exec bash -c .*set -C.*\.netrc' } | Should -Not -BeNullOrEmpty
+            $calls | Where-Object { $_ -match 's3cret' } | Should -BeNullOrEmpty
         }
     }
 
