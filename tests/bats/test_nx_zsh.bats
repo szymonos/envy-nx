@@ -17,6 +17,12 @@
 # runners have no zsh, so in CI they run only on macOS.
 bats_require_minimum_version 1.5.0
 
+# bats-support is not vendored; this stands in for its `fail`.
+fail() {
+  printf '%s\n' "$*" >&2
+  return 1
+}
+
 REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd)"
 
 setup() {
@@ -79,7 +85,10 @@ _zsh_rc() {
   printf '%s\n' "$1" >"$TEST_DIR/.zshrc"
   # -d skips the global rc files: some distros run compinit from /etc/zsh/zshrc,
   # which would satisfy the "nothing runs compinit" case from outside the SUT.
-  HOME="$HOME" ZDOTDIR="$TEST_DIR" zsh -d -i 2>&1 <<<'print "NXCOMP=${_comps[nx]:-NONE}"'
+  # With a terminal attached, zle reads commands from /dev/tty instead of stdin
+  # and the shell waits at a prompt, and prompt_sp/prompt_cr write to the
+  # terminal directly; all three are off. precmd hooks still fire without zle.
+  HOME="$HOME" ZDOTDIR="$TEST_DIR" zsh -d -i +o zle +o prompt_sp +o prompt_cr 2>&1 <<<'print "NXCOMP=${_comps[nx]:-NONE}"'
 }
 
 @test "completions.zsh registers _nx when compinit already ran" {

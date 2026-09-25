@@ -2,6 +2,12 @@
 # Unit tests for nx CLI commands (pin, rollback, scope remove, scope edit, help)
 bats_require_minimum_version 1.5.0
 
+# bats-support is not vendored; this stands in for its `fail`.
+fail() {
+  printf '%s\n' "$*" >&2
+  return 1
+}
+
 NX_SCRIPT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd)/.assets/lib/nx.sh"
 
 setup() {
