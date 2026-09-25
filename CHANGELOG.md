@@ -5,6 +5,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.26.0] - 2026-09-25
+
+New WSL distros now inherit package registry credentials, such as JFrog Artifactory, from the default distro, and CI validates on faster Linux runners and on macOS 26.
+
+### Added
+
+- `wsl_setup.ps1` copies `~/.netrc` from the default distro into a new one, like the GitHub CLI config, so JFrog Artifactory credentials read by uv, pip, curl and git need no manual setup.
+- The copied `~/.netrc` is written with mode 600, and an existing `~/.netrc` in the target distro is never overwritten.
+
+### Changed
+
+- CI jobs averaging over a minute run on `ubuntu-latest` rather than the single-vCPU `ubuntu-slim`, where the parallel bats suite ran effectively serially; shorter jobs stay on `ubuntu-slim`.
+- macOS CI jobs, including the release and nixpkgs bump gates, run on `macos-26` instead of `macos-15`, matching the macOS version the fleet runs.
+
 ## [1.25.0] - 2026-09-24
 
 Playwright browser tests now run on any Linux host without root, and setup stops reporting a registered SSH key as missing.

@@ -115,6 +115,7 @@ multishells
 namerefs
 narhash
 nerdplain
+netrc
 nixos
 nixpkgs
 nmap
