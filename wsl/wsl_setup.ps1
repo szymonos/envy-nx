@@ -194,7 +194,8 @@ begin {
         if ($lxss.Where({ $_.Name -eq $Distro }).Version -eq 1) {
             $Distro = Invoke-WslDistroMigration -Distro $Distro -WebDownload ([bool]$WebDownload)
         }
-        $gh_cfg = Get-WslGhConfigFromDefault -TargetDistro $Distro -InstalledDistros $lxss
+        $gh_cfg = Get-WslFileFromDefault -Path '$HOME/.config/gh/hosts.yml' -TargetDistro $Distro -InstalledDistros $lxss
+        $netrc = Get-WslFileFromDefault -Path '$HOME/.netrc' -TargetDistro $Distro -InstalledDistros $lxss
         # get installed distro details
         $lxss = @(Get-WslDistro -FromRegistry | Where-Object Name -EQ $Distro)
         # the distro was just installed or confirmed present, so an empty lookup
@@ -293,6 +294,7 @@ process {
         #region setup GitHub and SSH keys
         try {
             Sync-WslGitHubConfig -Distro $Distro -GhConfig $gh_cfg
+            Sync-WslNetrc -Distro $Distro -Netrc $netrc
             Sync-WslSshKeys -Distro $Distro -HasWslKey ([bool]$chk.ssh_key)
         } catch {
             Show-LogContext -Message "Phase: 'github-ssh'; $_" -Level ERROR -ErrorStackTrace $_.ScriptStackTrace

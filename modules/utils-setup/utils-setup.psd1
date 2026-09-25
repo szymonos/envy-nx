@@ -78,7 +78,7 @@
         'Invoke-WslExe'
         'Set-WslConf'
         # wsl install
-        'Get-WslGhConfigFromDefault'
+        'Get-WslFileFromDefault'
         'Get-WslMigrationChoice'
         'Install-WslDistroIfMissing'
         'Install-WslService'
@@ -92,6 +92,7 @@
         'Set-WslGitConfig'
         'Set-WslGtkTheme'
         'Sync-WslGitHubConfig'
+        'Sync-WslNetrc'
         'Sync-WslSshKeys'
         # wsl provenance
         'Get-WslInstallVersion'

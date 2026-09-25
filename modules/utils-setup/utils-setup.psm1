@@ -21,7 +21,7 @@ $exportModuleMemberParams = @{
         'Invoke-WslExe'
         'Set-WslConf'
         # wsl install
-        'Get-WslGhConfigFromDefault'
+        'Get-WslFileFromDefault'
         'Get-WslMigrationChoice'
         'Install-WslDistroIfMissing'
         'Install-WslService'
@@ -35,6 +35,7 @@ $exportModuleMemberParams = @{
         'Set-WslGitConfig'
         'Set-WslGtkTheme'
         'Sync-WslGitHubConfig'
+        'Sync-WslNetrc'
         'Sync-WslSshKeys'
         # wsl provenance
         'Get-WslInstallVersion'

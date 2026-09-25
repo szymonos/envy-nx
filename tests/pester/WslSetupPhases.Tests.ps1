@@ -378,6 +378,69 @@ Describe 'Sync-WslGitHubConfig' {
     }
 }
 
+Describe 'Sync-WslNetrc' {
+    BeforeEach {
+        $script:wslInvoked = $false
+        $script:wslArgs = $null
+        Mock -CommandName 'wsl.exe' -ModuleName 'utils-setup' -MockWith {
+            $script:wslInvoked = $true
+            $script:wslArgs = $args
+        }
+        Mock -CommandName 'Show-LogContext' -ModuleName 'utils-setup' -MockWith { }
+    }
+
+    It 'is a no-op when Netrc is null' {
+        Sync-WslNetrc -Distro 'Ubuntu' -Netrc $null
+        $script:wslInvoked | Should -Be $false
+    }
+
+    It 'is a no-op when Netrc is empty' {
+        Sync-WslNetrc -Distro 'Ubuntu' -Netrc @()
+        $script:wslInvoked | Should -Be $false
+    }
+
+    It 'writes a private ~/.netrc without overwriting an existing one' {
+        Sync-WslNetrc -Distro 'Ubuntu' -Netrc @('machine example.com login alice password tok')
+        $script:wslInvoked | Should -Be $true
+        $argStr = $script:wslArgs -join ' '
+        $argStr | Should -Match '--distribution Ubuntu'
+        $argStr | Should -Match '\[ -e \$HOME/\.netrc \] \|\|'
+        $argStr | Should -Match 'set -C'
+        $argStr | Should -Match 'umask 077'
+    }
+}
+
+# Pester mocks do not receive pipeline input, so a global function stands in
+# for wsl.exe to capture what is piped to it.
+Describe 'Sync-WslNetrc stdin' {
+    BeforeAll {
+        # keep the file-level stub (non-Windows) so later Mocks still have a command to bind to
+        $script:prevWsl = (Get-Item -Path 'function:global:wsl.exe' -ErrorAction SilentlyContinue).ScriptBlock
+        function global:wsl.exe {
+            $global:netrcArgs = $args
+            $global:netrcStdin = $input | Out-String
+        }
+        Mock -CommandName 'Show-LogContext' -ModuleName 'utils-setup' -MockWith { }
+    }
+
+    AfterAll {
+        if ($script:prevWsl) {
+            Set-Item -Path 'function:global:wsl.exe' -Value $script:prevWsl
+        } else {
+            Remove-Item -Path 'function:global:wsl.exe'
+        }
+        Remove-Variable -Name 'netrcArgs', 'netrcStdin' -Scope Global -ErrorAction SilentlyContinue
+    }
+
+    It 'passes the content over stdin, never in the command line' {
+        $netrc = [string[]]@('machine example.com login alice password tok', 'NETRCEOF', 'touch /tmp/pwned')
+        Sync-WslNetrc -Distro 'Ubuntu' -Netrc $netrc
+        ($global:netrcArgs -join ' ') | Should -Not -Match 'password tok|NETRCEOF|pwned'
+        $global:netrcStdin | Should -Match 'password tok'
+        $global:netrcStdin | Should -Match 'NETRCEOF'
+    }
+}
+
 Describe 'Sync-WslSshKeys' {
     BeforeEach {
         # Sync-WslSshKeys derives the WSL /mnt path from $HOME. Pin HOME to
@@ -644,7 +707,7 @@ Describe 'Resolve-WslGtkThemePreference' {
     }
 }
 
-Describe 'Get-WslGhConfigFromDefault' {
+Describe 'Get-WslFileFromDefault' {
     BeforeEach {
         Mock -CommandName 'Show-LogContext' -ModuleName 'utils-setup' -MockWith { }
     }
@@ -654,7 +717,7 @@ Describe 'Get-WslGhConfigFromDefault' {
             [pscustomobject]@{ Name = 'Ubuntu'; Default = $true }
             [pscustomobject]@{ Name = 'Debian'; Default = $false }
         )
-        $result = Get-WslGhConfigFromDefault -TargetDistro 'Ubuntu' -InstalledDistros $installed
+        $result = Get-WslFileFromDefault -Path '$HOME/.config/gh/hosts.yml' -TargetDistro 'Ubuntu' -InstalledDistros $installed
         $result | Should -BeNullOrEmpty
     }
 
@@ -662,11 +725,11 @@ Describe 'Get-WslGhConfigFromDefault' {
         $installed = @(
             [pscustomobject]@{ Name = 'Ubuntu'; Default = $false }
         )
-        $result = Get-WslGhConfigFromDefault -TargetDistro 'Debian' -InstalledDistros $installed
+        $result = Get-WslFileFromDefault -Path '$HOME/.config/gh/hosts.yml' -TargetDistro 'Debian' -InstalledDistros $installed
         $result | Should -BeNullOrEmpty
     }
 
-    It 'reads hosts.yml from the default distro when target differs' {
+    It 'reads the file from the default distro when target differs' {
         Mock -CommandName 'wsl.exe' -ModuleName 'utils-setup' -MockWith {
             return @('github.com:', '  user: alice')
         }
@@ -674,17 +737,17 @@ Describe 'Get-WslGhConfigFromDefault' {
             [pscustomobject]@{ Name = 'Ubuntu'; Default = $true }
             [pscustomobject]@{ Name = 'Debian'; Default = $false }
         )
-        $result = Get-WslGhConfigFromDefault -TargetDistro 'Debian' -InstalledDistros $installed
+        $result = Get-WslFileFromDefault -Path '$HOME/.config/gh/hosts.yml' -TargetDistro 'Debian' -InstalledDistros $installed
         $result | Should -Contain 'github.com:'
     }
 
     It 'returns empty array when no distros are installed' {
-        $result = Get-WslGhConfigFromDefault -TargetDistro 'Ubuntu' -InstalledDistros @()
+        $result = Get-WslFileFromDefault -Path '$HOME/.config/gh/hosts.yml' -TargetDistro 'Ubuntu' -InstalledDistros @()
         $result | Should -BeNullOrEmpty
     }
 
     It 'returns empty array when InstalledDistros is null' {
-        $result = Get-WslGhConfigFromDefault -TargetDistro 'Ubuntu' -InstalledDistros $null
+        $result = Get-WslFileFromDefault -Path '$HOME/.config/gh/hosts.yml' -TargetDistro 'Ubuntu' -InstalledDistros $null
         $result | Should -BeNullOrEmpty
     }
 }

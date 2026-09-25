@@ -229,6 +229,40 @@ function Sync-WslGitHubConfig {
 
 <#
 .SYNOPSIS
+Pre-populate ~/.netrc inside a WSL distro from supplied lines.
+.DESCRIPTION
+Writes ~/.netrc with mode 600 (Python's netrc module rejects a looser file),
+streaming the content over stdin so it never appears in process arguments.
+Never overwrites an existing ~/.netrc in the distro. No-op when Netrc is
+empty / null.
+.PARAMETER Distro
+Name of the WSL distro.
+.PARAMETER Netrc
+Lines from a .netrc file (typically pulled from another distro's ~/.netrc).
+#>
+function Sync-WslNetrc {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)]
+        [string]$Distro,
+
+        [AllowNull()]
+        [AllowEmptyCollection()]
+        [string[]]$Netrc
+    )
+
+    if (-not $Netrc) {
+        return
+    }
+
+    Show-LogContext 'pre-populating ~/.netrc'
+    # tr strips the CRLF that pwsh on Windows appends when piping to a native command
+    $cmnd = '[ -e $HOME/.netrc ] || { set -C; umask 077; tr -d ''\r'' > $HOME/.netrc; }'
+    ($Netrc -join "`n") | wsl.exe --distribution $Distro --exec bash -c $cmnd
+}
+
+<#
+.SYNOPSIS
 Sync the id_ed25519 SSH key pair between Windows ~/.ssh and a WSL distro.
 .DESCRIPTION
 Three transfer scenarios:

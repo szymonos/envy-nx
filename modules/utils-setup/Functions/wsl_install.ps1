@@ -2,11 +2,13 @@ using namespace System.Management.Automation.Host
 
 <#
 .SYNOPSIS
-Pull ~/.config/gh/hosts.yml from the default WSL distro for replication
-into the target distro.
+Pull a file from the default WSL distro for replication into the target
+distro.
 .DESCRIPTION
-Returns the lines of hosts.yml as a string array, or @() when the default
+Returns the lines of the file as a string array, or @() when the default
 distro is the same as the target (nothing to pull) or the file is missing.
+.PARAMETER Path
+Path inside the distro; `$HOME` is expanded by the distro's shell.
 .PARAMETER TargetDistro
 Distro that will receive the config. When it matches the default distro,
 the function is a no-op and returns @().
@@ -15,9 +17,12 @@ Output of Get-WslDistro filtered to non-docker-desktop entries. Accepts an
 empty collection or $null - a machine with no distros installed yet is the
 normal first-run state, not an error.
 #>
-function Get-WslGhConfigFromDefault {
+function Get-WslFileFromDefault {
     [CmdletBinding()]
     param (
+        [Parameter(Mandatory)]
+        [string]$Path,
+
         [Parameter(Mandatory)]
         [string]$TargetDistro,
 
@@ -32,10 +37,9 @@ function Get-WslGhConfigFromDefault {
         return @()
     }
 
-    Show-LogContext 'getting GitHub authentication config from the default distro'
-    $hostsPath = '$HOME/.config/gh/hosts.yml'
-    [string[]]$ghConfig = wsl.exe --distribution $defaultDistro -- cat $hostsPath 2>$null
-    return $ghConfig ?? @()
+    Show-LogContext ('getting {0} from the default distro' -f $Path)
+    [string[]]$content = wsl.exe --distribution $defaultDistro -- cat $Path 2>$null
+    return $content ?? @()
 }
 
 <#
