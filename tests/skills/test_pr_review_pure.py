@@ -634,20 +634,29 @@ def test_auto_pr_reads_the_current_branch(monkeypatch: pytest.MonkeyPatch) -> No
     assert pr_review._auto_pr() == 71
 
 
-@pytest.mark.parametrize(("stdout", "code"), [("", 0), ("", 1)])
+@pytest.mark.parametrize(
+    ("code", "stderr", "expected"),
+    [
+        # only a merged or closed PR: the state filter leaves stdout empty
+        (0, "", "No open PR"),
+        # no PR at all: gh itself exits non-zero and says so
+        (1, "no pull requests found for branch", "no pull requests found"),
+    ],
+)
 def test_auto_pr_without_an_open_pr_exits(
     monkeypatch: pytest.MonkeyPatch,
-    stdout: str,
     code: int,
+    stderr: str,
+    expected: str,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Guessing a PR number would resolve threads on somebody else's review."""
-    _stub_run(monkeypatch, stdout, code)
+    _stub_run(monkeypatch, "", code, stderr)
 
     with pytest.raises(SystemExit):
         pr_review._auto_pr()
 
-    assert "No open PR" in capsys.readouterr().err
+    assert expected in capsys.readouterr().err
 
 
 def test_a_non_numeric_pr_number_is_reported_not_raised(
