@@ -21,6 +21,7 @@ $exportModuleMemberParams = @{
         'Invoke-WslExe'
         'Set-WslConf'
         # wsl install
+        'Get-WslArchiveFromDefault'
         'Get-WslFileFromDefault'
         'Get-WslMigrationChoice'
         'Install-WslDistroIfMissing'
@@ -28,6 +29,7 @@ $exportModuleMemberParams = @{
         'Invoke-WslDistroMigration'
         'Resolve-WslGtkThemePreference'
         # wsl phases
+        'Expand-WslArchive'
         'Install-WslScopes'
         'Invoke-WslBaseSetup'
         'Invoke-WslDistroCheck'

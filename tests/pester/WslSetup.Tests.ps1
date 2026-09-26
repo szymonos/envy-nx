@@ -83,6 +83,9 @@ Describe 'wsl_setup.ps1 orchestration' {
             if ($argStr -match 'cat \$HOME/\.netrc') {
                 return 'machine png.jfrog.io login alice password s3cret'
             }
+            if ($argStr -match 'tar -czf') {
+                return 'QVpVUkVUT0tFTg=='
+            }
             if ($argStr -match 'command -v pwsh') {
                 return 'true'
             }
@@ -267,7 +270,7 @@ Describe 'wsl_setup.ps1 orchestration' {
         }
     }
 
-    Context 'New distro inherits ~/.netrc from the default distro' {
+    Context 'New distro inherits credentials from the default distro' {
         BeforeEach {
             Mock Get-WslDistro {
                 [PSCustomObject]@{ Default = $true; Name = 'Ubuntu'; State = 'Running'; Version = 2 }
@@ -290,6 +293,19 @@ Describe 'wsl_setup.ps1 orchestration' {
             $calls | Where-Object { $_ -match '--distribution Ubuntu .*cat \$HOME/\.netrc' } | Should -Not -BeNullOrEmpty
             $calls | Where-Object { $_ -match '--distribution Debian --exec bash -c .*set -C.*\.netrc' } | Should -Not -BeNullOrEmpty
             $calls | Where-Object { $_ -match 's3cret' } | Should -BeNullOrEmpty
+        }
+
+        It 'copies azure-cli and Az module credentials from the default distro without exposing them in arguments' {
+            $global:WslTestCheckDistroJson = New-CheckDistro
+
+            & "$Script:RepoRoot/wsl/wsl_setup.ps1" -Distro 'Debian' -Scope @('shell') -SkipRepoUpdate 6>$null
+
+            $calls = $global:WslTestCalls | ForEach-Object { $_ -join ' ' }
+            $calls | Where-Object { $_ -match '--distribution Ubuntu .*tar -czf.*\.azure/msal_token_cache\.json' } | Should -Not -BeNullOrEmpty
+            $calls | Where-Object { $_ -match '--distribution Ubuntu .*tar -czf.*\.Azure/AzureRmContext\.json' } | Should -Not -BeNullOrEmpty
+            $calls | Where-Object { $_ -match 'service_principal_entries' } | Should -BeNullOrEmpty
+            @($calls | Where-Object { $_ -match '--distribution Debian --exec sh -c .*tar -xzf' }).Count | Should -Be 2
+            $calls | Where-Object { $_ -match 'QVpVUkVUT0tFTg' } | Should -BeNullOrEmpty
         }
     }
 

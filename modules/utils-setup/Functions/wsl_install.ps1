@@ -44,6 +44,51 @@ function Get-WslFileFromDefault {
 
 <#
 .SYNOPSIS
+Pack files from the default WSL distro for replication into the target
+distro.
+.DESCRIPTION
+Returns a base64-encoded tar.gz of the paths that exist, as a string array,
+or @() when the default distro is the same as the target or none of the
+paths exist. Base64 keeps binary content intact through the text pipeline
+between wsl.exe calls.
+.PARAMETER Path
+Files or directories relative to $HOME inside the distro.
+.PARAMETER TargetDistro
+Distro that will receive the files. When it matches the default distro,
+the function is a no-op and returns @().
+.PARAMETER InstalledDistros
+Output of Get-WslDistro filtered to non-docker-desktop entries; $null and
+empty are accepted as in Get-WslFileFromDefault.
+#>
+function Get-WslArchiveFromDefault {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)]
+        [string[]]$Path,
+
+        [Parameter(Mandatory)]
+        [string]$TargetDistro,
+
+        [Parameter(Mandatory)]
+        [AllowNull()]
+        [AllowEmptyCollection()]
+        [object[]]$InstalledDistros
+    )
+
+    $defaultDistro = @($InstalledDistros).Where({ $_.Default }).Name
+    if (-not $defaultDistro -or $defaultDistro -eq $TargetDistro) {
+        return @()
+    }
+
+    Show-LogContext ('getting {0} from the default distro' -f ($Path -join ', '))
+    # `for p do` expands "$@" once, so the loop can rebuild it with only the existing paths
+    $cmnd = 'cd "$HOME" || exit; for p do shift; [ -e "$p" ] && set -- "$@" "$p"; done; [ $# -eq 0 ] || tar -czf - "$@" | base64'
+    [string[]]$content = wsl.exe --distribution $defaultDistro --exec sh -c $cmnd sh @Path 2>$null
+    return $content.Where({ $_ }) ?? @()
+}
+
+<#
+.SYNOPSIS
 Prompt the user to choose how to handle a WSL1 distro.
 .DESCRIPTION
 Wraps $Host.UI.PromptForChoice - the only non-testable interactive surface
