@@ -61,6 +61,13 @@ def main():
         failures,
     )
     _check_region(
+        gen.LIFECYCLE_FILE,
+        gen.VERB_HELP_REGION_RE,
+        gen.emit_verb_help(manifest),
+        "nx-verb-help region",
+        failures,
+    )
+    _check_region(
         gen.NX_FILE,
         gen.NX_MAIN_REGION_RE,
         gen.emit_nx_main(manifest),

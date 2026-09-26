@@ -131,6 +131,12 @@ _zsh_rc() {
   [[ "$output" == *"Usage: nx"* ]]
 }
 
+@test "per-command --help works under zsh" {
+  run _zsh "source $NX_LIB_DIR/nx.sh && nx_main self update --help"
+  [ "$status" -eq 0 ]
+  [[ "$output" == "Usage: nx self update [options]"* ]]
+}
+
 @test "nx_main version works under zsh (no install.json - early return path)" {
   # Without install.json, _nx_lifecycle_version prints "No install record
   # found" and returns before declaring any locals. This is the path that
