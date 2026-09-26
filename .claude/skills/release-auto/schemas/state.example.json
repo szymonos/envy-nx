@@ -15,10 +15,11 @@
     "                       spine_complete.",
     "  head_sha             HEAD when the last step finished; resume refuses if",
     "                       HEAD moved underneath the orchestrator (staleness guard).",
-    "  confirmed_covered_set  paths the covered-set delta is measured against;",
-    "                       reconcile gates only when this set changes (decision 5).",
-    "  completed_phases     phase letters recorded for idempotent crash-recovery.",
-    "  decisions            audit log of gate decisions consumed."
+    "  confirmed_covered_set  paths the last recut committed; reconcile reports",
+    "                       the delta against it as advisory context.",
+    "  second_opinion_runs  coda 4a runs so far; second-opinion refuses past 2.",
+    "  coda_pushes          coda re-pushes so far; copilot-review hands remaining",
+    "                       threads to the user from 2 on."
   ],
   "version": "1.16.0",
   "skip_review": false,
@@ -35,6 +36,6 @@
     "pyproject.toml",
     "uv.lock"
   ],
-  "completed_phases": ["A", "B"],
-  "decisions": [{ "kind": "phase1", "version": "1.16.0" }]
+  "second_opinion_runs": 1,
+  "coda_pushes": 0
 }
