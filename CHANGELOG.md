@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.28.1] - 2026-09-26
+
+### Fixed
+
+- Tab completion now offers `--help` / `-h` after every `nx` command and subcommand in bash, zsh and PowerShell.
+
 ## [1.28.0] - 2026-09-26
 
 `nx upgrade` is now the one command that brings an install fully up to date, and every `nx` command explains itself with `--help`.
