@@ -5,6 +5,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.27.1] - 2026-09-26
+
+### Added
+
+- `/release-auto` finishes by labelling the release PR `test:integration` once nothing is left to push, and `release.py integration` waits for those runs and reports failed jobs.
+- `release.py second-opinion` and `release.py copilot-review` run the two review layers, picking the model, requesting Copilot only when needed, and attaching a `review-policy.json` proposal to every thread.
+- `release.py resume` gates before the recut on a CHANGELOG bullet over 40 words, or on sections that do not match the version bump, such as `Added` in a patch release.
+
+### Changed
+
+- `release.py push --done` refuses while review threads are open or HEAD is not pushed, instead of wiping the run and warning afterwards; `--force` finishes anyway.
+- The `/release-auto` skill instructions are 59% shorter, with recovery steps moved to `references/recovery.md`.
+
+### Fixed
+
+- `/release-auto` no longer edits a merged PR when a branch name is reused; the release PR and the Copilot review now only target an open PR.
+- `release.py` works from any directory in the repository, and its messages name the driver by a path that runs as written.
+
+### Removed
+
+- The unused `test_stats.py` and `extract_signals.py` release scripts, and the per-release copy of `review-policy.json`.
+
 ## [1.27.0] - 2026-09-26
 
 New WSL distros now inherit Azure sign-ins from the default distro, so azure-cli and the Az PowerShell module work without signing in again.
