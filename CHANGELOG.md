@@ -5,6 +5,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.28.0] - 2026-09-26
+
+`nx upgrade` is now the one command that brings an install fully up to date, and every `nx` command explains itself with `--help`.
+
+### Added
+
+- Every `nx` command and subcommand accepts `-h` / `--help` and prints its usage, aliases and options; `nx setup --help` shows the full `nix/setup.sh` option list.
+
+### Changed
+
+- `nx upgrade` now brings everything up to date: it pulls the source repo, moves to the latest CI-validated nixpkgs revision, upgrades packages and refreshes shell profiles and tool configs.
+- Without the source repo on disk, `nx upgrade` still upgrades packages in place, to the nixpkgs revision synced last.
+- `nx setup` and `nix/setup.sh` now upgrade packages to the validated revision on every run; `--upgrade` is accepted with a warning, and `nx pin set` holds packages on one revision.
+- `nx self update` now only updates nx itself: it pulls the repo and syncs the nx files without installing or upgrading anything.
+- The setup summary reports `upgrade` instead of `reconfigure` for a run with no scope changes.
+
+### Fixed
+
+- A failed or interrupted `nix/setup.sh` restores the previous `flake.lock`, so the machine stays on the last working revision instead of a lock the profile never received.
+- Pressing Ctrl-C during an in-place `nx upgrade` now stops it and restores `flake.lock`, instead of carrying on to the package upgrade.
+- `nx pin remove` and `nx pin show` now say upgrades use the validated revision, not the latest nixpkgs-unstable.
+- `nx self update` now exits non-zero when syncing the nx files fails, instead of reporting success after `Updated.`.
+- `--help` no longer runs the command it is passed to: `nx rollback --help`, `nx gc --help` and `nx self update --help` used to roll back, collect garbage or update.
+
 ## [1.27.1] - 2026-09-26
 
 ### Added
