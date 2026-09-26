@@ -49,7 +49,7 @@ flowchart TD
     apply --remove, resolve deps,
     write config.nix"]
     SC --> NP["Nix Profile
-    flake update (--upgrade only),
+    lock the validated rev,
     nix profile add/upgrade,
     MITM probe + CA bundle"]
     NP --> CF["Configure
@@ -75,7 +75,7 @@ Each phase has a single responsibility:
 | **Profiles**     | Write the **managed blocks** into `~/.bashrc`, `~/.zshrc`, and the PowerShell profile                                            |
 | **Post-install** | Install non-Nix extras (Copilot CLI, zsh plugins, PowerShell modules), garbage-collect old generations, write `install.json`     |
 
-Re-running setup is **idempotent**: the same flags produce the same output. New flags are additive - adding `--terraform` to an existing install does not remove anything else. `setup.sh --upgrade` is the explicit verb that pulls fresh package versions.
+Re-running setup is **idempotent**: the same flags produce the same output. New flags are additive - adding `--terraform` to an existing install does not remove anything else. Every run moves packages to the CI-validated nixpkgs revision; `nx pin set` holds them on a chosen one.
 
 ## Durable state: where the environment lives
 
@@ -444,7 +444,7 @@ See [Customization](customization.md) for the full guide and worked examples.
 The choices above are not isolated - they share a small set of principles applied consistently:
 
 - **Bootstrapper, not agent.** Run once, provision, exit. No daemon, no background process, no runtime dependency on infrastructure.
-- **Explicit upgrades.** `nix/setup.sh` without `--upgrade` re-applies configuration using existing package versions. Package updates require an explicit `--upgrade` or `nx upgrade`. No silent breakage.
+- **Explicit, validated upgrades.** Packages move only when the user runs `nx upgrade` or `nix/setup.sh`, and only to a revision CI has built and installed on Linux and macOS. A failed or interrupted upgrade restores the previous lock. No silent breakage.
 - **Additive scopes.** Adding a scope never removes existing tools. Removal is an explicit action (`setup.sh --remove <scope>`). Scope dependencies are resolved automatically.
 - **Tested constraints, not documented conventions.** Bash 3.2 / BSD sed compatibility is enforced by a pre-commit hook. Scope consistency is validated by Python script. Idempotency is verified in CI on every PR. Constraints that depend on humans remembering them eventually drift.
 - **Single source of truth for cross-runtime data.** `scopes.json` (catalog) and `nx_surface.json` (CLI surface) are each read by bash, PowerShell, and Python. JSON is the only format all three parse natively without a custom parser.

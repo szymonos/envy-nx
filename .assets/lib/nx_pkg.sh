@@ -136,6 +136,18 @@ function _nx_pkg_upgrade() {
     esac
   done
 
+  # With the source repo on disk, upgrade means the full setup pipeline: it
+  # pulls the repo (and with it the latest validated revision), upgrades the
+  # packages and refreshes everything else setup manages, so the install
+  # record, profiles and tool configs never lag behind the packages.
+  local _repo
+  _repo="$(_nx_read_install_field repo_path)"
+  if [ -n "$_repo" ] && [ -f "$_repo/nix/setup.sh" ]; then
+    _nx_lifecycle_setup "$@"
+    return
+  fi
+  printf "\e[90msource repo not found - upgrading packages from the revision already on disk\e[0m\n"
+
   # Records the failed attempt so `nx doctor` can surface a machine that
   # quietly stopped advancing; cleared on success. nx_doctor.sh is standalone
   # after install (it never sources nx.sh), so it hardcodes the same name.
@@ -161,56 +173,55 @@ function _nx_pkg_upgrade() {
 
   printf "\e[96mupgrading packages...\e[0m\n"
 
-  # flake.lock is rewritten before the slow, cancellable `nix profile upgrade`,
-  # so a Ctrl-C or a build failure would otherwise leave the lock naming a
-  # revision the profile never received. Snapshot it and put it back on
-  # failure: the lock is already the per-machine record of the revision in
-  # use, so restoring it is the whole "stay on the last working rev" contract -
-  # no second bookkeeping file to drift from profile generations.
-  local _lock="$_NX_ENV_DIR/flake.lock" _lock_backup=""
-  if [ -f "$_lock" ]; then
-    _lock_backup="$(mktemp "${_lock}.bak.XXXXXX")" || {
-      printf "\e[31mcould not back up flake.lock - aborting to protect the current revision\e[0m\n" >&2
-      return 1
-    }
-    command cp "$_lock" "$_lock_backup" || {
-      command rm -f "$_lock_backup"
-      printf "\e[31mcould not back up flake.lock - aborting to protect the current revision\e[0m\n" >&2
-      return 1
-    }
-  fi
+  local _lock_backup
+  _lock_backup="$(_nx_lock_backup "$_NX_ENV_DIR")" || {
+    printf "\e[31mcould not back up flake.lock - aborting to protect the current revision\e[0m\n" >&2
+    return 1
+  }
 
-  # nix writes progress (the live progress bar and per-path "copying path"
-  # lines) to stderr; let it through so the user sees what's happening
-  # during the network-bound flake update.
-  case "$_mode" in
-  pinned)
-    printf "\e[96mpinning nixpkgs to %s (nx pin)\e[0m\n" "$_rev"
-    nix flake lock --override-input nixpkgs "github:nixos/nixpkgs/$_rev" "$_NX_ENV_DIR" ||
-      printf "\e[33mflake lock failed - using existing lock\e[0m\n" >&2
-    ;;
-  validated)
-    printf "\e[96musing validated nixpkgs %s\e[0m\n" "${_rev:0:12}"
-    nix flake lock --override-input nixpkgs "github:nixos/nixpkgs/$_rev" "$_NX_ENV_DIR" ||
-      printf "\e[33mflake lock failed - using existing lock\e[0m\n" >&2
-    ;;
-  latest)
-    printf "\e[33musing nixpkgs-unstable HEAD - not validated by CI\e[0m\n"
-    nix flake update --flake "$_NX_ENV_DIR" ||
-      printf "\e[33mflake update failed (network issue?) - using existing lock\e[0m\n" >&2
-    ;;
-  *)
-    printf "\e[33mno validated revision found - keeping the current lock\e[0m\n" >&2
-    printf "\e[90mrun nx self update to fetch one\e[0m\n" >&2
-    ;;
-  esac
+  # Subshell so the INT/TERM trap can `exit`: a `return` from a trap does not
+  # reliably leave a function in bash. Without the trap, a Ctrl-C that nix
+  # turns into a plain non-zero exit during the flake lock falls through to the
+  # "using existing lock" branch and starts the upgrade anyway.
+  (
+    trap '_nx_lock_restore "$_NX_ENV_DIR" "$_lock_backup"; printf "\e[33minterrupted - restored the previous flake.lock\e[0m\n" >&2; exit 130' INT TERM
+    # nix writes progress (the live progress bar and per-path "copying path"
+    # lines) to stderr; let it through so the user sees what's happening
+    # during the network-bound flake update.
+    case "$_mode" in
+    pinned)
+      printf "\e[96mpinning nixpkgs to %s (nx pin)\e[0m\n" "$_rev"
+      nix flake lock --override-input nixpkgs "github:nixos/nixpkgs/$_rev" "$_NX_ENV_DIR" ||
+        printf "\e[33mflake lock failed - using existing lock\e[0m\n" >&2
+      ;;
+    validated)
+      printf "\e[96musing validated nixpkgs %s\e[0m\n" "${_rev:0:12}"
+      nix flake lock --override-input nixpkgs "github:nixos/nixpkgs/$_rev" "$_NX_ENV_DIR" ||
+        printf "\e[33mflake lock failed - using existing lock\e[0m\n" >&2
+      ;;
+    latest)
+      printf "\e[33musing nixpkgs-unstable HEAD - not validated by CI\e[0m\n"
+      nix flake update --flake "$_NX_ENV_DIR" ||
+        printf "\e[33mflake update failed (network issue?) - using existing lock\e[0m\n" >&2
+      ;;
+    *)
+      printf "\e[33mno validated revision found - keeping the current lock\e[0m\n" >&2
+      printf "\e[90mrun nx self update to fetch one\e[0m\n" >&2
+      ;;
+    esac
 
-  if ! nix profile upgrade nix-env; then
+    nix profile upgrade nix-env && exit 0
     printf "\e[31mnix profile upgrade failed\e[0m\n" >&2
     if [ -n "$_lock_backup" ]; then
-      command mv "$_lock_backup" "$_lock"
+      _nx_lock_restore "$_NX_ENV_DIR" "$_lock_backup"
       printf "\e[33mrestored the previous flake.lock - still on the last working revision\e[0m\n" >&2
     fi
+    exit 1
+  )
+  local _rc=$?
+  if [ "$_rc" -ne 0 ]; then
+    # An interrupt is not an upgrade failure worth surfacing in nx doctor.
+    [ "$_rc" -eq 130 ] && return 130
     # Record what was actually attempted. `latest` really did reach for HEAD;
     # `none` touched no lock at all, and naming HEAD there made nx doctor
     # report an upgrade that never happened.

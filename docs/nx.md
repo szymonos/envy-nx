@@ -34,13 +34,13 @@ If you stopped reading here and only used those six commands, you would already 
 | `nx pin`          | (unique)               | Lock nixpkgs to a specific commit for reproducibility   |
 | `nx profile`      | (unique)               | Manage shell-rc managed blocks (bash/zsh)               |
 | `nx setup`        | (unique)               | Re-run full provisioning (`nix/setup.sh` from anywhere) |
-| `nx self`         | (unique)               | Update the source repository this tool lives in         |
+| `nx self`         | (unique)               | Update nx itself (no packages touched)                  |
 | `nx doctor`       | `brew doctor`          | Health checks against the live environment              |
 | `nx version`      | `apt-config`           | Show install provenance, scopes, and live config        |
 | `nx prune`        | (unique)               | Remove orphaned `nix profile` entries                   |
 | `nx gc` / `clean` | `apt clean`            | Garbage-collect old generations to reclaim disk         |
 
-Run `nx help` for the inline cheat sheet, or `nx <command> help` for subcommand help.
+Run `nx help` for the inline cheat sheet, or add `--help` (`-h`) to any command - `nx upgrade --help`, `nx scope add --help` - for its usage and options. A command given `--help` only prints help; it never runs.
 
 ## Tab completion (bash, zsh, PowerShell)
 
@@ -58,7 +58,7 @@ What you get out of the box:
 nx <TAB><TAB>          # all top-level commands
 nx scope <TAB>         # list  show  tree  add  edit  remove
 nx scope edit <TAB>    # dynamic: only the scopes actually present in config.nix
-nx setup --<TAB>       # every scope flag + --omp-theme, --starship-theme, --upgrade, --all, ...
+nx setup --<TAB>       # every scope flag + --omp-theme, --starship-theme, --latest, --all, ...
 nx self update --<TAB> # --force
 ```
 
@@ -99,7 +99,15 @@ nx upgrade
 nx update                        # alias
 ```
 
-Runs `nix flake update` on the per-user lock, then `nix profile upgrade nix-env`. If `nx pin` is set, the upgrade respects the pinned `nixpkgs` revision instead. If the network is unreachable, the existing lock is kept and the upgrade is reported as a warning rather than a failure - so a flaky VPN doesn't leave you with a half-broken profile.
+The one command to bring everything up to date, like `brew upgrade`: it pulls the source repo, moves nixpkgs to the CI-validated revision, upgrades every package to it, and refreshes shell profiles and tool configs. Under the hood it runs `nix/setup.sh` from the recorded repo, so `nx upgrade` and `nx setup` always land on the same state.
+
+```bash
+nx upgrade --latest              # nixpkgs-unstable HEAD instead - not validated by CI
+```
+
+If `nx pin` is set, the upgrade locks to the pinned revision. It never moves backwards: after `--latest`, plain upgrades wait until the validated revision catches up. If the network is unreachable, the existing lock is kept and the upgrade is reported as a warning rather than a failure. If the upgrade fails or is interrupted, the previous `flake.lock` is restored, so you stay on the last working revision.
+
+Without the source repo on disk, `nx upgrade` still works: it upgrades packages in place to the revision synced last.
 
 ### `nx list`
 
@@ -157,12 +165,12 @@ This is where `nx` does things `apt` cannot. Three verbs manage the **tool itsel
 ### `nx setup [flags...]`
 
 ```bash
-nx setup                                # re-run with current scopes
+nx setup                                # re-run with current scopes (same as nx upgrade)
 nx setup --terraform --gcloud           # add scopes to the existing config
-nx setup --upgrade                      # full upgrade pass
+nx setup --remove rice                  # drop a scope
 ```
 
-Re-runs `nix/setup.sh` from anywhere - no need to remember where you cloned the repo. The lookup order is:
+Re-runs `nix/setup.sh` from anywhere - no need to remember where you cloned the repo. Every run pulls the repo and moves packages to the validated nixpkgs revision; use `nx pin set` to hold them on a revision instead. The lookup order is:
 
 1. `install.json:repo_path` if it points to a valid envy-nx checkout (respects forks and non-canonical clones).
 2. Otherwise the canonical fallback `$HOME/source/repos/szymonos/envy-nx`. If that location doesn't exist, `nx setup` clones it on demand - no prompt, no surprises.
@@ -178,7 +186,7 @@ nx self update --force                  # fetch + reset --hard origin/<branch>
 nx self path                            # print the recorded repo path
 ```
 
-Updates the source repository. Default is **safe** (`--ff-only` refuses to clobber local commits). `--force` resets to `origin/<current-branch>` for environments where the clone is treated as ephemeral. If the install was from a release tarball (no `.git`), `nx self update` offers to convert it to a git clone instead.
+Updates nx itself: pulls the source repository and syncs the `nx` files into `~/.config/nix-env/`. Packages, shell profiles and tool configs are left alone - `nx upgrade` applies those. Default is **safe** (`--ff-only` refuses to clobber local commits). `--force` resets to `origin/<current-branch>` for environments where the clone is treated as ephemeral. If the install was from a release tarball (no `.git`), `nx self update` offers to convert it to a git clone instead.
 
 After an update, the in-shell `nx_main` function is invalidated so the next `nx` call re-sources the freshly-updated `nx.sh` - no shell restart needed.
 
@@ -253,7 +261,7 @@ By default this moves to the revision recorded in `nix/nixpkgs_rev.json` - the o
 
 An upgrade never moves you backwards: if the validated revision is older than what you already have (typical after `--latest` while the weekly bump is blocked), `nx upgrade` reports it and does nothing. Go back deliberately with `nx pin set <rev>`.
 
-The validated revision reaches your machine with the rest of the repo - `nx self update`, or any `nix/setup.sh` run, which auto-pulls. `nx upgrade` alone uses whatever was synced last.
+The validated revision reaches your machine with the rest of the repo: `nx upgrade` and `nx setup` pull it and move to it, `nx self update` syncs it without upgrading. Without the source repo, `nx upgrade` uses whatever was synced last.
 
 ### `nx pin`
 

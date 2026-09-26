@@ -26,9 +26,11 @@ Verified against the code on 2026-09-24. Items 1-3 mean the team pattern that
    the overlay's `hooks/`. `pre-setup` also runs before overlay discovery, so it
    could not see the overlay even if it looked. `nx overlay` lists hook files it
    will never execute.
-3. **`nx upgrade` does not sync the overlay.** The copy step runs only in
-   `nix/setup.sh` (and `nx setup`, which calls it). After a `git pull` of the team
-   overlay, `nx upgrade` rebuilds from the stale copies.
+3. **Without the source repo, `nx upgrade` does not sync the overlay.** The copy
+   step runs only in `nix/setup.sh`. Since decision
+   [0012](decisions/0012-one-upgrade-path.md) `nx upgrade` runs it too, so this
+   gap remains only for the in-place fallback, which rebuilds from the copies
+   made by the last setup.
 4. **A scope cannot import a sibling file.** Only `scopes/*.nix` is copied, and the
    flake is installed as `path:$ENV_DIR`, so a pure evaluation cannot read the
    overlay directory. `import ../pkgs/tool.nix` resolves against the copy and

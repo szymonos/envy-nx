@@ -2,13 +2,13 @@
 # Universal dev environment setup - works on macOS, WSL/Linux, and containers.
 # Uses Nix with a buildEnv flake for declarative, cross-platform package management.
 # No root/sudo required after the one-time Nix install (see install_nix.sh).
-# Additive: scope flags add to existing config; without flags, reconfigures
-# using existing package versions. Use --upgrade to pull latest packages.
+# Additive: scope flags add to existing config. Every run moves packages to the
+# CI-validated nixpkgs revision (`nx pin set` freezes it, --latest takes HEAD).
 : '
-# :run without scope flags (reconfigure, re-use existing package versions)
+# :refresh the repo and upgrade everything to the validated nixpkgs revision
 nix/setup.sh
-# :upgrade all packages to latest nixpkgs
-nix/setup.sh --upgrade
+# :upgrade to nixpkgs-unstable HEAD (not validated by CI)
+nix/setup.sh --latest
 # :add new scopes (merged with existing config)
 nix/setup.sh --shell
 # :run with oh-my-posh theme
@@ -65,6 +65,17 @@ source "$SCRIPT_ROOT/.assets/lib/setup_log.sh"
 # Ahead of the EXIT trap and every phase: a mistyped flag must not pull the
 # repo, write ~/.config/nix-env, install jq, or leave a failed install record.
 phase_bootstrap_validate_args "$@"
+# --help must not pull, sync or install either. --sync-only (`nx self update`)
+# provisions nothing, so it leaves the install record alone: rewriting it would
+# replace the recorded scopes with an empty list.
+_sync_only=false
+for _arg in "$@"; do
+  case "$_arg" in
+  -h | --help) usage && exit 0 ;;
+  --sync-only) _sync_only=true ;;
+  esac
+done
+unset _arg
 
 # ---- trap + provenance -------------------------------------------------------
 _IR_ENTRY_POINT="nix"
@@ -81,7 +92,7 @@ if git -C "$SCRIPT_ROOT" rev-parse --is-inside-work-tree &>/dev/null; then
 fi
 [ -z "$_IR_REPO_URL" ] && _IR_REPO_URL="https://github.com/szymonos/envy-nx.git"
 _ir_phase="bootstrap"
-_ir_skip=false
+_ir_skip="$_sync_only"
 _ir_error=""
 _mode="unknown"
 platform="unknown"
@@ -90,6 +101,12 @@ _scope_sorted=()
 _on_exit() {
   local exit_code=$?
   local log_path="$_SETUP_LOG_FILE"
+  # Still set means the locked revision never reached the profile (failure or
+  # Ctrl-C between phase_nix_profile_update_flake and a successful apply).
+  if [[ -n "${NX_LOCK_BACKUP:-}" ]]; then
+    _nx_lock_restore "$ENV_DIR" "$NX_LOCK_BACKUP" &&
+      printf "\e[33mrestored the previous flake.lock - still on the last working revision\e[0m\n" >&2
+  fi
   setup_log_close
   [[ "$_ir_skip" == "true" ]] && return 0
   local status="success" error=""
@@ -120,6 +137,13 @@ _ir_flush "in_progress"
 phase_bootstrap_refresh_repo "$@"
 phase_bootstrap_check_root
 phase_bootstrap_resolve_paths "$SCRIPT_ROOT"
+# Copying files needs no nix: skipping detect_nix also keeps `nx self update`
+# from installing it on macOS.
+if [[ "$_sync_only" == "true" ]]; then
+  phase_bootstrap_sync_env_dir
+  ok "nx is up to date - run nx upgrade to apply package and configuration changes"
+  exit 0
+fi
 phase_bootstrap_print_banner
 phase_bootstrap_ensure_certs
 phase_bootstrap_detect_nix

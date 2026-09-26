@@ -1,16 +1,10 @@
 # phase: nix-profile
 # Flake update, nix profile upgrade, MITM proxy certificate detection.
-# shellcheck disable=SC2154  # ENV_DIR, upgrade_packages, SCRIPT_ROOT - set by bootstrap phase
+# shellcheck disable=SC2154  # ENV_DIR, upgrade_latest, SCRIPT_ROOT - set by bootstrap phase
 #
-# Reads:  ENV_DIR, DEV_ENV_DIR, upgrade_packages, upgrade_latest, SCRIPT_ROOT,
-#         NIX_ENV_TLS_PROBE_URL
-# Writes: NX_REV_MODE, NX_REV_SHA, _ir_error, NIX_SSL_CERT_FILE, SSL_CERT_FILE
-
-should_update_flake() {
-  local upgrade_flag="${1:-false}"
-  [[ "$upgrade_flag" == "true" ]] && return 0
-  return 1
-}
+# Reads:  ENV_DIR, DEV_ENV_DIR, upgrade_latest, SCRIPT_ROOT, NIX_ENV_TLS_PROBE_URL
+# Writes: NX_REV_MODE, NX_REV_SHA, NX_LOCK_BACKUP, _ir_error, NIX_SSL_CERT_FILE,
+#         SSL_CERT_FILE
 
 # Resolve which nixpkgs revision this run should lock, using the same ladder as
 # `nx upgrade` (.assets/lib/nx_rev.sh). Both entry points must agree - if they
@@ -29,30 +23,23 @@ phase_nix_profile_load_rev() {
 phase_nix_profile_print_mode() {
   if [[ ! -f "$ENV_DIR/flake.lock" ]]; then
     info "first run - resolving nixpkgs and installing..."
-  elif should_update_flake "$upgrade_packages"; then
+  else
     case "$NX_REV_MODE" in
     pinned) info "pinning nixpkgs to $NX_REV_SHA..." ;;
     validated) info "upgrading to the validated nixpkgs ${NX_REV_SHA:0:12}..." ;;
     latest) info "upgrading to nixpkgs-unstable HEAD - not validated by CI..." ;;
     *) info "no validated revision on disk - keeping the current lock..." ;;
     esac
-  else
-    info "applying nix configuration (use --upgrade to pull latest packages)..."
   fi
 }
 
 phase_nix_profile_update_flake() {
-  # Also runs when there is no lock yet, not only on --upgrade: left to itself
-  # `nix profile add` resolves nixpkgs-unstable HEAD and writes a lock naming a
-  # revision no CI has ever built. Locking the validated rev first is what
-  # makes a *first* install gated, not just an upgrade.
-  local _first_run=false
-  [[ -f "$ENV_DIR/flake.lock" ]] || _first_run=true
-  if should_update_flake "$upgrade_packages" || { [[ "$_first_run" == "true" ]] && [[ -n "$NX_REV_SHA" ]]; }; then
+  NX_LOCK_BACKUP=""
+  if [[ -f "$ENV_DIR/flake.lock" ]]; then
     # Refuse to move backwards on an existing install. Mirrors the same guard
     # in _nx_pkg_upgrade: a user who moved ahead with --latest must not be
     # dragged back whenever the CI bump is lagging behind them.
-    if [[ "$_first_run" == "false" && "$NX_REV_MODE" == "validated" ]]; then
+    if [[ "$NX_REV_MODE" == "validated" ]]; then
       local _cand_epoch
       _cand_epoch="$(_nx_rev_json_field "$ENV_DIR/nixpkgs_rev.json" lastModified)"
       if _nx_rev_is_downgrade "$ENV_DIR" "$_cand_epoch"; then
@@ -60,49 +47,60 @@ phase_nix_profile_update_flake() {
         return 0
       fi
     fi
-    # nix writes progress (the live progress bar and per-path "copying path"
-    # lines) to stderr; let it through so the user sees what's happening
-    # during the network-bound flake update.
-    #
-    # Give nix a GitHub token so it can fetch nixpkgs metadata without hitting
-    # the unauthenticated API rate limit (60 req/h). GITHUB_TOKEN is preferred
-    # (covers CI / headless environments); a `gh auth token` fallback covers
-    # interactive sessions where the env var is unset. `-h github.com` scopes the
-    # fallback to github.com so a GitHub Enterprise `gh` config can't hand back a
-    # GHE-host token that we would then mis-wire to github.com (matches the
-    # host-scoped auth in nix/configure/gh.sh).
-    local _gh_token="${GITHUB_TOKEN:-}"
-    if [[ -z "$_gh_token" ]] && command -v gh >/dev/null 2>&1; then
-      _gh_token="$(gh auth token -h github.com 2>/dev/null)" || _gh_token=""
-    fi
-    # Pass the token via NIX_CONFIG (env), NOT --extra-access-tokens on the
-    # command line: argv is world-readable (ps, /proc/<pid>/cmdline), so a CLI
-    # token can leak into process listings and echoed logs. Passing the token via
-    # NIX_CONFIG mirrors what the CI workflow already does
-    # (.github/workflows/test_linux.yml); here we use the `extra-access-tokens`
-    # key (which *appends*) rather than CI's `access-tokens` (which replaces) so
-    # an inherited NIX_CONFIG is preserved rather than clobbered. Scoped to a
-    # subshell so the token does not persist into later phases' environment.
-    local _nl=$'\n'
-    (
-      if [[ -n "$_gh_token" ]]; then
-        export NIX_CONFIG="${NIX_CONFIG:+$NIX_CONFIG$_nl}extra-access-tokens = github.com=$_gh_token"
-      fi
-      case "$NX_REV_MODE" in
-      pinned | validated)
-        _io_nix flake lock --override-input nixpkgs "github:nixos/nixpkgs/$NX_REV_SHA" "$ENV_DIR" ||
-          warn "flake lock failed - using existing lock"
-        ;;
-      latest)
-        _io_nix flake update --flake "$ENV_DIR" ||
-          warn "flake update failed (network issue?) - using existing lock"
-        ;;
-      *)
-        warn "no validated nixpkgs revision found - keeping the current lock"
-        ;;
-      esac
-    )
+    # Restored by the EXIT trap in nix/setup.sh unless phase_nix_profile_apply
+    # gets the new revision into the profile.
+    NX_LOCK_BACKUP="$(_nx_lock_backup "$ENV_DIR")" || {
+      _ir_error="could not back up flake.lock"
+      err "$_ir_error - aborting to protect the current revision"
+      exit 1
+    }
+  elif [[ -z "$NX_REV_SHA" ]]; then
+    # A first install with a revision still locks it up front: left to itself
+    # `nix profile add` resolves nixpkgs-unstable HEAD, which no CI has built.
+    return 0
   fi
+  # nix writes progress (the live progress bar and per-path "copying path"
+  # lines) to stderr; let it through so the user sees what's happening
+  # during the network-bound flake update.
+  #
+  # Give nix a GitHub token so it can fetch nixpkgs metadata without hitting
+  # the unauthenticated API rate limit (60 req/h). GITHUB_TOKEN is preferred
+  # (covers CI / headless environments); a `gh auth token` fallback covers
+  # interactive sessions where the env var is unset. `-h github.com` scopes the
+  # fallback to github.com so a GitHub Enterprise `gh` config can't hand back a
+  # GHE-host token that we would then mis-wire to github.com (matches the
+  # host-scoped auth in nix/configure/gh.sh).
+  local _gh_token="${GITHUB_TOKEN:-}"
+  if [[ -z "$_gh_token" ]] && command -v gh >/dev/null 2>&1; then
+    _gh_token="$(gh auth token -h github.com 2>/dev/null)" || _gh_token=""
+  fi
+  # Pass the token via NIX_CONFIG (env), NOT --extra-access-tokens on the
+  # command line: argv is world-readable (ps, /proc/<pid>/cmdline), so a CLI
+  # token can leak into process listings and echoed logs. Passing the token via
+  # NIX_CONFIG mirrors what the CI workflow already does
+  # (.github/workflows/test_linux.yml); here we use the `extra-access-tokens`
+  # key (which *appends*) rather than CI's `access-tokens` (which replaces) so
+  # an inherited NIX_CONFIG is preserved rather than clobbered. Scoped to a
+  # subshell so the token does not persist into later phases' environment.
+  local _nl=$'\n'
+  (
+    if [[ -n "$_gh_token" ]]; then
+      export NIX_CONFIG="${NIX_CONFIG:+$NIX_CONFIG$_nl}extra-access-tokens = github.com=$_gh_token"
+    fi
+    case "$NX_REV_MODE" in
+    pinned | validated)
+      _io_nix flake lock --override-input nixpkgs "github:nixos/nixpkgs/$NX_REV_SHA" "$ENV_DIR" ||
+        warn "flake lock failed - using existing lock"
+      ;;
+    latest)
+      _io_nix flake update --flake "$ENV_DIR" ||
+        warn "flake update failed (network issue?) - using existing lock"
+      ;;
+    *)
+      warn "no validated nixpkgs revision found - keeping the current lock"
+      ;;
+    esac
+  )
 }
 
 phase_nix_profile_apply() {
@@ -124,10 +122,10 @@ phase_nix_profile_apply() {
   fi
 
   # Skip the upgrade only when we have positive evidence it would be a
-  # no-op (narHash matches the last applied AND user didn't pass --upgrade).
-  # If narHash is unavailable (jq missing, flake metadata failed) we fall
-  # through to running the upgrade as before -- graceful degradation.
-  if [[ -n "$_narhash" && "$_narhash" = "$_last_narhash" && "${upgrade_packages:-false}" != "true" ]]; then
+  # no-op: narHash covers flake.lock, config.nix and packages.nix, and the
+  # cookie is written only after a successful upgrade. If narHash is
+  # unavailable (jq missing, flake metadata failed) the upgrade runs anyway.
+  if [[ -n "$_narhash" && "$_narhash" = "$_last_narhash" ]]; then
     ok "nix profile already in sync (narHash unchanged) - skipped upgrade"
   else
     _io_nix profile upgrade nix-env ||
@@ -137,6 +135,8 @@ phase_nix_profile_apply() {
         exit 1
       }
   fi
+  [[ -n "${NX_LOCK_BACKUP:-}" ]] && rm -f "$NX_LOCK_BACKUP"
+  NX_LOCK_BACKUP=""
 
   if [[ -n "$_narhash" ]]; then
     mkdir -p "$DEV_ENV_DIR"

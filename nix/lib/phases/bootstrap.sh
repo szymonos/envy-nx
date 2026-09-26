@@ -5,7 +5,7 @@
 # Reads:  BASH_SOURCE (for path resolution)
 # Writes: SCRIPT_ROOT, NIX_ENV_VERSION, NIX_SRC, CONFIGURE_DIR, ENV_DIR,
 #         CONFIG_NIX, omp_theme, starship_theme, unattended, update_modules,
-#         upgrade_packages, upgrade_latest, quiet_summary, allow_unfree,
+#         upgrade_latest, quiet_summary, allow_unfree,
 #         remove_scopes, any_scope, _scope_set, _ir_skip, _ir_error, NX_REEXECED
 
 # Refresh the repo from upstream when behind. Skips silently when:
@@ -429,9 +429,9 @@ usage() {
   cat <<'EOF'
 Usage: nix/setup.sh [options]
 
-Additive: scope flags add to the existing config. Without scope flags,
-re-applies configuration using existing package versions (idempotent).
-Use --upgrade to pull latest packages from nixpkgs.
+Additive: scope flags add to the existing config. Every run refreshes the
+repo, moves nixpkgs to the CI-validated revision and upgrades packages to it.
+`nx pin set <rev>` freezes the revision; --latest opts into nixpkgs HEAD.
 
 Scope flags (add new packages - merged with existing config):
   --az          Azure CLI + azcopy
@@ -454,7 +454,6 @@ Scope flags (add new packages - merged with existing config):
 
 Options:
   --remove <scope> [...]    Remove one or more scopes (space-separated)
-  --upgrade                 Move to the validated nixpkgs revision and upgrade all packages
   --latest                  Use nixpkgs-unstable HEAD instead of the validated revision
   --allow-unfree            Allow unfree (proprietary-licensed) nix packages
   --omp-theme <name>        Install oh-my-posh with theme (base, nerd, powerline, ...)
@@ -478,7 +477,7 @@ NX_SETUP_FLAGS=(
   --nodejs --playwright --pwsh --python --rice --shell --terraform --zsh
   --all --omp-theme --starship-theme --remove
   --unattended --register-ssh-key --skip-repo-update --update-modules
-  --allow-unfree --upgrade --latest --quiet-summary
+  --allow-unfree --upgrade --latest --quiet-summary --sync-only
 )
 
 # Map a rejected token onto the flag the user probably meant. Covers the two
@@ -530,7 +529,6 @@ phase_bootstrap_parse_args() {
   unattended="false"
   update_modules="false"
   quiet_summary="false"
-  upgrade_packages="false"
   upgrade_latest="false"
   allow_unfree="false"
   remove_scopes=()
@@ -588,9 +586,9 @@ phase_bootstrap_parse_args() {
       # gh.sh runs as a child process and reads this env var
       export NX_REGISTER_SSH_KEY=1
       ;;
-    --skip-repo-update)
-      # consumed earlier by phase_bootstrap_refresh_repo; accept here so
-      # parse_args doesn't reject it as an unknown option
+    --skip-repo-update | --sync-only)
+      # consumed earlier (phase_bootstrap_refresh_repo, nix/setup.sh); accept
+      # here so parse_args doesn't reject them as unknown options
       ;;
     --update-modules)
       update_modules="true"
@@ -599,12 +597,10 @@ phase_bootstrap_parse_args() {
       allow_unfree="true"
       ;;
     --upgrade)
-      upgrade_packages="true"
+      # CLEANUP: CQ-004
+      warn "--upgrade is the default now and can be dropped"
       ;;
     --latest)
-      # Opt out of the validated revision for this run. Implies --upgrade:
-      # asking for HEAD without asking to upgrade has no meaning.
-      upgrade_packages="true"
       upgrade_latest="true"
       ;;
     --quiet-summary)

@@ -177,8 +177,9 @@ list in `~/.config/nix-env/config.nix`, then build:
 nx upgrade
 ```
 
-To pick up changes later, `git pull` in the overlay and run `nx setup` again;
-`nx upgrade` alone rebuilds from the copies without syncing them. This manual flow
+To pick up changes later, `git pull` in the overlay and run `nx upgrade`, which
+re-copies the overlay before it builds (without the source repo on disk it rebuilds
+from the existing copies). This manual flow
 is a known gap - [`design/overlay_catalog.md`](https://github.com/szymonos/envy-nx/blob/main/design/overlay_catalog.md)
 proposes a one-command `nx overlay add` that replaces it.
 
@@ -212,7 +213,7 @@ Example use cases:
 
 ## Pinning package versions
 
-By default, `nx upgrade` resolves the latest `nixpkgs-unstable` - a deterministic snapshot of 100k+ packages at specific versions. Each commit is a reproducible state, not a rolling release.
+By default, `nx upgrade` moves to the CI-validated `nixpkgs-unstable` revision - a deterministic snapshot of 100k+ packages at specific versions. Each commit is a reproducible state, not a rolling release.
 
 For teams that need coordinated versions:
 
@@ -220,10 +221,10 @@ For teams that need coordinated versions:
 nx upgrade           # upgrade and verify everything works
 nx pin set           # pin the current (tested) revision
 nx pin show          # show current pin
-nx pin remove        # go back to latest unstable
+nx pin remove        # go back to the validated revision
 ```
 
-The pin is stored in `~/.config/nix-env/pinned_rev`. When present, `nx upgrade` locks to that commit instead of resolving the latest. Set the pin from a pre-setup hook on each machine (placed there by your device management, for example):
+The pin is stored in `~/.config/nix-env/pinned_rev`. When present, `nx upgrade` locks to that commit instead of the validated revision. Set the pin from a pre-setup hook on each machine (placed there by your device management, for example):
 
 ```bash
 # ~/.config/nix-env/hooks/pre-setup.d/pin_nixpkgs.sh
