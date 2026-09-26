@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.28.2] - 2026-09-26
+
+### Fixed
+
+- `nx upgrade` no longer re-runs the full setup: it upgrades packages and refreshes shell profiles, leaving gh and git identity, per-scope installers and PowerShell modules to `nx setup`.
+
 ## [1.28.1] - 2026-09-26
 
 ### Fixed
