@@ -176,7 +176,16 @@ def _auto_pr() -> int:
     """
     try:
         result = subprocess.run(
-            ["gh", "pr", "view", "--json", "number", "--jq", ".number"],
+            # without the state filter a reused branch name finds its merged PR
+            [
+                "gh",
+                "pr",
+                "view",
+                "--json",
+                "number,state",
+                "--jq",
+                'select(.state == "OPEN") | .number',
+            ],
             capture_output=True,
             text=True,
             timeout=GH_TIMEOUT,
@@ -187,7 +196,10 @@ def _auto_pr() -> int:
     except subprocess.TimeoutExpired:
         print(f"gh pr view timed out after {GH_TIMEOUT}s.", file=sys.stderr)
         raise SystemExit(1) from None
-    if result.returncode != 0 or not result.stdout.strip():
+    if result.returncode != 0:
+        print(f"gh pr view failed: {result.stderr.strip()}", file=sys.stderr)
+        raise SystemExit(1)
+    if not result.stdout.strip():
         print("No open PR on this branch. Push first or specify --pr.", file=sys.stderr)
         raise SystemExit(1)
     try:
