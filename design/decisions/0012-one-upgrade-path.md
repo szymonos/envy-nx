@@ -18,8 +18,8 @@ nothing.
 
 | Command                 | Does                                                                                                         |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `nx upgrade [--latest]` | Runs `nix/setup.sh` from the recorded repo: pull, move to the validated revision, upgrade, refresh configs   |
-| `nx setup [flags]`      | The same pipeline, plus scope and theme changes. `--upgrade` is accepted with a warning and does nothing     |
+| `nx upgrade [--latest]` | Runs `nix/setup.sh --skip-configure` from the recorded repo: pull, validated revision, upgrade, profiles     |
+| `nx setup [flags]`      | The full pipeline, plus scope and theme changes. `--upgrade` is accepted with a warning and does nothing     |
 | `nx self update`        | Pulls the repo and runs `setup.sh --sync-only`: nx files and the revision file are synced, nothing installed |
 | `nx pin set`            | The way to hold packages on one revision                                                                     |
 
@@ -46,7 +46,11 @@ leave a bash function.
   asks for it.
 - **`nx upgrade` = self update + package upgrade only.** It would leave
   `install.json` on the old version (so `nx doctor` keeps warning), and profile
-  blocks and tool configs behind the packages.
+  blocks behind the packages. Both still run under `--skip-configure`.
+- **`nx upgrade` = the full setup pipeline.** Shipped in 1.28.0 and reverted:
+  it made `nx upgrade` a second name for `nx setup`, and every upgrade re-ran gh
+  auth, git identity, per-scope installers (az, gcloud) and PS module installs -
+  slow, noisy, and unrelated to moving packages forward.
 
 **Consequences:**
 
@@ -58,6 +62,10 @@ leave a bash function.
   so `nx version` and `nx doctor` report the last full setup until then.
 - The setup summary mode `reconfigure` is gone; a run with no scope changes is
   `upgrade`.
+- Tool configuration - `phase_configure_*` and `setup_common.sh` (Copilot CLI,
+  zsh plugins, PS modules and user profile) - runs only on `nx setup`. A repo
+  change to one of those steps reaches a machine on its next `nx setup`, not
+  its next `nx upgrade`.
 
 **Scope:** `.assets/lib/nx_pkg.sh`, `.assets/lib/nx_lifecycle.sh`,
 `.assets/lib/nx_rev.sh`, `nix/setup.sh`, `nix/lib/phases/nix_profile.sh`,

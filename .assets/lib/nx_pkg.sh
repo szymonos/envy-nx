@@ -136,14 +136,14 @@ function _nx_pkg_upgrade() {
     esac
   done
 
-  # With the source repo on disk, upgrade means the full setup pipeline: it
-  # pulls the repo (and with it the latest validated revision), upgrades the
-  # packages and refreshes everything else setup manages, so the install
-  # record, profiles and tool configs never lag behind the packages.
+  # With the source repo on disk, upgrade runs setup.sh without its tool
+  # configuration phases: it pulls the repo (and with it the latest validated
+  # revision), upgrades the packages and re-renders shell profiles, so the
+  # install record and profiles never lag behind the packages.
   local _repo
   _repo="$(_nx_read_install_field repo_path)"
   if [ -n "$_repo" ] && [ -f "$_repo/nix/setup.sh" ]; then
-    _nx_lifecycle_setup "$@"
+    _nx_lifecycle_setup --skip-configure "$@"
     return
   fi
   printf "\e[90msource repo not found - upgrading packages from the revision already on disk\e[0m\n"

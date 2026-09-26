@@ -477,7 +477,7 @@ NX_SETUP_FLAGS=(
   --nodejs --playwright --pwsh --python --rice --shell --terraform --zsh
   --all --omp-theme --starship-theme --remove
   --unattended --register-ssh-key --skip-repo-update --update-modules
-  --allow-unfree --upgrade --latest --quiet-summary --sync-only
+  --allow-unfree --upgrade --latest --quiet-summary --sync-only --skip-configure
 )
 
 # Map a rejected token onto the flag the user probably meant. Covers the two
@@ -586,7 +586,7 @@ phase_bootstrap_parse_args() {
       # gh.sh runs as a child process and reads this env var
       export NX_REGISTER_SSH_KEY=1
       ;;
-    --skip-repo-update | --sync-only)
+    --skip-repo-update | --sync-only | --skip-configure)
       # consumed earlier (phase_bootstrap_refresh_repo, nix/setup.sh); accept
       # here so parse_args doesn't reject them as unknown options
       ;;

@@ -99,7 +99,7 @@ nx upgrade
 nx update                        # alias
 ```
 
-The one command to bring everything up to date, like `brew upgrade`: it pulls the source repo, moves nixpkgs to the CI-validated revision, upgrades every package to it, and refreshes shell profiles and tool configs. Under the hood it runs `nix/setup.sh` from the recorded repo, so `nx upgrade` and `nx setup` always land on the same state.
+The one command to bring packages up to date, like `brew upgrade`: it pulls the source repo, moves nixpkgs to the CI-validated revision, upgrades every package to it, and re-renders shell profiles. Under the hood it runs `nix/setup.sh --skip-configure` from the recorded repo; tool configuration (gh and git identity, per-scope installers, PowerShell modules) is left to `nx setup`.
 
 ```bash
 nx upgrade --latest              # nixpkgs-unstable HEAD instead - not validated by CI
@@ -165,7 +165,7 @@ This is where `nx` does things `apt` cannot. Three verbs manage the **tool itsel
 ### `nx setup [flags...]`
 
 ```bash
-nx setup                                # re-run with current scopes (same as nx upgrade)
+nx setup                                # re-run with current scopes (nx upgrade + tool configuration)
 nx setup --terraform --gcloud           # add scopes to the existing config
 nx setup --remove rice                  # drop a scope
 ```
