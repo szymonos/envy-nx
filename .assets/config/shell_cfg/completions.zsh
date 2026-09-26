@@ -177,6 +177,7 @@ function _nx() {
         '--starship-theme:starship theme name'
         '--remove:remove scopes'
         '--help:show help'
+        '-h:show help'
       )
       _describe 'setup flag' setup_flags
       ;;
@@ -210,6 +211,11 @@ function _nx() {
     _describe 'doctor flag' doctor_flags
     ;;
   esac
+  if [[ $PREFIX == -* && "${words[2]}" != "setup" ]]; then
+    local -a help_flags
+    help_flags=('--help:show help' '-h:show help')
+    _describe 'flag' help_flags
+  fi
 }
 # compinit is owned by the user's shell config or a plugin - zsh-autocomplete
 # defers its own to a precmd hook and skips it entirely if something else ran

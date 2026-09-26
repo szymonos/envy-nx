@@ -96,6 +96,19 @@ def verbs_with_flags(manifest):
     return [v for v in manifest["verbs"] if v.get("flags")]
 
 
+HELP_FLAGS = ("--help", "-h")
+
+
+def verbs_declaring_help(manifest):
+    """Return names (with aliases) of verbs that list --help among their flags."""
+    return [
+        n
+        for v in verbs_with_flags(manifest)
+        if any(f["long"] == "--help" for f in v["flags"])
+        for n in all_names(v)
+    ]
+
+
 def verbs_with_arg_completer(manifest):
     """Return (verb, arg) pairs for verbs whose first arg has a completer."""
     out = []
@@ -277,6 +290,14 @@ def emit_bash(manifest):  # noqa: C901 -- structural: bash completer has many sh
         out.append(_indent_block(BASH_COMPLETER[arg["completer"]], "    "))
 
     out.append("  fi")
+    # nx_main routes -h/--help after any verb, so offer it everywhere once the
+    # word starts with `-`; skip verbs that already list it.
+    skip = "".join(
+        f' && [ "${{COMP_WORDS[1]}}" != "{n}" ]' for n in verbs_declaring_help(manifest)
+    )
+    out.append(f'  if [ "$COMP_CWORD" -ge 2 ] && [[ "$cur" == -* ]]{skip}; then')
+    out.append(f"    {bash_compgen(HELP_FLAGS)}")
+    out.append("  fi")
     out.append("}")
     out.append("complete -F _nx_completions nx")
     out.append("")
@@ -340,6 +361,14 @@ ZSH_COMPLETER = {
     "theme_omp": "_values 'theme' base nerd powerline",
     "theme_starship": "_values 'theme' base nerd",
 }
+
+
+def zsh_flag_entries(flags):
+    """Yield (name, summary) for each flag's long form and its short form, if any."""
+    for f in flags:
+        yield f["long"], f["summary"]
+        if f.get("short"):
+            yield f["short"], f["summary"]
 
 
 def emit_zsh(manifest):  # noqa: C901 -- structural: zsh completer has many shell-form branches
@@ -416,8 +445,8 @@ def emit_zsh(manifest):  # noqa: C901 -- structural: zsh completer has many shel
                     )
                     out.append(f"        local -a {sv['name']}_flags")
                     out.append(f"        {sv['name']}_flags=(")
-                    for f in sv["flags"]:
-                        out.append(f"          '{f['long']}:{f['summary']}'")
+                    for name, summary in zsh_flag_entries(sv["flags"]):
+                        out.append(f"          '{name}:{summary}'")
                     out.append("        )")
                     out.append(f"        _describe 'flag' {sv['name']}_flags")
                     out.append("      fi")
@@ -445,8 +474,8 @@ def emit_zsh(manifest):  # noqa: C901 -- structural: zsh completer has many shel
                 out.append("    *)")
                 out.append(f"      local -a {v['name']}_flags")
                 out.append(f"      {v['name']}_flags=(")
-                for f in v["flags"]:
-                    out.append(f"        '{f['long']}:{f['summary']}'")
+                for name, summary in zsh_flag_entries(v["flags"]):
+                    out.append(f"        '{name}:{summary}'")
                 out.append("      )")
                 out.append(f"      _describe '{v['name']} flag' {v['name']}_flags")
                 out.append("      ;;")
@@ -454,8 +483,8 @@ def emit_zsh(manifest):  # noqa: C901 -- structural: zsh completer has many shel
             else:
                 out.append(f"    local -a {v['name']}_flags")
                 out.append(f"    {v['name']}_flags=(")
-                for f in v["flags"]:
-                    out.append(f"      '{f['long']}:{f['summary']}'")
+                for name, summary in zsh_flag_entries(v["flags"]):
+                    out.append(f"      '{name}:{summary}'")
                 out.append("    )")
                 out.append(f"    _describe '{v['name']} flag' {v['name']}_flags")
 
@@ -467,6 +496,18 @@ def emit_zsh(manifest):  # noqa: C901 -- structural: zsh completer has many shel
         out.append("    ;;")
 
     out.append("  esac")
+    # nx_main routes -h/--help after any verb; skip verbs that already list it
+    # so it does not show up twice.
+    skip = "".join(
+        f' && "${{words[2]}}" != "{n}"' for n in verbs_declaring_help(manifest)
+    )
+    out.append(f"  if [[ $PREFIX == -*{skip} ]]; then")
+    out.append("    local -a help_flags")
+    out.append(
+        "    help_flags=(" + " ".join(f"'{f}:show help'" for f in HELP_FLAGS) + ")"
+    )
+    out.append("    _describe 'flag' help_flags")
+    out.append("  fi")
     out.append("}")
     out.append(ZSH_REGISTER)
     out.append("")
@@ -637,6 +678,13 @@ def emit_ps_region(manifest):
         first = False
     lines.append("        }")
 
+    lines.append("    }")
+    # nx_main routes -h/--help after any verb
+    lines.append("    if ($pos -ge 2 -and $wordToComplete -like '-*') {")
+    lines.append(
+        f"        $completions = @($completions) + @({ps_quoted(HELP_FLAGS)})"
+        " | Select-Object -Unique"
+    )
     lines.append("    }")
     lines.append(
         '    $completions | Where-Object { $_ -like "$wordToComplete*" }'

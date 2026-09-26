@@ -304,6 +304,8 @@ Adding a verb, subverb, or flag is a **one-file edit** to `nx_surface.json` foll
 - `help_args` - optional override for the `nx help` args column. Used by `setup` to render `[flags...]` since its primary surface is passthrough flags, not positional args.
 - `completers{}` - registry of named dynamic completers (`installed_packages`, `all_scopes`, `theme_omp`, `theme_starship`). Implementation lives in the generator as per-shell snippets so shell-native idioms (zsh `(@f)`, bash `compgen -W`, PS `Where-Object`) stay readable.
 
+**Global flags are not in the manifest.** `-h`/`--help` is accepted after every verb and subverb: `nx_main` intercepts it before dispatch, and `_nx_verb_help` renders the text. Rather than repeating it in every `flags[]`, the generator holds it as `HELP_FLAGS` and each completer emitter (`emit_bash`, `emit_zsh`, `emit_ps_region`) appends it when the current word starts with `-`. Verbs that forward flags elsewhere and declare `--help` themselves (`setup`) are skipped via `verbs_declaring_help`. Any future flag routed in `nx_main` for all verbs must be added to all three emitters the same way, or it will not tab-complete.
+
 **Handler convention** (used by `_verb_handler` in the generator):
 
 - Verbs **with** `subverbs` route to `_nx_<name>_dispatch` (the family file owns the subverb routing internally).
@@ -536,6 +538,8 @@ If the flag belongs to an existing verb in `nx_surface.json`:
 3. Regenerate completers: `python3 -m tests.hooks.gen_nx_completions`.
 4. If the flag is for `setup`, also add the case to `phase_bootstrap_parse_args` in `nix/lib/phases/bootstrap.sh`.
 5. Run `make lint`.
+
+If the flag applies to **every** verb (like `-h`/`--help`), it goes in `nx_main` and the generator, not the manifest - see "Global flags" in §3d. Add a `-<TAB>` case to `tests/bats/test_completions.bats`.
 
 ### 6.7. Add a new pre-commit hook
 

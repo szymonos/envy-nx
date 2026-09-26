@@ -711,6 +711,9 @@ Register-ArgumentCompleter -CommandName nx -Native -ScriptBlock {
             }
         }
     }
+    if ($pos -ge 2 -and $wordToComplete -like '-*') {
+        $completions = @($completions) + @('--help', '-h') | Select-Object -Unique
+    }
     $completions | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
         [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
     }
