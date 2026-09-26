@@ -22,6 +22,36 @@ Pick ONE signal per item (all are reasonable for a single-maintainer project):
 
 ---
 
+## CQ-004: Drop the deprecated `nix/setup.sh --upgrade` flag
+
+- **Status:** open
+- **Added:** 2026-09-26
+- **Trigger:** 60-90 days after the release that made upgrading the default
+  (decision [0012](decisions/0012-one-upgrade-path.md))
+- **Scope:** `nix/lib/phases/bootstrap.sh`, `tests/bats/test_nix_setup.bats`
+
+### Context
+
+Every `nix/setup.sh` run now moves packages to the validated nixpkgs revision,
+so `--upgrade` does nothing. It is still accepted, with a warning, so scripts,
+muscle memory and docs that pass it keep working.
+
+### What to do
+
+1. Remove the `--upgrade` arm (`# CLEANUP: CQ-004`) from
+   `phase_bootstrap_parse_args` and `--upgrade` from `NX_SETUP_FLAGS`.
+2. Replace the `parse_args: --upgrade is accepted with a deprecation warning`
+   test with one asserting `--upgrade` is rejected as an unknown option.
+
+### Verification
+
+```bash
+git grep -n -- '--upgrade' -- nix .assets/lib tests   # only unrelated tools left
+make test-unit
+```
+
+---
+
 ## CQ-003: Migrate check_zsh_compat + check_bash32 to `_file_scopes.py`
 
 - **Status:** open

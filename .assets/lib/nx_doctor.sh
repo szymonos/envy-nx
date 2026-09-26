@@ -663,7 +663,7 @@ _check_version_skew() {
   _latest="${_latest_tag#v}"
   [ -n "$_latest" ] || return
   if [ -n "$_installed" ] && [ "$_latest" != "$_installed" ]; then
-    printf 'warn\tinstalled %s, latest release %s\tgit pull && nx upgrade to reach the latest release\n' "$_installed" "$_latest"
+    printf 'warn\tinstalled %s, latest release %s\tnx upgrade to reach the latest release\n' "$_installed" "$_latest"
   else
     echo "pass"
   fi

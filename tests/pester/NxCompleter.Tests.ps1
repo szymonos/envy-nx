@@ -186,7 +186,7 @@ Describe 'nx setup completions' {
         $completions = Get-NxCompletions 'nx setup '
         $completions | Should -Contain '--shell'
         $completions | Should -Contain '--python'
-        $completions | Should -Contain '--upgrade'
+        $completions | Should -Contain '--latest'
         $completions | Should -Contain '--all'
         $completions | Should -Contain '--help'
     }
@@ -194,7 +194,7 @@ Describe 'nx setup completions' {
     It 'completes setup flags at position 3+' {
         $completions = Get-NxCompletions 'nx setup --shell '
         $completions | Should -Contain '--python'
-        $completions | Should -Contain '--upgrade'
+        $completions | Should -Contain '--latest'
     }
 
     It 'includes all scope and meta flags' {
@@ -202,7 +202,7 @@ Describe 'nx setup completions' {
         $expected = @('--az', '--bun', '--conda', '--docker', '--gcloud',
             '--k8s-base', '--k8s-dev', '--k8s-ext', '--nodejs', '--pwsh',
             '--python', '--rice', '--shell', '--terraform', '--zsh',
-            '--all', '--upgrade', '--allow-unfree', '--unattended',
+            '--all', '--latest', '--allow-unfree', '--unattended',
             '--update-modules', '--omp-theme', '--starship-theme',
             '--remove', '--help')
         foreach ($flag in $expected) {

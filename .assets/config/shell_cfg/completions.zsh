@@ -10,8 +10,8 @@ function _nx() {
     'add:install packages from nixpkgs'
     'remove:remove installed packages'
     'uninstall:remove installed packages'
-    'upgrade:upgrade all packages to the validated nixpkgs revision'
-    'update:upgrade all packages to the validated nixpkgs revision'
+    'upgrade:update nx and upgrade everything to the validated nixpkgs revision'
+    'update:update nx and upgrade everything to the validated nixpkgs revision'
     'rollback:rollback to previous profile generation'
     'list:list installed packages'
     'ls:list installed packages'
@@ -19,7 +19,7 @@ function _nx() {
     'overlay:manage overlay directory'
     'pin:manage nixpkgs revision pin'
     'profile:manage shell profile blocks'
-    'setup:run nix/setup.sh from anywhere'
+    'setup:add or remove scopes and themes, then upgrade (runs nix/setup.sh)'
     'self:manage the source repository'
     'doctor:run health checks'
     'prune:remove old profile generations'
@@ -167,7 +167,7 @@ function _nx() {
         '--terraform:terraform, tflint'
         '--zsh:zsh plugins'
         '--all:enable all scopes'
-        '--upgrade:upgrade all packages'
+        '--latest:use nixpkgs-unstable HEAD instead of the validated revision (unvalidated)'
         '--allow-unfree:allow unfree packages'
         '--unattended:skip interactive steps'
         '--register-ssh-key:register the generated SSH key with GitHub (opt-in)'
@@ -186,7 +186,7 @@ function _nx() {
     if (( CURRENT == 3 )); then
       local -a self_cmds
       self_cmds=(
-        'update:update the source repository'
+        'update:update nx itself (no packages touched)'
         'path:print the source repository path'
         'help:show self help'
       )

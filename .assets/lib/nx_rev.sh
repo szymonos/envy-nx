@@ -4,11 +4,12 @@ _nx_rev_resolve "$HOME/.config/nix-env" false
 _nx_rev_resolve "$HOME/.config/nix-env" true
 _nx_rev_locked_epoch "$HOME/.config/nix-env"
 _nx_rev_is_downgrade "$HOME/.config/nix-env" 1787964612
+_nx_lock_backup "$HOME/.config/nix-env"
 '
 
 # Shared nixpkgs-revision resolution for the two upgrade entry points:
-# `nx upgrade` (.assets/lib/nx_pkg.sh) and `nix/setup.sh --upgrade`
-# (nix/lib/phases/nix_profile.sh). Both must land on the same revision - if
+# `nix/setup.sh` (nix/lib/phases/nix_profile.sh) and the repo-less in-place
+# `nx upgrade` (.assets/lib/nx_pkg.sh). Both must land on the same revision - if
 # they diverge, which nixpkgs a user gets depends on which command they
 # happened to type.
 #
@@ -99,4 +100,27 @@ function _nx_rev_is_downgrade() {
   case "$_candidate" in '' | *[!0-9]*) return 1 ;; esac
   case "$_locked" in '' | *[!0-9]*) return 1 ;; esac
   [ "$_candidate" -le "$_locked" ]
+}
+
+# flake.lock is the per-machine record of the revision in use, and it is
+# rewritten before the slow, cancellable `nix profile upgrade`. Both upgrade
+# paths snapshot it first and put it back when the profile never received the
+# new revision, so a failed or interrupted upgrade stays on the last working one.
+#
+# $1 env dir. stdout: backup path, or "" when there is no lock yet.
+function _nx_lock_backup() {
+  local _lock="$1/flake.lock" _bak
+  [ -f "$_lock" ] || return 0
+  _bak="$(mktemp "${_lock}.bak.XXXXXX")" || return 1
+  command cp "$_lock" "$_bak" || {
+    command rm -f "$_bak"
+    return 1
+  }
+  printf '%s\n' "$_bak"
+}
+
+# $1 env dir, $2 backup path from _nx_lock_backup. No-op for an empty path.
+function _nx_lock_restore() {
+  [ -n "${2:-}" ] && [ -f "$2" ] || return 0
+  command mv "$2" "$1/flake.lock"
 }

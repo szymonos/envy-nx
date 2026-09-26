@@ -15,9 +15,10 @@ CI and still broke every `k8s_ext` install.
 `.github/workflows/bump_nixpkgs_rev.yml` advances it weekly, and only after that
 revision has built every scope and completed a real `setup.sh` install on
 **both** Linux and macOS. Users move to it through the update
-channel that already exists - `setup.sh` auto-pulls the repo, `nx self update`
-pulls and re-runs setup, and `phase_bootstrap_sync_env_dir` copies the file into
-`~/.config/nix-env/` alongside `flake.nix` and `scopes.json`.
+channel that already exists - `setup.sh` auto-pulls the repo (`nx setup` and
+`nx upgrade` run it, see decision [0012](0012-one-upgrade-path.md)), and
+`phase_bootstrap_sync_env_dir` copies the file into `~/.config/nix-env/`
+alongside `flake.nix` and `scopes.json`.
 
 The revision ladder, resolved by `_nx_rev_resolve` in `.assets/lib/nx_rev.sh`
 and shared by `nx upgrade` and the `nix_profile` phase:
@@ -39,8 +40,8 @@ still holds - what changed is that the default input is now a validated revision
 rather than HEAD.
 
 **No second bookkeeping file for "last known good".** `flake.lock` already *is*
-the per-machine record of the revision in use, so `_nx_pkg_upgrade` snapshots it
-and restores it when `nix profile upgrade` fails. A separate `last_good_rev`
+the per-machine record of the revision in use, so both upgrade paths snapshot it
+(`_nx_lock_backup`) and restore it when `nix profile upgrade` fails. A separate `last_good_rev`
 would be a second source of truth that drifts from profile generations the first
 time someone runs `nx gc` (which is `nix profile wipe-history`).
 

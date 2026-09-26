@@ -568,18 +568,6 @@ _scope_pkgs() {
 }
 
 # =============================================================================
-# Upgrade path (should_update_flake)
-# =============================================================================
-
-@test "upgrade: --upgrade flag triggers update" {
-  should_update_flake "true"
-}
-
-@test "upgrade: without --upgrade skips update" {
-  ! should_update_flake "false"
-}
-
-# =============================================================================
 # Arg parser (phase_bootstrap_parse_args)
 # =============================================================================
 
@@ -634,9 +622,15 @@ _scope_pkgs() {
   scope_has "shell"
 }
 
-@test "parse_args: --upgrade sets upgrade_packages" {
-  phase_bootstrap_parse_args --upgrade
-  [[ "$upgrade_packages" == "true" ]]
+@test "parse_args: --upgrade is accepted with a deprecation warning" {
+  run phase_bootstrap_parse_args --upgrade
+  [[ $status -eq 0 ]]
+  [[ "$output" == *"default now"* ]]
+}
+
+@test "parse_args: --latest sets upgrade_latest" {
+  phase_bootstrap_parse_args --latest
+  [[ "$upgrade_latest" == "true" ]]
 }
 
 @test "parse_args: --unattended sets flag" {
@@ -671,7 +665,7 @@ _scope_pkgs() {
 @test "parse_args: no args sets defaults" {
   phase_bootstrap_parse_args
   [[ "$any_scope" == "false" ]]
-  [[ "$upgrade_packages" == "false" ]]
+  [[ "$upgrade_latest" == "false" ]]
   [[ "$unattended" == "false" ]]
   [[ "$update_modules" == "false" ]]
   [[ "$omp_theme" == "" ]]
@@ -694,8 +688,7 @@ _scope_pkgs() {
 # Summary mode detection
 # =============================================================================
 
-@test "summary: upgrade mode when upgrade_packages is true" {
-  upgrade_packages="true"
+@test "summary: upgrade mode by default" {
   remove_scopes=()
   any_scope=false
   phase_summary_detect_mode
@@ -703,7 +696,6 @@ _scope_pkgs() {
 }
 
 @test "summary: remove mode when remove_scopes non-empty" {
-  upgrade_packages="false"
   remove_scopes=(rice)
   any_scope=false
   phase_summary_detect_mode
@@ -711,19 +703,10 @@ _scope_pkgs() {
 }
 
 @test "summary: install mode when any_scope is true" {
-  upgrade_packages="false"
   remove_scopes=()
   any_scope=true
   phase_summary_detect_mode
   [[ "$_mode" == "install" ]]
-}
-
-@test "summary: reconfigure mode by default" {
-  upgrade_packages="false"
-  remove_scopes=()
-  any_scope=false
-  phase_summary_detect_mode
-  [[ "$_mode" == "reconfigure" ]]
 }
 
 # =============================================================================
@@ -823,7 +806,6 @@ _scope_pkgs() {
   command -v jq >/dev/null 2>&1 || skip "jq required for narHash extraction"
   mkdir -p "$DEV_ENV_DIR"
   echo "sha256-FAKE" >"$DEV_ENV_DIR/last-applied-narhash"
-  upgrade_packages="false"
   SECONDS=0
   run phase_nix_profile_apply
   [[ "$status" -eq 0 ]]
@@ -831,22 +813,58 @@ _scope_pkgs() {
   ! grep -q 'nix profile upgrade nix-env' "$BATS_TEST_TMPDIR/nix.log"
 }
 
-@test "nix_profile: apply runs upgrade when --upgrade is set even if narHash matches" {
+@test "nix_profile: apply runs upgrade when narHash differs from last-applied" {
   : >"$BATS_TEST_TMPDIR/nix.log"
   _io_nix() {
     case "$*" in
     'profile list --json') echo '{"elements":[{"originalUrl":"path:.../nix-env"}]}' ;;
-    'flake metadata '*' --json') echo '{"locked":{"narHash":"sha256-FAKE"}}' ;;
+    'flake metadata '*' --json') echo '{"locked":{"narHash":"sha256-NEW"}}' ;;
     *) echo "nix $*" >>"$BATS_TEST_TMPDIR/nix.log" ;;
     esac
   }
   command -v jq >/dev/null 2>&1 || skip "jq required for narHash extraction"
   mkdir -p "$DEV_ENV_DIR"
-  echo "sha256-FAKE" >"$DEV_ENV_DIR/last-applied-narhash"
-  upgrade_packages="true"
+  echo "sha256-OLD" >"$DEV_ENV_DIR/last-applied-narhash"
   SECONDS=0
   phase_nix_profile_apply
   grep -q 'nix profile upgrade nix-env' "$BATS_TEST_TMPDIR/nix.log"
+  [[ "$(cat "$DEV_ENV_DIR/last-applied-narhash")" == "sha256-NEW" ]]
+}
+
+@test "nix_profile: update_flake backs up the lock and apply discards it on success" {
+  : >"$BATS_TEST_TMPDIR/nix.log"
+  _write_flake_lock 1000000000
+  NX_REV_MODE="pinned"
+  NX_REV_SHA="abc123"
+  SECONDS=0
+  phase_nix_profile_update_flake
+  [[ -f "$NX_LOCK_BACKUP" ]]
+  local _bak="$NX_LOCK_BACKUP"
+  phase_nix_profile_apply
+  [[ -z "$NX_LOCK_BACKUP" ]]
+  [[ ! -f "$_bak" ]]
+}
+
+@test "nix_profile: a failed apply keeps the lock backup for the EXIT trap to restore" {
+  : >"$BATS_TEST_TMPDIR/nix.log"
+  _write_flake_lock 1000000000
+  local _before
+  _before="$(cat "$TEST_ENV_DIR/flake.lock")"
+  NX_REV_MODE="pinned"
+  NX_REV_SHA="abc123"
+  phase_nix_profile_update_flake
+  _write_flake_lock 2000000000
+  _io_nix() {
+    case "$*" in
+    'profile upgrade'*) return 1 ;;
+    esac
+  }
+  SECONDS=0
+  run phase_nix_profile_apply
+  [[ "$status" -eq 1 ]]
+  [[ -f "$NX_LOCK_BACKUP" ]]
+  _nx_lock_restore "$TEST_ENV_DIR" "$NX_LOCK_BACKUP"
+  [[ "$(cat "$TEST_ENV_DIR/flake.lock")" == "$_before" ]]
 }
 
 @test "nix_profile: update_flake uses override-input when pinned" {
@@ -854,7 +872,6 @@ _scope_pkgs() {
   _write_flake_lock 1000000000
   NX_REV_MODE="pinned"
   NX_REV_SHA="abc123"
-  upgrade_packages="true"
   SECONDS=0
   phase_nix_profile_update_flake
   grep -q 'flake lock --override-input' "$BATS_TEST_TMPDIR/nix.log"
@@ -866,7 +883,6 @@ _scope_pkgs() {
   _write_validated_rev def456 2000000000
   NX_REV_MODE="validated"
   NX_REV_SHA="def456"
-  upgrade_packages="true"
   SECONDS=0
   phase_nix_profile_update_flake
   grep -q 'flake lock --override-input nixpkgs github:nixos/nixpkgs/def456' "$BATS_TEST_TMPDIR/nix.log"
@@ -880,7 +896,6 @@ _scope_pkgs() {
   _write_validated_rev def456 1000000000
   NX_REV_MODE="validated"
   NX_REV_SHA="def456"
-  upgrade_packages="true"
   SECONDS=0
   run phase_nix_profile_update_flake
   [[ "$status" -eq 0 ]]
@@ -893,7 +908,6 @@ _scope_pkgs() {
   _write_flake_lock 1000000000
   NX_REV_MODE="latest"
   NX_REV_SHA=""
-  upgrade_packages="true"
   SECONDS=0
   phase_nix_profile_update_flake
   grep -q 'flake update' "$BATS_TEST_TMPDIR/nix.log"
@@ -904,7 +918,6 @@ _scope_pkgs() {
   _write_flake_lock 1000000000
   NX_REV_MODE="none"
   NX_REV_SHA=""
-  upgrade_packages="true"
   SECONDS=0
   run phase_nix_profile_update_flake
   [[ "$status" -eq 0 ]]
@@ -912,7 +925,7 @@ _scope_pkgs() {
   [[ ! -s "$BATS_TEST_TMPDIR/nix.log" ]]
 }
 
-@test "nix_profile: update_flake locks the validated rev on a first run without --upgrade" {
+@test "nix_profile: update_flake locks the validated rev on a first run" {
   : >"$BATS_TEST_TMPDIR/nix.log"
   # No flake.lock: `nix profile add` would otherwise resolve unstable HEAD and
   # write a lock naming a revision no CI has built.
@@ -920,7 +933,6 @@ _scope_pkgs() {
   _write_validated_rev def456 2000000000
   NX_REV_MODE="validated"
   NX_REV_SHA="def456"
-  upgrade_packages="false"
   SECONDS=0
   phase_nix_profile_update_flake
   grep -q 'flake lock --override-input nixpkgs github:nixos/nixpkgs/def456' "$BATS_TEST_TMPDIR/nix.log"
@@ -932,7 +944,6 @@ _scope_pkgs() {
   _io_nix() { return 1; }
   NX_REV_MODE="latest"
   NX_REV_SHA=""
-  upgrade_packages="true"
   SECONDS=0
   run phase_nix_profile_update_flake
   [[ "$status" -eq 0 ]]
@@ -945,7 +956,6 @@ _scope_pkgs() {
   _io_nix() { return 1; }
   NX_REV_MODE="pinned"
   NX_REV_SHA="abc123"
-  upgrade_packages="true"
   SECONDS=0
   run phase_nix_profile_update_flake
   [[ "$status" -eq 0 ]]

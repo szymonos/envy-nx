@@ -532,8 +532,10 @@ function _NxProfileUninstall {
 
 #region nix package management wrapper (apt/brew-like UX)
 function nx {
-    # Profile commands are handled natively in PowerShell
-    if ($args.Count -ge 1 -and $args[0] -eq 'profile') {
+    # Profile commands are handled natively in PowerShell. -h/--help goes to
+    # nx.sh instead, which prints the generated per-command help.
+    $wantsHelp = $args -contains '-h' -or $args -contains '--help'
+    if ($args.Count -ge 1 -and $args[0] -eq 'profile' -and -not $wantsHelp) {
         $subArgs = @()
         if ($args.Count -gt 1) { $subArgs = $args[1..($args.Count - 1)] }
         $subCmd = if ($subArgs.Count -gt 0) { $subArgs[0] } else { 'help' }
@@ -582,7 +584,7 @@ Register-ArgumentCompleter -CommandName nx -Native -ScriptBlock {
                 '--latest'
             }
             elseif ($tokens[1].Value -in 'setup') {
-                '--az', '--bun', '--conda', '--docker', '--gcloud', '--k8s-base', '--k8s-dev', '--k8s-ext', '--nodejs', '--playwright', '--pwsh', '--python', '--rice', '--shell', '--terraform', '--zsh', '--all', '--upgrade', '--allow-unfree', '--unattended', '--register-ssh-key', '--skip-repo-update', '--update-modules', '--omp-theme', '--starship-theme', '--remove', '--help'
+                '--az', '--bun', '--conda', '--docker', '--gcloud', '--k8s-base', '--k8s-dev', '--k8s-ext', '--nodejs', '--playwright', '--pwsh', '--python', '--rice', '--shell', '--terraform', '--zsh', '--all', '--latest', '--allow-unfree', '--unattended', '--register-ssh-key', '--skip-repo-update', '--update-modules', '--omp-theme', '--starship-theme', '--remove', '--help'
             }
             elseif ($tokens[1].Value -in 'doctor') {
                 '--strict', '--json'
@@ -631,7 +633,7 @@ Register-ArgumentCompleter -CommandName nx -Native -ScriptBlock {
                                         $scopeNames
                     }
                     default {
-                        '--az', '--bun', '--conda', '--docker', '--gcloud', '--k8s-base', '--k8s-dev', '--k8s-ext', '--nodejs', '--playwright', '--pwsh', '--python', '--rice', '--shell', '--terraform', '--zsh', '--all', '--upgrade', '--allow-unfree', '--unattended', '--register-ssh-key', '--skip-repo-update', '--update-modules', '--omp-theme', '--starship-theme', '--remove', '--help'
+                        '--az', '--bun', '--conda', '--docker', '--gcloud', '--k8s-base', '--k8s-dev', '--k8s-ext', '--nodejs', '--playwright', '--pwsh', '--python', '--rice', '--shell', '--terraform', '--zsh', '--all', '--latest', '--allow-unfree', '--unattended', '--register-ssh-key', '--skip-repo-update', '--update-modules', '--omp-theme', '--starship-theme', '--remove', '--help'
                     }
                 }
             }

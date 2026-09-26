@@ -3,7 +3,7 @@
 nx_main version
 nx_main doctor
 nx_main self update
-nx_main setup --upgrade
+nx_main setup --shell
 '
 
 # nx tool-itself verbs (setup, self, doctor, version, help).
@@ -13,22 +13,21 @@ nx_main setup --upgrade
 # _NX_DEFAULT_REPO_URL) to already be defined.
 
 function _nx_self_sync() {
-  # Delegate to nix/setup.sh --skip-repo-update instead of doing our own
-  # file copy. This guarantees the *latest* phase_bootstrap_sync_env_dir
-  # determines the file list - critical for cross-major upgrades, where
-  # an OLD installed copy of this function would otherwise know nothing
-  # about new lib files (e.g. 1.3.x -> 1.5.x added nx_pkg.sh /
-  # nx_scope.sh / nx_profile.sh / nx_lifecycle.sh, so the OLD sync left
-  # the install half-broken). Skipping --skip-repo-update would also be
-  # fine - the auto-refresh-and-exec chain in setup.sh handles the pull
-  # - but the caller (`_nx_self_dispatch update`) already pulled, so
-  # explicit --skip-repo-update saves a wasted ls-remote round-trip.
+  # Delegate to the freshly pulled nix/setup.sh instead of doing our own file
+  # copy, so the *latest* phase_bootstrap_sync_env_dir determines the file
+  # list - critical for cross-major upgrades, where an OLD installed copy of
+  # this function would otherwise know nothing about new lib files (e.g.
+  # 1.3.x -> 1.5.x added nx_pkg.sh / nx_scope.sh / nx_profile.sh /
+  # nx_lifecycle.sh, so the OLD sync left the install half-broken).
+  # --sync-only stops right after that sync: packages, profiles and tool
+  # configs are left for `nx upgrade`. --skip-repo-update because the caller
+  # (`_nx_self_dispatch update`) already pulled.
   local repo_path="$1"
   if [ ! -x "$repo_path/nix/setup.sh" ]; then
     printf "\e[31mnx self sync: %s/nix/setup.sh not found or not executable\e[0m\n" "$repo_path" >&2
     return 1
   fi
-  bash "$repo_path/nix/setup.sh" --skip-repo-update
+  bash "$repo_path/nix/setup.sh" --skip-repo-update --sync-only
 }
 
 function _nx_lifecycle_version() {
@@ -124,6 +123,13 @@ function _nx_lifecycle_setup() {
       return 1
     fi
     if [ ! -d "$_setup_target" ]; then
+      case " $* " in
+      *" --help "* | *" -h "*)
+        printf "nx setup runs nix/setup.sh from the envy-nx repo, and none is on disk.\n"
+        printf "Run \e[1mnx setup\e[0m to clone it to %s, then nx setup --help.\n" "$_setup_target"
+        return 0
+        ;;
+      esac
       local _setup_repo_url
       _setup_repo_url="$(_nx_read_install_field repo_url)"
       [ -z "$_setup_repo_url" ] && _setup_repo_url="$_NX_DEFAULT_REPO_URL"
@@ -142,6 +148,10 @@ function _nx_lifecycle_setup() {
   # (right after phase_bootstrap_resolve_paths) so it shows up at the same
   # spot users were used to seeing this line.
   bash "$_setup_target/nix/setup.sh" "$@"
+  local _setup_rc=$?
+  # force the nx() wrapper to re-source the nx.sh setup just synced
+  unset -f nx_main
+  return "$_setup_rc"
 }
 
 function _nx_self_dispatch() {
@@ -218,12 +228,11 @@ function _nx_self_dispatch() {
       printf "\e[32mUpdated.\e[0m\n"
     fi
 
-    # `_nx_self_sync` now runs the full setup pipeline (no separate "run
-    # nx setup" follow-up needed) - keeps the upgrade chain in lockstep
-    # with the latest phase_bootstrap_sync_env_dir.
     _nx_self_sync "$_self_repo_path"
+    local _self_rc=$?
     # force the nx() wrapper to re-source nx.sh on the next call
     unset -f nx_main
+    return "$_self_rc"
     ;;
   path)
     local _self_path
@@ -240,13 +249,14 @@ function _nx_self_dispatch() {
 Usage: nx self <command>
 
 Commands:
-  update [--force]  Update the source repository
+  update [--force]  Update nx itself: pull the source repository and sync
+                    the nx files into ~/.config/nix-env (no packages touched)
                     Default: git pull --ff-only
                     --force: fetch + reset --hard origin/<branch>
   path              Print the source repository path
   help              Show this help
 
-After updating, run `nx setup` for a full environment re-provisioning.
+To update nx and upgrade all packages in one go, run `nx upgrade`.
 SELF_HELP
     ;;
   esac
@@ -274,14 +284,14 @@ Commands:
   search    <query>        search nixpkgs for a package
   install   <packages...>  install packages from nixpkgs
   remove    <packages...>  remove installed packages
-  upgrade   [--latest]     upgrade all packages to the validated nixpkgs revision
+  upgrade   [--latest]     update nx and upgrade everything to the validated nixpkgs revision
   rollback                 rollback to previous profile generation
   list                     list installed packages
   scope                    manage scopes (nx scope help)
   overlay                  manage overlay directory (nx overlay help)
   pin                      manage nixpkgs revision pin (nx pin help)
   profile                  manage shell profile blocks (nx profile help)
-  setup     [flags...]     run nix/setup.sh from anywhere
+  setup     [flags...]     add or remove scopes and themes, then upgrade (runs nix/setup.sh)
   self                     manage the source repository (nx self help)
   doctor                   run health checks
   prune                    remove old profile generations
@@ -291,3 +301,405 @@ Commands:
 NX_HELP_EOF
 }
 # <<< nx-help generated <<<
+
+# >>> nx-verb-help generated >>> (regenerate: python3 -m tests.hooks.gen_nx_completions)
+function _nx_verb_help() {
+  case "$1" in
+  search)
+    cat <<'NX_VERB_HELP_EOF'
+Usage: nx search <query>
+
+search nixpkgs for a package
+
+Options:
+  -h, --help  show this help
+NX_VERB_HELP_EOF
+    ;;
+  install | add)
+    cat <<'NX_VERB_HELP_EOF'
+Usage: nx install <packages...>
+
+install packages from nixpkgs
+
+Aliases: add
+
+Options:
+  -h, --help  show this help
+NX_VERB_HELP_EOF
+    ;;
+  remove | uninstall)
+    cat <<'NX_VERB_HELP_EOF'
+Usage: nx remove <packages...>
+
+remove installed packages
+
+Aliases: uninstall
+
+Options:
+  -h, --help  show this help
+NX_VERB_HELP_EOF
+    ;;
+  upgrade | update)
+    cat <<'NX_VERB_HELP_EOF'
+Usage: nx upgrade [--latest]
+
+update nx and upgrade everything to the validated nixpkgs revision
+
+Aliases: update
+
+Options:
+  --latest    use nixpkgs-unstable HEAD instead of the validated revision (unvalidated)
+  -h, --help  show this help
+NX_VERB_HELP_EOF
+    ;;
+  rollback)
+    cat <<'NX_VERB_HELP_EOF'
+Usage: nx rollback
+
+rollback to previous profile generation
+
+Options:
+  -h, --help  show this help
+NX_VERB_HELP_EOF
+    ;;
+  list | ls)
+    cat <<'NX_VERB_HELP_EOF'
+Usage: nx list
+
+list installed packages
+
+Aliases: ls
+
+Options:
+  -h, --help  show this help
+NX_VERB_HELP_EOF
+    ;;
+  scope)
+    case "${2:-}" in
+    list)
+      cat <<'NX_VERB_HELP_EOF'
+Usage: nx scope list
+
+list all scopes
+
+Options:
+  -h, --help  show this help
+NX_VERB_HELP_EOF
+      ;;
+    show)
+      cat <<'NX_VERB_HELP_EOF'
+Usage: nx scope show <scope>
+
+show scope contents
+
+Options:
+  -h, --help  show this help
+NX_VERB_HELP_EOF
+      ;;
+    tree)
+      cat <<'NX_VERB_HELP_EOF'
+Usage: nx scope tree
+
+show scope dependency tree
+
+Options:
+  -h, --help  show this help
+NX_VERB_HELP_EOF
+      ;;
+    add)
+      cat <<'NX_VERB_HELP_EOF'
+Usage: nx scope add <scope> [packages...]
+
+create a new overlay scope
+
+Options:
+  -h, --help  show this help
+NX_VERB_HELP_EOF
+      ;;
+    edit)
+      cat <<'NX_VERB_HELP_EOF'
+Usage: nx scope edit <scope>
+
+edit a scope file
+
+Options:
+  -h, --help  show this help
+NX_VERB_HELP_EOF
+      ;;
+    remove | rm)
+      cat <<'NX_VERB_HELP_EOF'
+Usage: nx scope remove <scope>
+
+remove an overlay scope
+
+Aliases: rm
+
+Options:
+  -h, --help  show this help
+NX_VERB_HELP_EOF
+      ;;
+    *)
+      cat <<'NX_VERB_HELP_EOF'
+Usage: nx scope <command>
+
+manage scopes
+
+Commands:
+  list                       list all scopes
+  show <scope>               show scope contents
+  tree                       show scope dependency tree
+  add <scope> [packages...]  create a new overlay scope
+  edit <scope>               edit a scope file
+  remove <scope>             remove an overlay scope
+NX_VERB_HELP_EOF
+      ;;
+    esac
+    ;;
+  overlay)
+    case "${2:-}" in
+    list)
+      cat <<'NX_VERB_HELP_EOF'
+Usage: nx overlay list
+
+show overlay directory and contents
+
+Options:
+  -h, --help  show this help
+NX_VERB_HELP_EOF
+      ;;
+    status)
+      cat <<'NX_VERB_HELP_EOF'
+Usage: nx overlay status
+
+show overlay sync status
+
+Options:
+  -h, --help  show this help
+NX_VERB_HELP_EOF
+      ;;
+    *)
+      cat <<'NX_VERB_HELP_EOF'
+Usage: nx overlay <command>
+
+manage overlay directory
+
+Commands:
+  list    show overlay directory and contents
+  status  show overlay sync status
+NX_VERB_HELP_EOF
+      ;;
+    esac
+    ;;
+  pin)
+    case "${2:-}" in
+    set)
+      cat <<'NX_VERB_HELP_EOF'
+Usage: nx pin set [revision]
+
+pin nixpkgs to a specific revision
+
+Options:
+  -h, --help  show this help
+NX_VERB_HELP_EOF
+      ;;
+    remove | rm)
+      cat <<'NX_VERB_HELP_EOF'
+Usage: nx pin remove
+
+remove the nixpkgs pin
+
+Aliases: rm
+
+Options:
+  -h, --help  show this help
+NX_VERB_HELP_EOF
+      ;;
+    show)
+      cat <<'NX_VERB_HELP_EOF'
+Usage: nx pin show
+
+show current pin
+
+Options:
+  -h, --help  show this help
+NX_VERB_HELP_EOF
+      ;;
+    help)
+      cat <<'NX_VERB_HELP_EOF'
+Usage: nx pin help
+
+show pin help
+
+Options:
+  -h, --help  show this help
+NX_VERB_HELP_EOF
+      ;;
+    *)
+      cat <<'NX_VERB_HELP_EOF'
+Usage: nx pin <command>
+
+manage nixpkgs revision pin
+
+Commands:
+  set [revision]  pin nixpkgs to a specific revision
+  remove          remove the nixpkgs pin
+  show            show current pin
+  help            show pin help
+NX_VERB_HELP_EOF
+      ;;
+    esac
+    ;;
+  profile)
+    case "${2:-}" in
+    doctor)
+      cat <<'NX_VERB_HELP_EOF'
+Usage: nx profile doctor
+
+check profile block health
+
+Options:
+  -h, --help  show this help
+NX_VERB_HELP_EOF
+      ;;
+    regenerate)
+      cat <<'NX_VERB_HELP_EOF'
+Usage: nx profile regenerate [options]
+
+regenerate profile blocks
+
+Options:
+  --dry-run        render blocks to stdout without modifying rc files
+  --shell <value>  target shell for --dry-run (bash|zsh)
+  -h, --help       show this help
+NX_VERB_HELP_EOF
+      ;;
+    uninstall)
+      cat <<'NX_VERB_HELP_EOF'
+Usage: nx profile uninstall
+
+remove profile blocks
+
+Options:
+  -h, --help  show this help
+NX_VERB_HELP_EOF
+      ;;
+    help)
+      cat <<'NX_VERB_HELP_EOF'
+Usage: nx profile help
+
+show profile help
+
+Options:
+  -h, --help  show this help
+NX_VERB_HELP_EOF
+      ;;
+    *)
+      cat <<'NX_VERB_HELP_EOF'
+Usage: nx profile <command>
+
+manage shell profile blocks
+
+Commands:
+  doctor      check profile block health
+  regenerate  regenerate profile blocks
+  uninstall   remove profile blocks
+  help        show profile help
+NX_VERB_HELP_EOF
+      ;;
+    esac
+    ;;
+  self)
+    case "${2:-}" in
+    update)
+      cat <<'NX_VERB_HELP_EOF'
+Usage: nx self update [options]
+
+update nx itself (no packages touched)
+
+Options:
+  --force     force reset to origin
+  -h, --help  show this help
+NX_VERB_HELP_EOF
+      ;;
+    path)
+      cat <<'NX_VERB_HELP_EOF'
+Usage: nx self path
+
+print the source repository path
+
+Options:
+  -h, --help  show this help
+NX_VERB_HELP_EOF
+      ;;
+    help)
+      cat <<'NX_VERB_HELP_EOF'
+Usage: nx self help
+
+show self help
+
+Options:
+  -h, --help  show this help
+NX_VERB_HELP_EOF
+      ;;
+    *)
+      cat <<'NX_VERB_HELP_EOF'
+Usage: nx self <command>
+
+manage the source repository
+
+Commands:
+  update  update nx itself (no packages touched)
+  path    print the source repository path
+  help    show self help
+NX_VERB_HELP_EOF
+      ;;
+    esac
+    ;;
+  doctor)
+    cat <<'NX_VERB_HELP_EOF'
+Usage: nx doctor [options]
+
+run health checks
+
+Options:
+  --strict    treat warnings as failures
+  --json      JSON output
+  -h, --help  show this help
+NX_VERB_HELP_EOF
+    ;;
+  prune)
+    cat <<'NX_VERB_HELP_EOF'
+Usage: nx prune
+
+remove old profile generations
+
+Options:
+  -h, --help  show this help
+NX_VERB_HELP_EOF
+    ;;
+  gc | clean)
+    cat <<'NX_VERB_HELP_EOF'
+Usage: nx gc
+
+run nix garbage collection
+
+Aliases: clean
+
+Options:
+  -h, --help  show this help
+NX_VERB_HELP_EOF
+    ;;
+  version)
+    cat <<'NX_VERB_HELP_EOF'
+Usage: nx version
+
+show version information
+
+Options:
+  -h, --help  show this help
+NX_VERB_HELP_EOF
+    ;;
+  *) return 1 ;;
+  esac
+}
+# <<< nx-verb-help generated <<<

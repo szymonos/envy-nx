@@ -133,15 +133,15 @@ See [Releasing](releasing.md) for tarball verification and artifact details.
 
 ## Risks and mitigations
 
-| Risk                                              | Severity | Mitigation                                                                                                            |
-| ------------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
-| Nix not approved by InfoSec                       | High     | Determinate Systems commercial support; `nx pin` for supply chain control; content-addressable store for auditability |
-| nixpkgs-unstable drift                            | Medium   | `nx pin set <rev>` locks versions; explicit `--upgrade` required; no silent updates                                   |
-| Cognitive load (macOS + WSL + Coder + bash 3.2/5) | Medium   | Phase-separated architecture; each phase independently testable; comprehensive ARCHITECTURE.md                        |
-| External GitHub fetch at install time             | Medium   | Release tarballs for air-gapped use; overlay for internal mirrors                                                     |
-| WSL not e2e-tested                                | Medium   | 61 Pester tests cover orchestration logic with mocked `wsl.exe`; real WSL behavior not validated in CI                |
-| Single-maintainer project                         | Medium   | Comprehensive test suite, CI gates, and documentation reduce bus factor                                               |
-| macOS MDM conflicts with Nix                      | Low      | Determinate Systems MDM installer designed for managed fleets                                                         |
+| Risk                                              | Severity | Mitigation                                                                                                             |
+| ------------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Nix not approved by InfoSec                       | High     | Determinate Systems commercial support; `nx pin` for supply chain control; content-addressable store for auditability  |
+| nixpkgs-unstable drift                            | Medium   | Users install a CI-validated revision, never HEAD by default; `nx pin set <rev>` locks versions; no background updates |
+| Cognitive load (macOS + WSL + Coder + bash 3.2/5) | Medium   | Phase-separated architecture; each phase independently testable; comprehensive ARCHITECTURE.md                         |
+| External GitHub fetch at install time             | Medium   | Release tarballs for air-gapped use; overlay for internal mirrors                                                      |
+| WSL not e2e-tested                                | Medium   | 61 Pester tests cover orchestration logic with mocked `wsl.exe`; real WSL behavior not validated in CI                 |
+| Single-maintainer project                         | Medium   | Comprehensive test suite, CI gates, and documentation reduce bus factor                                                |
+| macOS MDM conflicts with Nix                      | Low      | Determinate Systems MDM installer designed for managed fleets                                                          |
 
 ## Adoption path
 

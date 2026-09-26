@@ -1,21 +1,19 @@
 # phase: summary
 # Mode detection and final status output.
-# shellcheck disable=SC2154  # upgrade_packages, remove_scopes, any_scope,
+# shellcheck disable=SC2154  # remove_scopes, any_scope,
 #   quiet_summary, platform, _scope_sorted - set by bootstrap/platform phases
 #
-# Reads:  upgrade_packages, remove_scopes, any_scope, quiet_summary,
+# Reads:  remove_scopes, any_scope, quiet_summary,
 #         platform, _scope_sorted
 # Writes: _mode
 
 phase_summary_detect_mode() {
-  if [[ "$upgrade_packages" == "true" ]]; then
-    _mode="upgrade"
-  elif [[ ${#remove_scopes[@]} -gt 0 ]]; then
+  if [[ ${#remove_scopes[@]} -gt 0 ]]; then
     _mode="remove"
   elif [[ "$any_scope" == "true" ]]; then
     _mode="install"
   else
-    _mode="reconfigure"
+    _mode="upgrade"
   fi
 }
 

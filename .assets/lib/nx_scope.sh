@@ -468,7 +468,7 @@ function _nx_pin_dispatch() {
   remove | rm)
     if [ -f "$_pin_file" ]; then
       rm "$_pin_file"
-      printf "\e[32mPin removed.\e[0m Upgrades will use latest nixpkgs-unstable.\n"
+      printf "\e[32mPin removed.\e[0m Upgrades will use the CI-validated nixpkgs revision.\n"
     else
       printf "\e[90mNo pin set.\e[0m\n"
     fi
@@ -477,7 +477,7 @@ function _nx_pin_dispatch() {
     if [ -f "$_pin_file" ]; then
       printf "\e[96mPinned to:\e[0m %s\n" "$(tr -d '[:space:]' <"$_pin_file")"
     else
-      printf "\e[90mNo pin set.\e[0m Upgrades use latest nixpkgs-unstable.\n"
+      printf "\e[90mNo pin set.\e[0m Upgrades use the CI-validated nixpkgs revision.\n"
     fi
     ;;
   help | *)
@@ -486,11 +486,11 @@ Usage: nx pin <command>
 
 Commands:
   set [rev]   Pin nixpkgs to a commit SHA (default: current flake.lock rev)
-  remove      Remove the pin (use latest nixpkgs-unstable)
+  remove      Remove the pin (back to the validated revision)
   show        Show current pin status (default)
   help        Show this help
 
-The pin takes effect on the next `nx upgrade` or `nix/setup.sh --upgrade`.
+The pin takes effect on the next `nx upgrade` or `nx setup`.
 PIN_HELP
     ;;
   esac

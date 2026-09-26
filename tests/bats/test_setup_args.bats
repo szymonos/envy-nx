@@ -106,3 +106,28 @@ _case_flags() {
   [ ! -e "$test_home/.config/nix-env" ]
   rm -rf "$test_home"
 }
+
+@test "--help prints usage before any phase runs" {
+  local test_home
+  test_home="$(mktemp -d)"
+  run env HOME="$test_home" bash "$REPO_SRC/nix/setup.sh" --shell --help
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Usage: nix/setup.sh"* ]]
+  [ ! -e "$test_home/.config/dev-env" ]
+  [ ! -e "$test_home/.config/nix-env" ]
+  rm -rf "$test_home"
+}
+
+@test "--sync-only syncs the nx files without nix or an install record" {
+  # /usr/bin:/bin keeps a nix from the host profile out of reach, so a
+  # sync-only run that still reached detect_nix would fail or install nix.
+  local test_home
+  test_home="$(mktemp -d)"
+  run env HOME="$test_home" PATH="/usr/bin:/bin" \
+    bash "$REPO_SRC/nix/setup.sh" --skip-repo-update --sync-only
+  [ "$status" -eq 0 ]
+  [ -x "$test_home/.config/nix-env/nx.sh" ]
+  [ -f "$test_home/.config/nix-env/nixpkgs_rev.json" ]
+  [ ! -e "$test_home/.config/dev-env/install.json" ]
+  rm -rf "$test_home"
+}

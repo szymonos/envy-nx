@@ -55,6 +55,64 @@ teardown() {
   [[ "$output" == *"Unknown command"* ]]
 }
 
+# -- per-command --help -------------------------------------------------------
+
+@test "--help prints help for every verb and subverb without running it" {
+  # Every command word sequence from the manifest, so a new verb is covered
+  # the day it is added. setup is excluded: nix/setup.sh owns its --help.
+  local surface paths path flag
+  surface="$(dirname "$NX_SCRIPT")/nx_surface.json"
+  paths="$(
+    python3 - "$surface" <<'PY'
+import json, sys
+for v in json.load(open(sys.argv[1]))["verbs"]:
+    if v["name"] in ("help", "setup"):
+        continue
+    for name in [v["name"]] + v.get("aliases", []):
+        print(name)
+    for sv in v.get("subverbs", []):
+        for name in [sv["name"]] + sv.get("aliases", []):
+            print(v["name"], name)
+PY
+  )"
+  [ -n "$paths" ]
+  printf '#!/bin/sh\necho "nix $*" >>"%s"\n' "$TEST_DIR/nix.log" >"$TEST_DIR/bin/nix"
+  : >"$TEST_DIR/nix.log"
+  while IFS= read -r path; do
+    for flag in --help -h; do
+      # shellcheck disable=SC2086 # path is the space-separated command words
+      run nx $path $flag
+      [ "$status" -eq 0 ] || fail "nx $path $flag exited $status: $output"
+      [[ "$output" == "Usage: nx "* ]] || fail "nx $path $flag printed no usage: $output"
+    done
+  done <<<"$paths"
+  [[ ! -s "$TEST_DIR/nix.log" ]] || fail "a --help run reached nix: $(cat "$TEST_DIR/nix.log")"
+}
+
+@test "--help after arguments still prints help" {
+  run nx scope add myscope --help
+  [ "$status" -eq 0 ]
+  [[ "$output" == "Usage: nx scope add <scope> [packages...]"* ]]
+  [[ ! -f "$ENV_DIR/scopes/local_myscope.nix" ]]
+}
+
+@test "nx setup --help does not clone a missing repo" {
+  run nx setup --help
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"none is on disk"* ]]
+  [ ! -e "$HOME/source/repos/szymonos/envy-nx" ]
+}
+
+@test "nx setup --help is forwarded to nix/setup.sh" {
+  local _repo="$TEST_DIR/repo"
+  mkdir -p "$_repo/nix" "$HOME/.config/dev-env"
+  printf '#!/bin/sh\necho "setup.sh called with: $*"\n' >"$_repo/nix/setup.sh"
+  printf '{"repo_path": "%s"}\n' "$_repo" >"$HOME/.config/dev-env/install.json"
+  run nx setup --help
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"setup.sh called with: --help"* ]]
+}
+
 # -- scope help (no default to list) ------------------------------------------
 
 @test "nx scope without subcommand shows help" {
@@ -305,6 +363,49 @@ EOF
   run nx upgrade
   [ "$status" -eq 0 ]
   [[ -z "$(find "$ENV_DIR" -name 'flake.lock.bak.*' 2>/dev/null)" ]]
+}
+
+@test "upgrade restores the previous flake.lock when interrupted" {
+  _write_lock 1000000000
+  _write_rev validatedrev 2000000000
+  local _before
+  _before="$(cat "$ENV_DIR/flake.lock")"
+  # $PPID of the stub is the subshell holding the INT trap - the process a
+  # terminal Ctrl-C reaches alongside nix.
+  cat >"$TEST_DIR/bin/nix" <<EOF
+#!/bin/sh
+case "\$*" in
+"flake lock"*) echo '{"nodes":{"nixpkgs":{"locked":{"lastModified":2000000000,"rev":"newrev"}}}}' >"$ENV_DIR/flake.lock" ; exit 0 ;;
+"profile upgrade"*) echo called >"$TEST_DIR/upgrade.log" ; kill -INT \$PPID ; exit 1 ;;
+esac
+exit 0
+EOF
+  chmod +x "$TEST_DIR/bin/nix"
+  run nx upgrade
+  [ "$status" -eq 130 ]
+  [[ "$output" == *"interrupted - restored the previous flake.lock"* ]]
+  [[ "$(cat "$ENV_DIR/flake.lock")" == "$_before" ]]
+  [[ ! -f "$ENV_DIR/last_upgrade_error" ]]
+}
+
+@test "upgrade hands off to the source repo's setup.sh when it is on disk" {
+  local _repo="$TEST_DIR/repo"
+  mkdir -p "$_repo/nix" "$HOME/.config/dev-env"
+  printf '#!/bin/sh\necho "setup.sh called with: $*"\n' >"$_repo/nix/setup.sh"
+  printf '{"repo_path": "%s"}\n' "$_repo" >"$HOME/.config/dev-env/install.json"
+  run nx upgrade --latest
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"setup.sh called with: --latest"* ]]
+}
+
+@test "upgrade falls back to an in-place upgrade without the source repo" {
+  _stub_nix_log
+  _write_lock 1000000000
+  _write_rev validatedrev 2000000000
+  run nx upgrade
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"source repo not found"* ]]
+  grep -q 'profile upgrade nix-env' "$TEST_DIR/nix.log"
 }
 
 # -- scope remove with local_ prefix -----------------------------------------
@@ -1379,7 +1480,7 @@ EOF
 
 # -- _nx_self_sync ------------------------------------------------------------
 
-@test "self_sync delegates to nix/setup.sh --skip-repo-update" {
+@test "self_sync delegates to nix/setup.sh --skip-repo-update --sync-only" {
   # _nx_self_sync no longer copies files itself - it execs the latest
   # nix/setup.sh so the LATEST phase_bootstrap_sync_env_dir determines
   # the file list (cross-major upgrade safety). Stub setup.sh to record
@@ -1392,7 +1493,7 @@ EOF
 
   run _nx_self_sync "$fake_repo"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"stub-setup args=--skip-repo-update"* ]]
+  [[ "$output" == *"stub-setup args=--skip-repo-update --sync-only"* ]]
 }
 
 @test "self_sync errors when nix/setup.sh is missing or not executable" {
@@ -1474,8 +1575,9 @@ EOF
   [[ "$output" == *"Repo not found"* ]]
 }
 
-@test "self update git pull succeeds on clean repo" {
-  # clone from bare so tracking is set up automatically
+# A clean clone tracking a bare origin, recorded as the install's repo_path,
+# with nix/setup.sh stubbed to echo its args and exit with $1.
+_self_update_repo() {
   local bare_repo="$TEST_DIR/bare.git"
   git init --bare "$bare_repo" >/dev/null 2>&1
   local seed_repo="$TEST_DIR/seed"
@@ -1490,19 +1592,26 @@ EOF
   git clone "$bare_repo" "$git_repo" >/dev/null 2>&1
   git -C "$git_repo" config user.email "test@test.com"
   git -C "$git_repo" config user.name "Test"
-  # _nx_self_sync now delegates to nix/setup.sh - stub it so the test
-  # doesn't try to run the real setup pipeline
   mkdir -p "$git_repo/nix"
-  printf '#!/usr/bin/env bash\necho "SETUP_RAN $*"\n' >"$git_repo/nix/setup.sh"
+  printf '#!/usr/bin/env bash\necho "SETUP_RAN $*"\nexit %s\n' "$1" >"$git_repo/nix/setup.sh"
   chmod +x "$git_repo/nix/setup.sh"
 
   mkdir -p "$HOME/.config/dev-env"
   printf '{"repo_path": "%s"}\n' "$git_repo" >"$HOME/.config/dev-env/install.json"
+}
 
+@test "self update git pull succeeds on clean repo" {
+  _self_update_repo 0
   run nx self update
   [ "$status" -eq 0 ]
   [[ "$output" == *"Updated"* ]]
-  [[ "$output" == *"SETUP_RAN --skip-repo-update"* ]]
+  [[ "$output" == *"SETUP_RAN --skip-repo-update --sync-only"* ]]
+}
+
+@test "self update fails when the sync fails" {
+  _self_update_repo 3
+  run nx self update
+  [ "$status" -eq 3 ]
 }
 
 @test "self update --force resets to origin" {
@@ -1530,7 +1639,7 @@ EOF
   run nx self update --force
   [ "$status" -eq 0 ]
   [[ "$output" == *"Force-updated"* ]]
-  [[ "$output" == *"SETUP_RAN --skip-repo-update"* ]]
+  [[ "$output" == *"SETUP_RAN --skip-repo-update --sync-only"* ]]
 }
 
 # -- nx setup -----------------------------------------------------------------

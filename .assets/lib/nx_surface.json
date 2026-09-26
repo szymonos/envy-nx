@@ -31,7 +31,7 @@
       "name": "upgrade",
       "family": "pkg",
       "aliases": ["update"],
-      "summary": "upgrade all packages to the validated nixpkgs revision",
+      "summary": "update nx and upgrade everything to the validated nixpkgs revision",
       "help_args": "[--latest]",
       "flags": [
         {
@@ -105,7 +105,7 @@
     {
       "name": "setup",
       "family": "lifecycle",
-      "summary": "run nix/setup.sh from anywhere",
+      "summary": "add or remove scopes and themes, then upgrade (runs nix/setup.sh)",
       "help_args": "[flags...]",
       "flags": [
         { "long": "--az", "summary": "Azure CLI + azcopy" },
@@ -125,7 +125,7 @@
         { "long": "--terraform", "summary": "terraform, tflint" },
         { "long": "--zsh", "summary": "zsh plugins" },
         { "long": "--all", "summary": "enable all scopes" },
-        { "long": "--upgrade", "summary": "upgrade all packages" },
+        { "long": "--latest", "summary": "use nixpkgs-unstable HEAD instead of the validated revision (unvalidated)" },
         { "long": "--allow-unfree", "summary": "allow unfree packages" },
         { "long": "--unattended", "summary": "skip interactive steps" },
         { "long": "--register-ssh-key", "summary": "register the generated SSH key with GitHub (opt-in)" },
@@ -144,7 +144,7 @@
       "subverbs": [
         {
           "name": "update",
-          "summary": "update the source repository",
+          "summary": "update nx itself (no packages touched)",
           "flags": [
             { "long": "--force", "summary": "force reset to origin" }
           ]
