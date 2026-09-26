@@ -7,9 +7,9 @@ Outputs:
   - .assets/config/shell_cfg/completions.bash    (full file, overwritten)
   - .assets/config/shell_cfg/completions.zsh     (full file, overwritten)
   - .assets/config/pwsh_cfg/_aliases_nix.ps1     (region replacement)
-  - .assets/lib/nx_lifecycle.sh                  (region replacement, the
-                                                  `_nx_lifecycle_help`
-                                                  function body)
+  - .assets/lib/nx_lifecycle.sh                  (region replacements: the
+                                                  `_nx_lifecycle_help` and
+                                                  `_nx_verb_help` functions)
 
 Dynamic completers (all_scopes, installed_packages, theme_omp, theme_starship)
 are emitted as inline shell-native code per shell - see render_completer_*().
@@ -47,6 +47,10 @@ DOCTOR_FILE = REPO_ROOT / ".assets/lib/nx_doctor.sh"
 PS_REGION_RE = re.compile(r"#region nx-completer.*?#endregion nx-completer", re.DOTALL)
 HELP_REGION_RE = re.compile(
     r"# >>> nx-help generated >>>.*?# <<< nx-help generated <<<",
+    re.DOTALL,
+)
+VERB_HELP_REGION_RE = re.compile(
+    r"# >>> nx-verb-help generated >>>.*?# <<< nx-verb-help generated <<<",
     re.DOTALL,
 )
 NX_MAIN_REGION_RE = re.compile(
@@ -894,6 +898,104 @@ def emit_lifecycle_help(manifest):
     return "\n".join(out)
 
 
+def _flag_label(flag):
+    """`-s, --long <value>` column text for one manifest flag."""
+    label = flag["long"]
+    if flag.get("short"):
+        label = f"{flag['short']}, {label}"
+    if flag.get("takes_value"):
+        label = f"{label} <value>"
+    return label
+
+
+def _table(rows):
+    """Two-column `  left  right` lines, left column padded to the widest."""
+    width = max(len(left) for left, _ in rows)
+    return [f"  {left:<{width}}  {right}".rstrip() for left, right in rows]
+
+
+def _command_help_text(path, entry):
+    """
+    Help text for one verb or subverb.
+
+    `path` is the command words after `nx` (`upgrade`, `scope add`). Verbs with
+    subverbs list them; every other entry shows its usage and options.
+    """
+    subverbs = entry.get("subverbs", [])
+    flags = entry.get("flags", [])
+    if subverbs:
+        usage = f"nx {path} <command>"
+    else:
+        usage = f"nx {path} {_help_args_repr(entry)}".rstrip()
+        if flags and "help_args" not in entry:
+            usage += " [options]"
+    lines = [f"Usage: {usage}", "", entry["summary"]]
+    if entry.get("aliases"):
+        lines += ["", "Aliases: " + ", ".join(entry["aliases"])]
+    if subverbs:
+        rows = [
+            (f"{sv['name']} {_help_args_repr(sv)}".rstrip(), sv["summary"])
+            for sv in subverbs
+        ]
+        lines += ["", "Commands:"] + _table(rows)
+    else:
+        rows = [(_flag_label(f), f["summary"]) for f in flags]
+        rows.append(("-h, --help", "show this help"))
+        lines += ["", "Options:"] + _table(rows)
+    return lines
+
+
+def _help_heredoc(lines, indent):
+    out = [f"{indent}cat <<'NX_VERB_HELP_EOF'"]
+    out.extend(lines)
+    out.append("NX_VERB_HELP_EOF")
+    return out
+
+
+def emit_verb_help(manifest):
+    """
+    Emit `_nx_verb_help <verb> [subverb]`, marker-wrapped.
+
+    Prints the help for one verb, or for its subverb when $2 names one, and
+    returns 1 for a verb it has no help for (`help` itself, unknown names) so
+    nx_main falls through to its normal dispatch. `setup` is skipped: nx_main
+    hands its --help to nix/setup.sh, which has the full option list.
+    """
+    out = [
+        "# >>> nx-verb-help generated >>>"
+        " (regenerate: python3 -m tests.hooks.gen_nx_completions)",
+        "function _nx_verb_help() {",
+        '  case "$1" in',
+    ]
+    for v in manifest["verbs"]:
+        if v["name"] in ("help", "setup"):
+            continue
+        out.append(f"  {' | '.join(all_names(v))})")
+        subverbs = v.get("subverbs", [])
+        if subverbs:
+            out.append('    case "${2:-}" in')
+            for sv in subverbs:
+                out.append(f"    {' | '.join(all_names(sv))})")
+                out += _help_heredoc(
+                    _command_help_text(f"{v['name']} {sv['name']}", sv), "      "
+                )
+                out.append("      ;;")
+            out.append("    *)")
+            out += _help_heredoc(_command_help_text(v["name"], v), "      ")
+            out.append("      ;;")
+            out.append("    esac")
+        else:
+            out += _help_heredoc(_command_help_text(v["name"], v), "    ")
+        out.append("    ;;")
+    out += [
+        "  *) return 1 ;;",
+        "  esac",
+        "}",
+        "# <<< nx-verb-help generated <<<",
+    ]
+    return "\n".join(out)
+
+
 # ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
@@ -932,6 +1034,12 @@ def main():
     )
     _replace_region(
         LIFECYCLE_FILE, HELP_REGION_RE, emit_lifecycle_help(manifest), "nx-help region"
+    )
+    _replace_region(
+        LIFECYCLE_FILE,
+        VERB_HELP_REGION_RE,
+        emit_verb_help(manifest),
+        "nx-verb-help region",
     )
     _replace_region(
         NX_FILE, NX_MAIN_REGION_RE, emit_nx_main(manifest), "nx-main region"

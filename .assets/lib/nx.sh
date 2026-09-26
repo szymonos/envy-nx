@@ -377,6 +377,20 @@ unset _nx_family _nx_family_path _nx_missing_families
 function nx_main() {
   local cmd="${1:-help}"
   shift 2>/dev/null || true
+  # -h/--help anywhere after the verb prints that verb's help instead of
+  # running it - several handlers ignore their arguments, so `nx gc --help`
+  # would otherwise collect garbage. setup forwards it to nix/setup.sh.
+  if [ "$cmd" != "setup" ]; then
+    local _nx_arg
+    for _nx_arg in "$@"; do
+      case "$_nx_arg" in
+      -h | --help)
+        _nx_verb_help "$cmd" "${1:-}" && return 0
+        break
+        ;;
+      esac
+    done
+  fi
   case "$cmd" in
   # >>> nx-main generated >>> (regenerate: python3 -m tests.hooks.gen_nx_completions)
   search) _nx_pkg_search "$@" ;;
