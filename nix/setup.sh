@@ -69,10 +69,12 @@ phase_bootstrap_validate_args "$@"
 # provisions nothing, so it leaves the install record alone: rewriting it would
 # replace the recorded scopes with an empty list.
 _sync_only=false
+_skip_configure=false
 for _arg in "$@"; do
   case "$_arg" in
   -h | --help) usage && exit 0 ;;
   --sync-only) _sync_only=true ;;
+  --skip-configure) _skip_configure=true ;;
   esac
 done
 unset _arg
@@ -186,13 +188,15 @@ phase_nix_profile_update_flake
 phase_nix_profile_apply
 phase_nix_profile_mitm_probe
 
-_ir_phase="configure"
-_ir_flush "in_progress"
-
-# shellcheck disable=SC2154  # unattended - set by phase_bootstrap_parse_args
-phase_configure_gh "$unattended"
-phase_configure_git "$unattended"
-phase_configure_per_scope
+# --skip-configure (`nx upgrade`) leaves gh/git, per-scope tools and PS modules to `nx setup`
+if [[ "$_skip_configure" != "true" ]]; then
+  _ir_phase="configure"
+  _ir_flush "in_progress"
+  # shellcheck disable=SC2154  # unattended - set by phase_bootstrap_parse_args
+  phase_configure_gh "$unattended"
+  phase_configure_git "$unattended"
+  phase_configure_per_scope
+fi
 
 _ir_phase="profiles"
 _ir_flush "in_progress"
@@ -203,11 +207,12 @@ phase_profiles_pwsh
 export NIX_ENV_PHASE="post-setup"
 phase_platform_run_hooks "$ENV_DIR/hooks/post-setup.d"
 
-_ir_phase="post-install"
-_ir_flush "in_progress"
-
-# shellcheck disable=SC2154  # update_modules - set by phase_bootstrap_parse_args
-phase_post_install_common "$update_modules" "${_scope_sorted[@]}"
+if [[ "$_skip_configure" != "true" ]]; then
+  _ir_phase="post-install"
+  _ir_flush "in_progress"
+  # shellcheck disable=SC2154  # update_modules - set by phase_bootstrap_parse_args
+  phase_post_install_common "$update_modules" "${_scope_sorted[@]}"
+fi
 
 _ir_phase="complete"
 _ir_flush "in_progress"

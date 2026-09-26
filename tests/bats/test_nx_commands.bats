@@ -395,7 +395,7 @@ EOF
   printf '{"repo_path": "%s"}\n' "$_repo" >"$HOME/.config/dev-env/install.json"
   run nx upgrade --latest
   [ "$status" -eq 0 ]
-  [[ "$output" == *"setup.sh called with: --latest"* ]]
+  [[ "$output" == *"setup.sh called with: --skip-configure --latest"* ]]
 }
 
 @test "upgrade falls back to an in-place upgrade without the source repo" {

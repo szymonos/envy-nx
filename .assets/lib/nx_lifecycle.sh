@@ -284,7 +284,7 @@ Commands:
   search    <query>        search nixpkgs for a package
   install   <packages...>  install packages from nixpkgs
   remove    <packages...>  remove installed packages
-  upgrade   [--latest]     update nx and upgrade everything to the validated nixpkgs revision
+  upgrade   [--latest]     update nx, upgrade packages to the validated nixpkgs revision, refresh shell profiles
   rollback                 rollback to previous profile generation
   list                     list installed packages
   scope                    manage scopes (nx scope help)
@@ -343,7 +343,7 @@ NX_VERB_HELP_EOF
     cat <<'NX_VERB_HELP_EOF'
 Usage: nx upgrade [--latest]
 
-update nx and upgrade everything to the validated nixpkgs revision
+update nx, upgrade packages to the validated nixpkgs revision, refresh shell profiles
 
 Aliases: update
 

@@ -131,3 +131,18 @@ _case_flags() {
   [ ! -e "$test_home/.config/dev-env/install.json" ]
   rm -rf "$test_home"
 }
+
+# --- --skip-configure (nx upgrade) -------------------------------------------
+
+@test "--skip-configure guards every tool-configuration phase in setup.sh" {
+  # Only the phase calls inside `if [[ "$_skip_configure" != "true" ]]` blocks.
+  local guarded
+  guarded="$(awk '/^if \[\[ "\$_skip_configure" != "true" \]\]; then$/,/^fi$/' "$REPO_SRC/nix/setup.sh")"
+  [[ "$guarded" == *"phase_configure_gh"* ]]
+  [[ "$guarded" == *"phase_configure_git"* ]]
+  [[ "$guarded" == *"phase_configure_per_scope"* ]]
+  [[ "$guarded" == *"phase_post_install_common"* ]]
+  # nix profile and shell profiles still run on upgrade
+  [[ "$guarded" != *"phase_nix_profile"* ]]
+  [[ "$guarded" != *"phase_profiles"* ]]
+}

@@ -31,7 +31,7 @@
       "name": "upgrade",
       "family": "pkg",
       "aliases": ["update"],
-      "summary": "update nx and upgrade everything to the validated nixpkgs revision",
+      "summary": "update nx, upgrade packages to the validated nixpkgs revision, refresh shell profiles",
       "help_args": "[--latest]",
       "flags": [
         {
