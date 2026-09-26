@@ -263,6 +263,50 @@ function Sync-WslNetrc {
 
 <#
 .SYNOPSIS
+Unpack an archive from Get-WslArchiveFromDefault into $HOME of a WSL distro.
+.DESCRIPTION
+Streams the content over stdin so credentials never appear in process
+arguments. All or nothing: when any file from the archive already exists in
+the distro, nothing is extracted, so a copied token cache never lands next
+to a config for another account. New files are private to the user. A
+failed copy only warns - the user can still sign in. No-op when Archive is
+empty / null.
+.PARAMETER Distro
+Name of the WSL distro.
+.PARAMETER Archive
+Base64-encoded tar.gz lines returned by Get-WslArchiveFromDefault.
+#>
+function Expand-WslArchive {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)]
+        [string]$Distro,
+
+        [AllowNull()]
+        [AllowEmptyCollection()]
+        [string[]]$Archive
+    )
+
+    if (-not $Archive) {
+        return
+    }
+
+    Show-LogContext 'copying files from the default distro'
+    # tr strips the CRLF that pwsh on Windows appends when piping to a native command
+    $cmnd = [string]::Join('; ', @(
+            'umask 077'
+            'a=$(tr -d ''\r'')'
+            'for p in $(printf ''%s\n'' "$a" | base64 -d | tar -tzf -); do [ -f "$HOME/$p" ] && exit 0; done'
+            'printf ''%s\n'' "$a" | base64 -d | tar -xzf - -C "$HOME"'
+        ))
+    ($Archive -join "`n") | wsl.exe --distribution $Distro --exec sh -c $cmnd
+    if ($LASTEXITCODE -ne 0) {
+        Show-LogContext 'copying files from the default distro failed, sign in again in this distro' -Level WARNING
+    }
+}
+
+<#
+.SYNOPSIS
 Sync the id_ed25519 SSH key pair between Windows ~/.ssh and a WSL distro.
 .DESCRIPTION
 Three transfer scenarios:

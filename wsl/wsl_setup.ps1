@@ -196,6 +196,14 @@ begin {
         }
         $gh_cfg = Get-WslFileFromDefault -Path '$HOME/.config/gh/hosts.yml' -TargetDistro $Distro -InstalledDistros $lxss
         $netrc = Get-WslFileFromDefault -Path '$HOME/.netrc' -TargetDistro $Distro -InstalledDistros $lxss
+        $az_cli_auth = Get-WslArchiveFromDefault -TargetDistro $Distro -InstalledDistros $lxss -Path @(
+            '.azure/azureProfile.json', '.azure/msal_token_cache.json', '.azure/clouds.config'
+        )
+        # Az PowerShell module context + MSAL token cache
+        $az_pwsh_auth = Get-WslArchiveFromDefault -TargetDistro $Distro -InstalledDistros $lxss -Path @(
+            '.Azure/AzureRmContext.json', '.Azure/AzureRmContextSettings.json'
+            '.local/share/.IdentityService/msal.cache.cae', '.local/share/.IdentityService/msal.cache.nocae'
+        )
         # get installed distro details
         $lxss = @(Get-WslDistro -FromRegistry | Where-Object Name -EQ $Distro)
         # the distro was just installed or confirmed present, so an empty lookup
@@ -295,6 +303,8 @@ process {
         try {
             Sync-WslGitHubConfig -Distro $Distro -GhConfig $gh_cfg
             Sync-WslNetrc -Distro $Distro -Netrc $netrc
+            Expand-WslArchive -Distro $Distro -Archive $az_cli_auth
+            Expand-WslArchive -Distro $Distro -Archive $az_pwsh_auth
             Sync-WslSshKeys -Distro $Distro -HasWslKey ([bool]$chk.ssh_key)
         } catch {
             Show-LogContext -Message "Phase: 'github-ssh'; $_" -Level ERROR -ErrorStackTrace $_.ScriptStackTrace

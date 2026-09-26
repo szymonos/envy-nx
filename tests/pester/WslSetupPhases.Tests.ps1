@@ -441,6 +441,50 @@ Describe 'Sync-WslNetrc stdin' {
     }
 }
 
+Describe 'Expand-WslArchive' {
+    BeforeEach {
+        $script:wslInvoked = $false
+        $script:wslArgs = $null
+        Mock -CommandName 'wsl.exe' -ModuleName 'utils-setup' -MockWith {
+            $script:wslInvoked = $true
+            $script:wslArgs = $args
+            $global:LASTEXITCODE = 0
+        }
+        Mock -CommandName 'Show-LogContext' -ModuleName 'utils-setup' -MockWith { }
+    }
+
+    It 'warns without throwing when the copy fails' {
+        Mock -CommandName 'wsl.exe' -ModuleName 'utils-setup' -MockWith { $global:LASTEXITCODE = 2 }
+        { Expand-WslArchive -Distro 'Ubuntu' -Archive @('H4sIAAAA') } | Should -Not -Throw
+        Should -Invoke -CommandName 'Show-LogContext' -ModuleName 'utils-setup' -Times 1 -ParameterFilter { $Level -eq 'WARNING' }
+    }
+
+    It 'does not warn when the copy succeeds' {
+        Expand-WslArchive -Distro 'Ubuntu' -Archive @('H4sIAAAA')
+        Should -Invoke -CommandName 'Show-LogContext' -ModuleName 'utils-setup' -Times 0 -ParameterFilter { $Level -eq 'WARNING' }
+    }
+
+    It 'is a no-op when Archive is null' {
+        Expand-WslArchive -Distro 'Ubuntu' -Archive $null
+        $script:wslInvoked | Should -Be $false
+    }
+
+    It 'is a no-op when Archive is empty' {
+        Expand-WslArchive -Distro 'Ubuntu' -Archive @()
+        $script:wslInvoked | Should -Be $false
+    }
+
+    It 'extracts privately into $HOME only when none of the files exist' {
+        Expand-WslArchive -Distro 'Ubuntu' -Archive @('H4sIAAAA')
+        $argStr = $script:wslArgs -join ' '
+        $argStr | Should -Match '--distribution Ubuntu'
+        $argStr | Should -Match 'umask 077'
+        $argStr | Should -Match 'tar -tzf -\); do \[ -f "\$HOME/\$p" \] && exit 0; done'
+        $argStr | Should -Match 'base64 -d \| tar -xzf - -C "\$HOME"'
+        $argStr | Should -Not -Match 'H4sIAAAA'
+    }
+}
+
 Describe 'Sync-WslSshKeys' {
     BeforeEach {
         # Sync-WslSshKeys derives the WSL /mnt path from $HOME. Pin HOME to
@@ -704,6 +748,45 @@ Describe 'Resolve-WslGtkThemePreference' {
     It 'returns dark when registry value is missing' {
         Mock -CommandName 'Get-ItemPropertyValue' -ModuleName 'utils-setup' -MockWith { return $null }
         Resolve-WslGtkThemePreference | Should -Be 'dark'
+    }
+}
+
+Describe 'Get-WslArchiveFromDefault' {
+    BeforeEach {
+        Mock -CommandName 'Show-LogContext' -ModuleName 'utils-setup' -MockWith { }
+        $script:installed = @(
+            [pscustomobject]@{ Name = 'Ubuntu'; Default = $true }
+            [pscustomobject]@{ Name = 'Debian'; Default = $false }
+        )
+    }
+
+    It 'returns empty array when target is the default distro' {
+        Mock -CommandName 'wsl.exe' -ModuleName 'utils-setup' -MockWith { throw 'should not be called' }
+        $result = Get-WslArchiveFromDefault -Path '.azure/x' -TargetDistro 'Ubuntu' -InstalledDistros $script:installed
+        $result | Should -BeNullOrEmpty
+    }
+
+    It 'returns empty array when InstalledDistros is null' {
+        $result = Get-WslArchiveFromDefault -Path '.azure/x' -TargetDistro 'Ubuntu' -InstalledDistros $null
+        $result | Should -BeNullOrEmpty
+    }
+
+    It 'passes the paths as arguments to tar in the default distro' {
+        Mock -CommandName 'wsl.exe' -ModuleName 'utils-setup' -MockWith {
+            $script:wslArgs = $args
+            return @('H4sIAAAA', 'AAAA')
+        }
+        $result = Get-WslArchiveFromDefault -Path '.azure/a.json', '.Azure/b.json' -TargetDistro 'Debian' -InstalledDistros $script:installed
+        $result | Should -Be @('H4sIAAAA', 'AAAA')
+        $argStr = $script:wslArgs -join ' '
+        $argStr | Should -Match '--distribution Ubuntu --exec sh -c'
+        $argStr | Should -Match 'tar -czf - "\$@" \| base64 sh \.azure/a\.json \.Azure/b\.json'
+    }
+
+    It 'returns empty array when none of the paths exist' {
+        Mock -CommandName 'wsl.exe' -ModuleName 'utils-setup' -MockWith { }
+        $result = Get-WslArchiveFromDefault -Path '.azure/x' -TargetDistro 'Debian' -InstalledDistros $script:installed
+        $result | Should -BeNullOrEmpty
     }
 }
 
