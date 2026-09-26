@@ -5,6 +5,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.27.0] - 2026-09-26
+
+New WSL distros now inherit Azure sign-ins from the default distro, so azure-cli and the Az PowerShell module work without signing in again.
+
+### Added
+
+- `wsl_setup.ps1` copies Azure credentials from the default distro into a new one, for both azure-cli (`~/.azure`) and the Az PowerShell module (`~/.Azure` context and its MSAL token cache files).
+- Copied files are private to the user. Each tool's credentials are copied only when the target distro has none of them yet, so its own sign-in is never mixed with the copied one; a failed copy only warns.
+
 ## [1.26.1] - 2026-09-25
 
 ### Fixed
