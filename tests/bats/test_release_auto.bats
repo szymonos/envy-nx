@@ -64,9 +64,7 @@ JSON
   "is_rerun": false,
   "phase": "await_push",
   "head_sha": "$(git rev-parse HEAD)",
-  "confirmed_covered_set": [],
-  "completed_phases": ["A", "B"],
-  "decisions": []
+  "confirmed_covered_set": []
 }
 JSON
   echo "feature" >.assets/setup/thing.sh
@@ -492,31 +490,6 @@ except release.ReleaseError as e:
 # =============================================================================
 # refuse_shared_branch - main is rejected, release/* allowed
 # =============================================================================
-
-@test "spine-complete seeds review-policy.json but preserves an existing copy" {
-  _seed_plan_and_changes
-  run _py "
-import release
-from pathlib import Path
-# Point DEFAULT_POLICY at a fixture; simulate the seed condition directly.
-Path('default-policy.json').write_text('{\"known_false_positives\": []}')
-release.DEFAULT_POLICY = Path('default-policy.json')
-# Case 1: no per-release copy -> seed it.
-assert not release.POLICY_FILE.exists()
-if not release.POLICY_FILE.exists() and release.DEFAULT_POLICY.is_file():
-    release.STATE_DIR.mkdir(exist_ok=True)
-    release.POLICY_FILE.write_text(release.DEFAULT_POLICY.read_text())
-assert release.POLICY_FILE.exists(), 'policy not seeded'
-# Case 2: local edit must survive a second seed attempt.
-release.POLICY_FILE.write_text('{\"local\": \"edit\"}')
-if not release.POLICY_FILE.exists() and release.DEFAULT_POLICY.is_file():
-    release.POLICY_FILE.write_text(release.DEFAULT_POLICY.read_text())
-assert 'local' in release.POLICY_FILE.read_text(), 'local edit clobbered'
-print('OK')
-"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *OK* ]]
-}
 
 @test "load_plan rejects a group missing required keys with a clean error" {
   _seed_plan_and_changes

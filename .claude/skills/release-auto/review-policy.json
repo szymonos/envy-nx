@@ -1,11 +1,10 @@
 {
   "$comment": [
-    "review-policy.json - the committed DEFAULT policy the review coda reads.",
-    "release.py copies it to .release/review-policy.json at coda time; edits made",
-    "there are per-release, edits made here are durable. pr_review triage proposes",
-    "a disposition for EVERY fresh thread against these rules; the agent confirms",
-    "the whole bundle or overrides inline (decision 6). Nothing is auto-dismissed",
-    "WITHOUT being shown - this defuses stale-policy over-suppression.",
+    "review-policy.json - the review policy `release.py copilot-review` reads.",
+    "It attaches a proposed disposition to EVERY fresh thread from these rules;",
+    "the agent shows the whole bundle and the user confirms or overrides inline",
+    "(decision 6). Nothing is auto-dismissed WITHOUT being shown - this defuses",
+    "stale-policy over-suppression.",
     "",
     "Dispositions: fix | resolve-only | skip. A rule matches on the thread's path",
     "(glob), the comment body (substring, case-insensitive), or both."

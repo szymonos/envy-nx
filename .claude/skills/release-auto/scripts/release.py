@@ -31,8 +31,11 @@ Usage:
     release.py start --version 1.16.0 [--skip-review]
     release.py resume --decision .release/decision.json
     release.py resume --decision -            # read decision JSON from stdin
+    release.py second-opinion [--files ...]   # coda 4a: heterogeneous-model review
+    release.py copilot-review                 # coda 4b: request/await Copilot, triage
     release.py recut                          # coda re-cut (reconcile+recut+lint)
-    release.py push                           # force-with-lease + create/update PR
+    release.py push [--done [--force]]        # force-with-lease + create/update PR
+    release.py integration --since <ts>       # await the integration workflows
     release.py status
     release.py abort                          # soft-rewind commits, wipe .release/
 """
@@ -42,10 +45,13 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 import re
 import shutil
 import subprocess
 import sys
+import time
+from datetime import UTC, datetime, timedelta
 from pathlib import Path, PurePosixPath
 
 # -- constants ----------------------------------------------------------------
@@ -57,25 +63,43 @@ PLAN_FILE = STATE_DIR / "commit-plan.json"
 # be picked up by `load_plan()` on a run that never authored one, turning "the
 # phase-1 gate must author it first" into "we silently shipped last release's".
 PREV_PLAN_FILE = STATE_DIR / "commit-plan.prev.json"
-POLICY_FILE = STATE_DIR / "review-policy.json"
 
 EXIT_OK = 0
 EXIT_ERROR = 1
 EXIT_USAGE = 2
+EXIT_PENDING = 4
 EXIT_GATE = 10
+
+# Every path is repo-relative; main() changes to the repo root first. Messages
+# name the driver by its absolute path, which runs as printed from any directory.
+CLI = str(Path(__file__).resolve())
 
 # Files that always ride with the CHANGELOG commit (content-coupled to the bump).
 CHANGELOG_RIDERS = ("CHANGELOG.md", "project-words.txt", "pyproject.toml", "uv.lock")
 
 SECTION_HEADER_RE = re.compile(r"^## \[([^\]]+)\](?:\s*-\s*(\S+))?\s*$")
-# Shared leaf scripts (extract.py, cspell_words.py, test_stats.py,
-# extract_signals.py) - absorbed from the retired /prepare-release skill.
 SHARED = Path(".claude/skills/release-auto/scripts")
-# Committed default review policy, seeded into .release/ for the coda to edit.
-DEFAULT_POLICY = Path(".claude/skills/release-auto/review-policy.json")
-# Sibling skill, driven verbatim by the review coda. Imported (not shelled out
-# to) at `push --done` so the finish payload can carry the thread check.
+# Committed review policy; copilot-review pre-matches every thread against it.
+POLICY = Path(".claude/skills/release-auto/review-policy.json")
+# Sibling skills driven by the review coda.
 PR_REVIEW_SCRIPT = Path(".claude/skills/address-pr-review/scripts/pr_review.py")
+BRIEF_SCRIPT = Path(".claude/skills/second-opinion/scripts/review_brief.py")
+# VS Code Server ships the Copilot CLI outside PATH.
+COPILOT_FALLBACK = Path(
+    "~/.vscode-server/data/User/globalStorage/github.copilot-chat/copilotCli/copilot"
+).expanduser()
+
+# Workflows gated on this PR label run the integration suite. The label also
+# re-runs them on every push, so it is applied once, when nothing is left to push.
+INTEGRATION_LABEL = "test:integration"
+INTEGRATION_PASS = ("success", "skipped", "neutral")
+GH_TIMEOUT = 60
+
+BULLET_WORD_CAP = 40
+# Second-opinion runs allowed per release (the review + one scoped rerun), and
+# coda re-pushes after which remaining review threads go back to the user.
+SECOND_OPINION_CAP = 2
+CODA_PUSH_CAP = 2
 
 
 # -- errors -------------------------------------------------------------------
@@ -224,7 +248,7 @@ def load_state() -> dict:
     """Read ``.release/state.json`` or raise if the pipeline has not started."""
     if not STATE_FILE.is_file():
         raise ReleaseError(
-            "no .release/state.json - run `release.py start --version X.Y.Z` first"
+            f"no .release/state.json - run `{CLI} start --version X.Y.Z` first"
         )
     return json.loads(STATE_FILE.read_text())
 
@@ -250,7 +274,7 @@ def guard_resume(state: dict) -> None:
         raise ReleaseError(
             "HEAD moved since the last release step "
             f"(expected {expected[:12]}, found {actual[:12]}). "
-            "Inspect `git log`; re-run `release.py start` if this is intentional."
+            f"Inspect `git log`; re-run `{CLI} start` if this is intentional."
         )
 
 
@@ -677,8 +701,6 @@ def phase_start(version: str, skip_review: bool, reopen: bool = False) -> int:
         "phase": "await_phase1",
         "head_sha": head_sha(),
         "confirmed_covered_set": [],
-        "completed_phases": ["A"],
-        "decisions": [],
     }
     save_state(state)
 
@@ -810,6 +832,25 @@ def resume_phase1(state: dict, decision: dict) -> int:
             ["classify-and-resume", "abort"],
         )
 
+    problems = changelog_problems(final, changelog_section(final), state["last_tag"])
+    unconfirmed = problems["suggest_version"] and not decision.get("version_confirmed")
+    if problems["long_bullets"] or unconfirmed:
+        save_state(state)
+        return emit_gate(
+            "changelog",
+            {
+                **problems,
+                "instructions": (
+                    f"Split any long_bullets over {BULLET_WORD_CAP} words into two "
+                    "bullets. If suggest_version is set, the sections do not match "
+                    "the version bump: ask the user, rename the CHANGELOG heading if "
+                    "they switch, and resume with version_final set to their choice "
+                    'plus "version_confirmed": true.'
+                ),
+            },
+            ["fix-and-resume", "abort"],
+        )
+
     plan = load_plan()
     state["reset_target"] = _resolve_reset_target(state, plan)
 
@@ -825,8 +866,6 @@ def resume_phase1(state: dict, decision: dict) -> int:
 
     state["head_sha"] = head_sha()
     state["phase"] = "await_push"
-    state["completed_phases"].append("B")
-    state["decisions"].append({"kind": "phase1", "version": final})
     save_state(state)
 
     context = {
@@ -843,6 +882,38 @@ def resume_phase1(state: dict, decision: dict) -> int:
         ),
     }
     return emit_gate("push", context, ["approve", "abort"])
+
+
+def changelog_problems(version: str, body: str, last: str) -> dict:
+    """
+    Check the composed release section: bullet length and version-vs-sections.
+
+    ``Added``/``Removed`` in a patch release suggests the next minor; a minor or
+    major holding only ``Fixed``/``Security`` suggests the next patch. Both are
+    measured from ``last`` (the previous tag), since that is what users upgrade
+    from. A version that is not ``X.Y.Z`` skips the suggestion.
+    """
+    bullets: list[str] = []
+    for ln in body.splitlines():
+        if ln.startswith("- "):
+            bullets.append(ln)
+        elif bullets and ln.startswith("  ") and ln.strip():
+            bullets[-1] += " " + ln.strip()
+        else:
+            bullets.append("")  # anything else ends the bullet
+    long_bullets = [b for b in bullets if len(b[2:].split()) > BULLET_WORD_CAP]
+    sections = set(re.findall(r"^### (\w+)", body, re.MULTILINE))
+    suggest = None
+    try:
+        patch = int(version.split(".")[2])
+        major, minor, last_patch = (int(x) for x in last.lstrip("v").split(".")[:3])
+    except (IndexError, ValueError):
+        patch = None
+    if patch and sections & {"Added", "Removed"}:
+        suggest = f"{major}.{minor + 1}.0"
+    elif patch == 0 and sections and sections <= {"Fixed", "Security"}:
+        suggest = f"{major}.{minor}.{last_patch + 1}"
+    return {"long_bullets": long_bullets, "suggest_version": suggest}
 
 
 def _resolve_reset_target(state: dict, plan: dict) -> str:
@@ -912,18 +983,10 @@ def resume_push(state: dict, decision: dict) -> int:
 
     state["phase"] = "spine_complete"
     state["head_sha"] = head_sha()
-    state["completed_phases"].append("C")
     save_state(state)
 
     if state.get("skip_review"):
         return _finish(state, "spine complete (--skip-review); no review coda.")
-
-    # Seed the per-release policy copy from the committed default so the coda's
-    # triage step has .release/review-policy.json to read. Only if absent - a
-    # copy already present carries this release's local overrides.
-    if not POLICY_FILE.exists() and DEFAULT_POLICY.is_file():
-        STATE_DIR.mkdir(exist_ok=True)
-        POLICY_FILE.write_text(DEFAULT_POLICY.read_text())
 
     print("SPINE_COMPLETE")
     print(
@@ -931,12 +994,10 @@ def resume_push(state: dict, decision: dict) -> int:
             {
                 "version": state["version"],
                 "next": (
-                    "Run the review coda: trigger Copilot via "
-                    "address-pr-review/pr_review.py, triage against "
-                    ".release/review-policy.json, apply fixes, then "
-                    "`release.py recut` + `release.py push`. When clean, "
-                    "`release.py abort` is not needed - the spine wipes state on "
-                    "the final `push`; run `release.py status` to inspect."
+                    f"Run the review coda: `{CLI} second-opinion`, then "
+                    f"`{CLI} copilot-review`. Fold fixes with `{CLI} recut` + "
+                    f"`{CLI} push`. Finish with `{CLI} push --done`, which "
+                    "triggers the integration tests."
                 ),
             },
             indent=2,
@@ -980,13 +1041,15 @@ def _upsert_pr(version: str) -> None:
             "release PR with an empty body. Compose the release notes first."
         )
     title = f"chore(release): {version}"
-    exists = subprocess.run(
-        ["gh", "pr", "view", "--json", "number"],
+    # `gh pr view` also finds a merged or closed PR for a reused branch name
+    pr_state = subprocess.run(
+        ["gh", "pr", "view", "--json", "state", "--jq", ".state"],
         capture_output=True,
         text=True,
         check=False,
+        timeout=GH_TIMEOUT,
     )
-    if exists.returncode == 0:
+    if pr_state.returncode == 0 and pr_state.stdout.strip() == "OPEN":
         _gh(["pr", "edit", "--title", title, "--body", body])
     else:
         _gh(["pr", "create", "--base", "main", "--title", title, "--body", body])
@@ -994,7 +1057,9 @@ def _upsert_pr(version: str) -> None:
 
 def _gh(args: list[str]) -> None:
     """Run a ``gh`` command, raising ``ReleaseError`` on failure."""
-    result = subprocess.run(["gh", *args], capture_output=True, text=True, check=False)
+    result = subprocess.run(
+        ["gh", *args], capture_output=True, text=True, check=False, timeout=GH_TIMEOUT
+    )
     if result.returncode != 0:
         raise ReleaseError(f"gh {' '.join(args)} failed:\n{result.stderr.strip()}")
 
@@ -1126,18 +1191,23 @@ def open_threads() -> list[dict] | None:
         return None
 
 
-def _finish(state: dict, message: str) -> int:
+def _finish(state: dict, message: str, *, check_threads: bool = True) -> int:
     """
-    Delete the safety backup ref, wipe ``.release/``, and report success.
+    Trigger integration tests, then delete the backup ref and wipe ``.release/``.
 
-    The thread check runs here rather than being left to the agent to go and ask
-    for. This is the terminal command: after it the state is gone, so anything
-    still unresolved that is not in this payload is something nobody will see.
+    ``push --done`` has already refused on open threads, so it passes
+    ``check_threads=False`` unless forced; the ``--skip-review`` path still
+    gets the warning. Integration runs only now because nothing is left to
+    push, and the label re-runs the suite on every push. The trigger comes
+    before the wipe so a failed one raises with the run intact, and
+    ``push --done`` can simply be retried.
     """
-    still_open = open_threads()
+    still_open = open_threads() if check_threads else []
+    integration = trigger_integration()
     delete_backup(state["version"])
     _wipe_state_dir()
     print(message)
+    print(json.dumps({"integration": integration}, indent=2))
     if still_open is None:
         print(
             "WARNING: could not check for unresolved review threads - verify the "
@@ -1158,6 +1228,331 @@ def _finish(state: dict, message: str) -> int:
     return EXIT_OK
 
 
+# -- integration tests --------------------------------------------------------
+
+
+def integration_workflows() -> list[str]:
+    """Workflow files gated on ``INTEGRATION_LABEL``, detected rather than listed."""
+    return sorted(
+        p.name
+        for p in Path(".github/workflows").glob("*.y*ml")
+        if INTEGRATION_LABEL in p.read_text()
+    )
+
+
+def trigger_integration() -> dict:
+    """
+    Apply the integration label to this branch's PR so the suite runs once.
+
+    ``labeled`` fires only when the label is added, so one already present is
+    removed first. ``since`` is taken a little before the trigger to absorb
+    clock skew between this machine and GitHub.
+    """
+    workflows = integration_workflows()
+    if not workflows:
+        return {
+            "triggered": False,
+            "reason": f"no workflow is gated on {INTEGRATION_LABEL}",
+        }
+    since = (datetime.now(UTC) - timedelta(seconds=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        labels = _gh_json(["pr", "view", "--json", "labels"])["labels"]
+    except subprocess.TimeoutExpired as exc:
+        raise ReleaseError(f"gh pr view timed out: {exc}") from exc
+    if any(label["name"] == INTEGRATION_LABEL for label in labels):
+        _gh(["pr", "edit", "--remove-label", INTEGRATION_LABEL])
+    _gh(["pr", "edit", "--add-label", INTEGRATION_LABEL])
+    return {
+        "triggered": True,
+        "since": since,
+        "workflows": workflows,
+        "next": f"{CLI} integration --since {since}",
+    }
+
+
+def _gh_json(args: list[str]) -> list | dict:
+    """Run a ``gh`` command that prints JSON and return it parsed."""
+    result = subprocess.run(
+        ["gh", *args], capture_output=True, text=True, check=False, timeout=GH_TIMEOUT
+    )
+    if result.returncode != 0:
+        raise ReleaseError(f"gh {' '.join(args)} failed:\n{result.stderr.strip()}")
+    return json.loads(result.stdout or "null")
+
+
+def integration_runs(workflows: list[str], sha: str, since: str) -> dict[str, dict]:
+    """
+    Latest labelled run per workflow for ``sha`` created at/after ``since``.
+
+    A push without the label also creates a run, whose jobs all skip and whose
+    conclusion is ``skipped`` - never an integration result, so never selected.
+    A newest ``cancelled`` run is returned as-is (the caller treats it as not
+    finished) rather than falling back to an older, superseded success.
+    """
+    runs: dict[str, dict] = {}
+    for wf in workflows:
+        found = _gh_json(
+            [
+                "run",
+                "list",
+                "--workflow",
+                wf,
+                "--commit",
+                sha,
+                "--event",
+                "pull_request",
+                "--limit",
+                "20",
+                "--json",
+                "databaseId,status,conclusion,createdAt,url",
+            ]
+        )
+        fresh = [
+            r
+            for r in found or []
+            if r["createdAt"] >= since and r["conclusion"] != "skipped"
+        ]
+        if fresh:
+            runs[wf] = max(fresh, key=lambda r: r["createdAt"])
+    return runs
+
+
+def cmd_integration(args: argparse.Namespace) -> int:
+    """
+    Handle ``release.py integration`` - wait for the labelled runs to finish.
+
+    Stateless (``push --done`` already wiped ``.release/``): the runs are found
+    by HEAD's SHA and the trigger time. Exits 0 when every workflow passed, 1
+    when one failed (with the failed job names), ``EXIT_PENDING`` when the
+    timeout ran out first - re-run the same command to keep waiting.
+    """
+    workflows = integration_workflows()
+    sha = head_sha()
+    deadline = time.monotonic() + args.timeout
+    runs: dict[str, dict] = {}
+    last_error = None
+    while True:
+        # a transient GitHub error is a missed poll, not a failed test run
+        try:
+            runs = integration_runs(workflows, sha, args.since)
+            last_error = None
+        except (ReleaseError, subprocess.TimeoutExpired) as exc:
+            last_error = str(exc)
+        # a cancelled newest run was superseded by one GitHub has not listed yet
+        done = (
+            last_error is None
+            and len(runs) == len(workflows)
+            and all(
+                r["status"] == "completed" and r["conclusion"] != "cancelled"
+                for r in runs.values()
+            )
+        )
+        if done or time.monotonic() >= deadline:
+            break
+        time.sleep(args.interval)
+    report: dict = {
+        "sha": sha,
+        "workflows": {
+            wf: {k: r.get(k) for k in ("status", "conclusion", "url")}
+            for wf, r in runs.items()
+        },
+        "missing": [wf for wf in workflows if wf not in runs],
+    }
+    if not done:
+        report["pending"] = True
+        if last_error:
+            report["last_error"] = last_error
+        print(json.dumps(report, indent=2))
+        return EXIT_PENDING
+    failed = {
+        wf: r for wf, r in runs.items() if r["conclusion"] not in INTEGRATION_PASS
+    }
+    for wf, r in failed.items():
+        jobs = _gh_json(["run", "view", str(r["databaseId"]), "--json", "jobs"])["jobs"]
+        report["workflows"][wf]["failed_jobs"] = [
+            j["name"] for j in jobs if j.get("conclusion") not in INTEGRATION_PASS
+        ]
+    print(json.dumps(report, indent=2))
+    return EXIT_ERROR if failed else EXIT_OK
+
+
+# -- review coda --------------------------------------------------------------
+
+
+def _copilot_cli() -> str | None:
+    """Path to the Copilot CLI, or None when it is not installed."""
+    found = shutil.which("copilot")
+    if found:
+        return found
+    return str(COPILOT_FALLBACK) if COPILOT_FALLBACK.is_file() else None
+
+
+def cmd_second_opinion(args: argparse.Namespace) -> int:
+    """
+    Handle ``release.py second-opinion`` - coda 4a, a different model family.
+
+    Picks the model from the review brief (premium on trigger paths or large
+    diffs) and reviews ``<last-tag>..HEAD`` against the release's CHANGELOG
+    section, or only ``--files`` on the one allowed rerun. A missing Copilot
+    CLI skips the layer rather than blocking the release.
+    """
+    state = load_state()
+    runs = state.get("second_opinion_runs", 0)
+    if runs >= SECOND_OPINION_CAP:
+        raise ReleaseError(
+            f"second-opinion already ran {runs} times - move on to "
+            f"`{CLI} copilot-review`"
+        )
+    copilot = _copilot_cli()
+    if copilot is None:
+        print(json.dumps({"skipped": "copilot CLI not found"}, indent=2))
+        return EXIT_OK
+    tag, version = state["last_tag"], state["version"]
+    brief = subprocess.run(
+        ["uv", "run", "--frozen", "python", str(BRIEF_SCRIPT), "model", tag],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if brief.returncode != 0:
+        raise ReleaseError(f"review_brief.py model failed:\n{brief.stderr.strip()}")
+    choice = json.loads(brief.stdout)
+    diff = f"git diff {tag}..HEAD" + (
+        " -- " + " ".join(args.files) if args.files else ""
+    )
+    prompt = (
+        "Read .claude/skills/second-opinion/REVIEW-BRIEF.md AND the "
+        f"'## [{version}]' section of CHANGELOG.md (the author's stated intent), "
+        f"then review the branch's changes since {tag}. Run: {diff}. Dismiss "
+        "findings that contradict the documented intent unless the code genuinely "
+        "fails to deliver it (then flag the bullet-vs-code gap). Output findings "
+        "using the brief's format and severities."
+    )
+    result = subprocess.run(
+        [
+            copilot,
+            "-p",
+            prompt,
+            "-s",
+            "--model",
+            choice["model"],
+            "--no-custom-instructions",
+            "--excluded-tools",
+            "skill",
+            "--allow-all-tools",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=args.timeout,
+    )
+    if result.returncode != 0:
+        raise ReleaseError(f"copilot failed:\n{result.stderr.strip()[-2000:]}")
+    state["second_opinion_runs"] = runs + 1
+    save_state(state)
+    header = {
+        "model": choice["model"],
+        "reasons": choice.get("reasons", []),
+        "run": runs + 1,
+    }
+    print(json.dumps(header))
+    print(result.stdout.strip())
+    return EXIT_OK
+
+
+def propose(thread: dict, policy: dict) -> dict | None:
+    """
+    First policy rule matching ``thread``, as a proposed disposition.
+
+    A rule may name ``match_path`` (glob), ``match_body`` (case-insensitive
+    substring) or both; every key it names must match.
+    """
+    body = thread.get("body", "").lower()
+    path = PurePosixPath(thread.get("path") or ".")
+    for section in ("known_false_positives", "path_ownership", "accepted_intentional"):
+        for rule in policy.get(section, []):
+            if "match_path" in rule and not path.full_match(rule["match_path"]):
+                continue
+            if "match_body" in rule and rule["match_body"].lower() not in body:
+                continue
+            return {
+                "disposition": rule["disposition"],
+                "reason": rule["reason"],
+                "rule": section,
+            }
+    return None
+
+
+def _pr_review(args: list[str]) -> dict:
+    """Run a ``pr_review.py`` verb; its stderr (poll progress) passes through."""
+    result = subprocess.run(
+        ["python3", str(PR_REVIEW_SCRIPT), *args],
+        stdout=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    # 0-4 are review states (D, C, B, A) and the wait timeout, but an error also
+    # exits 1 - with no JSON on stdout, which is what tells the two apart
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        payload = None
+    if result.returncode not in range(5) or not isinstance(payload, dict):
+        raise ReleaseError(
+            f"pr_review.py {args[0]} failed (exit {result.returncode}), see stderr"
+        )
+    return payload
+
+
+def cmd_copilot_review(args: argparse.Namespace) -> int:
+    """
+    Handle ``release.py copilot-review`` - coda 4b, the Copilot PR review.
+
+    Requests the review only when nobody has (a force-push usually does not
+    re-request it), waits, and gates on the fresh threads with a policy
+    proposal attached to each. Exits 0 when clean, ``EXIT_PENDING`` when the
+    wait timed out, ``EXIT_GATE`` with threads to triage.
+    """
+    state = load_state()
+    review = _pr_review(["state"])
+    if review["state"] == "A":
+        _pr_review(["trigger"])
+    if review["state"] in ("A", "B"):
+        review = _pr_review(["wait", "--timeout", str(args.timeout)])
+    if review["state"] in ("A", "B"):
+        print(json.dumps({"state": review["state"], "pending": True}, indent=2))
+        return EXIT_PENDING
+    threads = review["unresolvedFreshThreads"]
+    if not threads:
+        print(json.dumps({"state": review["state"], "threads": []}, indent=2))
+        return EXIT_OK
+    policy = json.loads(POLICY.read_text()) if POLICY.is_file() else {}
+    for thread in threads:
+        thread["proposal"] = propose(thread, policy)
+    capped = state.get("coda_pushes", 0) >= CODA_PUSH_CAP
+    return emit_gate(
+        "review_triage",
+        {
+            "threads": threads,
+            "fix_cycle_cap_reached": capped,
+            "instructions": (
+                "Show the user every thread with its proposal (null = no rule "
+                "matched) in one question; confirm or override each. Resolve fix "
+                "and resolve-only threads with pr_review.py resolve <id> before "
+                f"re-cutting, then `{CLI} recut` + `{CLI} push` and run "
+                "copilot-review again."
+                + (
+                    " The fix-cycle cap is reached: hand the remaining threads to "
+                    "the user instead of fixing them in this run."
+                    if capped
+                    else ""
+                )
+            ),
+        },
+        ["triage", "abort"],
+    )
+
+
 # -- top-level commands -------------------------------------------------------
 
 
@@ -1175,13 +1570,13 @@ def cmd_start(args: argparse.Namespace) -> int:
             # not an ancestor of the current HEAD.
             raise ReleaseError(
                 f"leftover .release/ state is from v{existing_version}, which is "
-                "already tagged (shipped). Run `release.py abort` to clear it - "
+                f"already tagged (shipped). Run `{CLI} abort` to clear it - "
                 "ancestor-guarded, so it will not rewind the shipped release "
                 "(any un-finished recut commits are preserved in the tree)."
             )
         raise ReleaseError(
             f"a release for {existing_version} is already in progress "
-            f"(phase {existing['phase']}). Run `release.py status`, `resume`, or "
+            f"(phase {existing['phase']}). Run `{CLI} status`, `resume`, or "
             "`abort` first."
         )
     return phase_start(args.version, args.skip_review, args.reopen)
@@ -1229,7 +1624,7 @@ def cmd_recut(_args: argparse.Namespace) -> int:
                 "instructions": (
                     "The commit-plan does not match the working tree. Add globs "
                     "for any orphan paths, and remove or repoint any group listed "
-                    "in empty_groups, then re-run `release.py recut`."
+                    f"in empty_groups, then re-run `{CLI} recut`."
                 ),
             },
             ["update-plan-and-rerun", "abort"],
@@ -1282,16 +1677,53 @@ def cmd_push(args: argparse.Namespace) -> int:
     if stale:
         raise ReleaseError(
             "uncommitted changes on plan-covered paths would not be pushed - "
-            "run `release.py recut` first:\n  " + "\n  ".join(stale)
+            f"run `{CLI} recut` first:\n  " + "\n  ".join(stale)
         )
+    if args.done:
+        return _done(state, force=getattr(args, "force", False))
     _do_push()
     _upsert_pr(state["version"])
     state["head_sha"] = head_sha()
+    state["coda_pushes"] = state.get("coda_pushes", 0) + 1
     save_state(state)
-    if args.done:
-        return _finish(state, f"release {state['version']} complete - state wiped.")
     print(json.dumps({"pushed": state["version"], "pr": "updated"}, indent=2))
     return EXIT_OK
+
+
+def _done(state: dict, *, force: bool) -> int:
+    """
+    Finish a reviewed release: nothing left to push and no thread left open.
+
+    Pushing here would hand unreviewed commits to the integration run, so an
+    unpublished HEAD is refused. Open threads - outdated ones included - gate
+    before the state is wiped, so they can still be triaged; ``--force``
+    finishes anyway (e.g. GitHub unreachable), with the warning.
+    """
+    if not head_is_published():
+        raise ReleaseError(
+            f"HEAD is not pushed - run `{CLI} push` and re-run the review before "
+            "finishing"
+        )
+    threads = open_threads()
+    if threads != [] and not force:
+        return emit_gate(
+            "unresolved_threads",
+            {
+                "threads": threads,
+                "instructions": (
+                    "null threads = the lookup failed; otherwise triage each "
+                    "thread (outdated ones too) and resolve it with pr_review.py "
+                    f"resolve <id>, then re-run `{CLI} push --done`. `--force` "
+                    "finishes regardless."
+                ),
+            },
+            ["resolve-and-rerun", "force"],
+        )
+    return _finish(
+        state,
+        f"release {state['version']} complete - state wiped.",
+        check_threads=threads != [],
+    )
 
 
 def cmd_status(_args: argparse.Namespace) -> int:
@@ -1391,9 +1823,43 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_push = sub.add_parser("push", help="Force-with-lease push + PR upsert")
     p_push.add_argument(
-        "--done", action="store_true", help="Wipe state after a clean review coda"
+        "--done",
+        action="store_true",
+        help="Finish a clean review coda: wipe state, trigger integration tests",
+    )
+    p_push.add_argument(
+        "--force", action="store_true", help="With --done: finish despite open threads"
     )
     p_push.set_defaults(func=cmd_push)
+
+    p_second = sub.add_parser(
+        "second-opinion", help="Coda 4a: heterogeneous-model review"
+    )
+    p_second.add_argument("--files", nargs="+", help="Limit the rerun to these files")
+    p_second.add_argument(
+        "--timeout", type=int, default=570, help="Seconds (default 570)"
+    )
+    p_second.set_defaults(func=cmd_second_opinion)
+
+    p_copilot = sub.add_parser(
+        "copilot-review", help="Coda 4b: Copilot PR review + triage"
+    )
+    p_copilot.add_argument(
+        "--timeout", type=int, default=480, help="Wait seconds (default 480)"
+    )
+    p_copilot.set_defaults(func=cmd_copilot_review)
+
+    p_integ = sub.add_parser("integration", help="Wait for the integration workflows")
+    p_integ.add_argument(
+        "--since", required=True, help="Trigger time printed by push --done"
+    )
+    p_integ.add_argument(
+        "--timeout", type=int, default=540, help="Seconds (default 540)"
+    )
+    p_integ.add_argument(
+        "--interval", type=int, default=30, help="Poll seconds (default 30)"
+    )
+    p_integ.set_defaults(func=cmd_integration)
 
     sub.add_parser("status", help="Print the current release state").set_defaults(
         func=cmd_status
@@ -1408,10 +1874,18 @@ def main(argv: list[str] | None = None) -> int:
     """Parse args, dispatch, and translate ``ReleaseError`` into exit code 1."""
     parser = build_parser()
     args = parser.parse_args(argv)
+    if getattr(args, "decision", "-") != "-":
+        args.decision = str(Path(args.decision).resolve())
     try:
+        top = git(["rev-parse", "--show-toplevel"])
+        os.chdir(top)
         return args.func(args)
     except ReleaseError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+    except subprocess.TimeoutExpired as exc:
+        cmd = " ".join(exc.cmd)
+        print(f"ERROR: {cmd} timed out after {exc.timeout}s", file=sys.stderr)
         return EXIT_ERROR
 
 

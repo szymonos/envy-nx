@@ -490,3 +490,385 @@ def test_load_pr_review_finds_the_real_sibling_script() -> None:
 
     assert module is not None
     assert callable(module.unresolved_threads)
+
+
+# -- changelog_problems: the pre-recut changelog gate ---------------------------
+
+
+def _section(*sections: str, bullet: str = "- `x` now does y.") -> str:
+    return "\n\n".join(f"### {s}\n\n{bullet}" for s in sections)
+
+
+@pytest.mark.parametrize(
+    ("version", "sections", "expected"),
+    [
+        ("1.26.2", ("Added",), "1.27.0"),  # feature in a patch -> minor
+        ("1.26.2", ("Removed", "Fixed"), "1.27.0"),
+        ("1.26.2", ("Fixed",), None),
+        ("1.27.0", ("Fixed",), "1.26.2"),  # fixes only in a minor -> patch
+        ("1.27.0", ("Fixed", "Security"), "1.26.2"),
+        ("1.27.0", ("Added", "Fixed"), None),
+        ("1.27.0", ("Changed",), None),  # a behaviour change may earn a minor
+        ("next", ("Added",), None),  # not X.Y.Z: no suggestion
+    ],
+)
+def test_changelog_problems_version(
+    version: str, sections: tuple[str, ...], expected: str | None
+) -> None:
+    """Sections that do not match the bump suggest the version users expect."""
+    body = _section(*sections)
+    assert (
+        release.changelog_problems(version, body, "v1.26.1")["suggest_version"]
+        == expected
+    )
+
+
+def test_changelog_problems_flags_only_bullets_over_the_cap() -> None:
+    """Exactly 40 words passes; 41 is flagged."""
+    at_cap = "- " + " ".join(["w"] * 40)
+    over = "- " + " ".join(["w"] * 41)
+    body = f"### Fixed\n\n{at_cap}\n{over}\n"
+
+    assert release.changelog_problems("1.26.2", body, "v1.26.1")["long_bullets"] == [
+        over
+    ]
+
+
+# -- propose: review-policy matching ------------------------------------------
+
+POLICY = {
+    "known_false_positives": [
+        {"match_body": "ubuntu-slim", "disposition": "resolve-only", "reason": "r1"}
+    ],
+    "path_ownership": [
+        {
+            "match_path": "modules/aliases-git/**",
+            "disposition": "resolve-only",
+            "reason": "r2",
+        }
+    ],
+    "accepted_intentional": [
+        {
+            "match_path": "nix/**",
+            "match_body": "flake.lock",
+            "disposition": "resolve-only",
+            "reason": "r3",
+        }
+    ],
+}
+
+
+@pytest.mark.parametrize(
+    ("thread", "reason"),
+    [
+        ({"path": "a.yml", "body": "Use UBUNTU-SLIM?"}, "r1"),  # case-insensitive body
+        ({"path": "modules/aliases-git/x/y.ps1", "body": "nit"}, "r2"),
+        ({"path": "nix/setup.sh", "body": "commit flake.lock"}, "r3"),
+        ({"path": "nix/setup.sh", "body": "unrelated"}, None),  # both keys must match
+        ({"path": "wsl/x.ps1", "body": "flake.lock"}, None),
+        ({"path": None, "body": "general comment"}, None),
+    ],
+)
+def test_propose(thread: dict, reason: str | None) -> None:
+    """Every key a rule names must match; body matching ignores case."""
+    got = release.propose(thread, POLICY)
+    assert (got or {}).get("reason") == reason
+
+
+# -- _upsert_pr: only an OPEN PR is this release's ------------------------------
+
+
+@pytest.mark.parametrize(("pr_state", "verb"), [("OPEN", "edit"), ("MERGED", "create")])
+def test_upsert_pr_ignores_a_merged_pr(
+    monkeypatch: pytest.MonkeyPatch, pr_state: str, verb: str
+) -> None:
+    """A reused branch name finds its merged PR; editing it would hide the release."""
+
+    class Result:
+        returncode = 0
+        stdout = pr_state + "\n"
+
+    calls: list[list[str]] = []
+    monkeypatch.setattr(release, "changelog_section", lambda _v: "### Added\n\n- x")
+    monkeypatch.setattr(release.subprocess, "run", lambda *_a, **_k: Result())
+    monkeypatch.setattr(release, "_gh", calls.append)
+
+    release._upsert_pr("1.2.3")
+
+    assert calls[0][:2] == ["pr", verb]
+
+
+# -- _done: push --done refuses to wipe what still needs attention ---------------
+
+
+def test_done_refuses_an_unpushed_head(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Finishing would hand unreviewed commits to the integration run."""
+    monkeypatch.setattr(release, "head_is_published", lambda: False)
+
+    with pytest.raises(release.ReleaseError, match="not pushed"):
+        release._done({"version": "1.2.3"}, force=False)
+
+
+@pytest.mark.parametrize("threads", [None, [{"id": "PRRT_x", "isOutdated": True}]])
+def test_done_gates_before_wiping_on_open_or_unknown_threads(
+    monkeypatch: pytest.MonkeyPatch, threads: list | None
+) -> None:
+    """An unknown lookup gates like an open thread - state survives either way."""
+    monkeypatch.setattr(release, "head_is_published", lambda: True)
+    monkeypatch.setattr(release, "open_threads", lambda: threads)
+    monkeypatch.setattr(release, "_finish", lambda *_a, **_k: pytest.fail("wiped"))
+
+    assert release._done({"version": "1.2.3"}, force=False) == release.EXIT_GATE
+
+
+@pytest.mark.parametrize(
+    ("threads", "force", "check"), [([], False, False), (None, True, True)]
+)
+def test_done_finishes_when_clean_or_forced(
+    monkeypatch: pytest.MonkeyPatch, threads: list | None, force: bool, check: bool
+) -> None:
+    """Clean finishes silently; --force finishes and keeps the warning."""
+    seen: dict = {}
+    monkeypatch.setattr(release, "head_is_published", lambda: True)
+    monkeypatch.setattr(release, "open_threads", lambda: threads)
+    monkeypatch.setattr(
+        release,
+        "_finish",
+        lambda _s, _m, *, check_threads: seen.update(c=check_threads) or 0,
+    )
+
+    assert release._done({"version": "1.2.3"}, force=force) == 0
+    assert seen["c"] is check  # a forced finish still prints the warning
+
+
+# -- integration ----------------------------------------------------------------
+
+
+def test_integration_workflows_detects_the_label(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only workflows gated on the label count as integration."""
+    wf = tmp_path / ".github/workflows"
+    wf.mkdir(parents=True)
+    (wf / "test_linux.yml").write_text("labels.*.name, 'test:integration'")
+    (wf / "lint.yml").write_text("on: push")
+    monkeypatch.chdir(tmp_path)
+
+    assert release.integration_workflows() == ["test_linux.yml"]
+
+
+def test_trigger_integration_re_adds_the_label(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`labeled` fires only on add, so a label already present is removed first."""
+    calls: list[list[str]] = []
+    monkeypatch.setattr(release, "integration_workflows", lambda: ["test_linux.yml"])
+    monkeypatch.setattr(
+        release, "_gh_json", lambda _a: {"labels": [{"name": "test:integration"}]}
+    )
+    monkeypatch.setattr(release, "_gh", calls.append)
+
+    out = release.trigger_integration()
+
+    assert calls == [
+        ["pr", "edit", "--remove-label", "test:integration"],
+        ["pr", "edit", "--add-label", "test:integration"],
+    ]
+    assert out["triggered"] and out["since"].endswith("Z")
+
+
+def test_trigger_integration_without_gated_workflows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No gated workflow means nothing to trigger, not an error."""
+    monkeypatch.setattr(release, "integration_workflows", lambda: [])
+
+    assert release.trigger_integration()["triggered"] is False
+
+
+def _run(status: str, conclusion: str | None = None) -> dict:
+    return {"databaseId": 1, "status": status, "conclusion": conclusion, "url": "u"}
+
+
+@pytest.mark.parametrize(
+    ("runs", "expected"),
+    [
+        (
+            {
+                "a.yml": _run("completed", "success"),
+                "b.yml": _run("completed", "skipped"),
+            },
+            0,
+        ),
+        (
+            {
+                "a.yml": _run("completed", "success"),
+                "b.yml": _run("completed", "failure"),
+            },
+            1,
+        ),
+        ({"a.yml": _run("completed", "success"), "b.yml": _run("in_progress")}, 4),
+        ({"a.yml": _run("completed", "success")}, 4),  # b.yml has not started yet
+    ],
+)
+def test_cmd_integration_exit_codes(
+    monkeypatch: pytest.MonkeyPatch, runs: dict, expected: int
+) -> None:
+    """0 all passed, 1 a failure, 4 still running or not started."""
+    monkeypatch.setattr(release, "integration_workflows", lambda: ["a.yml", "b.yml"])
+    monkeypatch.setattr(release, "head_sha", lambda: "abc")
+    monkeypatch.setattr(release, "integration_runs", lambda *_a: runs)
+    monkeypatch.setattr(
+        release,
+        "_gh_json",
+        lambda _a: {"jobs": [{"name": "j", "conclusion": "failure"}]},
+    )
+    args = release.build_parser().parse_args(
+        ["integration", "--since", "2026-01-01T00:00:00Z", "--timeout", "0"]
+    )
+
+    assert release.cmd_integration(args) == expected
+
+
+def test_integration_runs_never_selects_a_skipped_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unlabelled push run concludes `skipped`; picking it would be a false pass."""
+    listed = [
+        {
+            "createdAt": "2026-01-01T00:02:00Z",
+            "conclusion": "skipped",
+            "status": "completed",
+        },
+        {
+            "createdAt": "2026-01-01T00:01:00Z",
+            "conclusion": None,
+            "status": "in_progress",
+        },
+        {
+            "createdAt": "2025-12-31T00:00:00Z",
+            "conclusion": "success",
+            "status": "completed",
+        },
+    ]
+    monkeypatch.setattr(release, "_gh_json", lambda _a: listed)
+
+    runs = release.integration_runs(["a.yml"], "abc", "2026-01-01T00:00:00Z")
+
+    assert runs["a.yml"]["status"] == "in_progress"
+
+
+def test_cmd_integration_rides_out_a_github_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A transient GitHub error is a missed poll, not a failed run."""
+
+    def boom(*_a: object) -> dict:
+        raise release.ReleaseError("TLS handshake timeout")
+
+    monkeypatch.setattr(release, "integration_workflows", lambda: ["a.yml"])
+    monkeypatch.setattr(release, "head_sha", lambda: "abc")
+    monkeypatch.setattr(release, "integration_runs", boom)
+    args = release.build_parser().parse_args(
+        ["integration", "--since", "2026-01-01T00:00:00Z", "--timeout", "0"]
+    )
+
+    assert release.cmd_integration(args) == release.EXIT_PENDING
+
+
+def test_trigger_integration_only_removes_a_present_label(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Removing an absent label is not attempted, so its failure cannot be masked."""
+    calls: list[list[str]] = []
+    monkeypatch.setattr(release, "integration_workflows", lambda: ["test_linux.yml"])
+    monkeypatch.setattr(release, "_gh_json", lambda _a: {"labels": []})
+    monkeypatch.setattr(release, "_gh", calls.append)
+
+    release.trigger_integration()
+
+    assert calls == [["pr", "edit", "--add-label", "test:integration"]]
+
+
+def test_finish_keeps_the_run_when_the_trigger_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed label must leave state in place so `push --done` can be retried."""
+
+    def boom() -> dict:
+        raise release.ReleaseError("gh pr edit failed")
+
+    monkeypatch.setattr(release, "trigger_integration", boom)
+    monkeypatch.setattr(release, "_wipe_state_dir", lambda: pytest.fail("wiped"))
+    monkeypatch.setattr(release, "delete_backup", lambda _v: pytest.fail("deleted"))
+
+    with pytest.raises(release.ReleaseError):
+        release._finish({"version": "1.2.3"}, "done", check_threads=False)
+
+
+def test_changelog_problems_counts_a_wrapped_bullet_whole() -> None:
+    """A bullet wrapped onto a continuation line is still one bullet."""
+    body = "### Fixed\n\n- " + " ".join(["w"] * 30) + "\n  " + " ".join(["w"] * 20)
+
+    long_bullets = release.changelog_problems("1.26.2", body, "v1.26.1")["long_bullets"]
+
+    assert len(long_bullets) == 1
+
+
+@pytest.mark.parametrize(("code", "stdout"), [(1, ""), (1, "not json"), (7, "{}")])
+def test_pr_review_error_is_a_release_error(
+    monkeypatch: pytest.MonkeyPatch, code: int, stdout: str
+) -> None:
+    """Exit 1 is also state C, so only a JSON payload proves the call worked."""
+
+    class Result:
+        returncode = code
+
+    Result.stdout = stdout
+    monkeypatch.setattr(release.subprocess, "run", lambda *_a, **_k: Result())
+
+    with pytest.raises(release.ReleaseError):
+        release._pr_review(["state"])
+
+
+def test_a_cancelled_newest_run_is_pending_not_an_older_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Re-adding the label cancels a run; it must not fall back to an older success."""
+    listed = [
+        {
+            "createdAt": "2026-01-01T00:02:00Z",
+            "conclusion": "cancelled",
+            "status": "completed",
+        },
+        {
+            "createdAt": "2026-01-01T00:01:00Z",
+            "conclusion": "success",
+            "status": "completed",
+        },
+    ]
+    monkeypatch.setattr(release, "_gh_json", lambda _a: listed)
+    runs = release.integration_runs(["a.yml"], "abc", "2026-01-01T00:00:00Z")
+    assert runs["a.yml"]["conclusion"] == "cancelled"
+
+    monkeypatch.setattr(release, "integration_workflows", lambda: ["a.yml"])
+    monkeypatch.setattr(release, "head_sha", lambda: "abc")
+    monkeypatch.setattr(release, "integration_runs", lambda *_a: runs)
+    args = release.build_parser().parse_args(
+        ["integration", "--since", "2026-01-01T00:00:00Z", "--timeout", "0"]
+    )
+    assert release.cmd_integration(args) == release.EXIT_PENDING
+
+
+def test_main_reports_a_gh_timeout_as_an_error(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A hung `gh` call ends in the driver's ERROR line, not a traceback."""
+
+    def hang(_args: object) -> int:
+        raise release.subprocess.TimeoutExpired(["gh", "pr", "view"], 60)
+
+    monkeypatch.setattr(release, "cmd_status", hang)
+    monkeypatch.setattr(release, "git", lambda _a, **_k: ".")
+    monkeypatch.setattr(release.os, "chdir", lambda _p: None)
+
+    assert release.main(["status"]) == release.EXIT_ERROR
+    assert "timed out after 60s" in capsys.readouterr().err
