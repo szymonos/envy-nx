@@ -135,3 +135,26 @@ EOF
   [[ "$output" == *"--az"* ]]
   [[ "$output" == *"--all"* ]]
 }
+
+# -- -h/--help is offered after every verb and subverb -----------------------
+
+@test "-<TAB> offers --help and -h on verbs, subverbs, and arg-completer verbs" {
+  for words in "nx gc -" "nx scope show -" "nx remove -" "nx upgrade -"; do
+    # shellcheck disable=SC2086
+    output="$(_run_completion $words $(($(wc -w <<<"$words") - 1)) | tr '\n' ' ')"
+    [[ "$output" == *"--help "* && "$output" == *"-h "* ]] || {
+      echo "$words => $output"
+      return 1
+    }
+  done
+}
+
+@test "empty word after a verb does not offer --help" {
+  output="$(_run_completion nx install "" 2)"
+  [[ "$output" != *"--help"* ]]
+}
+
+@test "setup lists --help once" {
+  output="$(_run_completion nx setup --he 2)"
+  [ "$output" = "--help" ]
+}

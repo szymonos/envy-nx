@@ -69,5 +69,8 @@ function _nx_completions() {
     _pkgs="$(sed -n 's/^[[:space:]]*"\([^"]*\)".*/\1/p' "$HOME/.config/nix-env/packages.nix" 2>/dev/null)"
     [ -n "$_pkgs" ] && while IFS= read -r line; do COMPREPLY+=("$line"); done < <(compgen -W "$_pkgs" -- "$cur")
   fi
+  if [ "$COMP_CWORD" -ge 2 ] && [[ "$cur" == -* ]] && [ "${COMP_WORDS[1]}" != "setup" ]; then
+    while IFS= read -r line; do COMPREPLY+=("$line"); done < <(compgen -W "--help -h" -- "$cur")
+  fi
 }
 complete -F _nx_completions nx
