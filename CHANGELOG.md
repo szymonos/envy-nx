@@ -5,9 +5,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.28.3] - 2026-09-28
+
 ### Changed
 
 - Validated nixpkgs revision advanced to `3181085bfd08` - built with every scope and installed end-to-end on Linux and macOS before landing.
+
+### Fixed
+
+- First-run setup no longer hits the GitHub API rate limit (HTTP 403): every nix call now sends a github.com token from `GITHUB_TOKEN`, `gh auth token`, or `~/.config/gh/hosts.yml`.
+- First-run setup now installs its base packages from the CI-validated nixpkgs revision (or a `nx pin set` revision) instead of the latest, unvalidated `nixpkgs-unstable`.
 
 ## [1.28.2] - 2026-09-26
 
