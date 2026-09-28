@@ -22,6 +22,36 @@ Pick ONE signal per item (all are reasonable for a single-maintainer project):
 
 ---
 
+## CQ-005: Drop the deprecated `nix/setup.sh --register-ssh-key` flag
+
+- **Status:** open
+- **Added:** 2026-09-28
+- **Trigger:** 60-90 days after the release that made SSH key registration the
+  default on interactive runs
+- **Scope:** `nix/lib/phases/bootstrap.sh`, `tests/bats/test_nix_setup.bats`
+
+### Context
+
+Interactive runs now log in to GitHub and register the SSH key; `--unattended`
+runs do neither. `--register-ssh-key` has nothing left to switch on. It is still
+accepted, with a warning, so scripts that pass it keep working.
+
+### What to do
+
+1. Remove the `--register-ssh-key` arm (`# CLEANUP: CQ-005`) from
+   `phase_bootstrap_parse_args` and `--register-ssh-key` from `NX_SETUP_FLAGS`.
+2. Replace the `parse_args: --register-ssh-key is accepted with a deprecation
+   warning` test with one asserting it is rejected as an unknown option.
+
+### Verification
+
+```bash
+git grep -n -- '--register-ssh-key' -- nix .assets tests   # nothing left
+make test-unit
+```
+
+---
+
 ## CQ-004: Drop the deprecated `nix/setup.sh --upgrade` flag
 
 - **Status:** open

@@ -11,8 +11,8 @@ ok() { printf "\e[32m%s\e[0m\n" "$*"; }
 info "configuring git..."
 
 if ! git config --global --get user.name >/dev/null 2>&1; then
-  git_user=""
-  if command -v gh &>/dev/null && gh auth status -h github.com &>/dev/null; then
+  git_user="${NX_GIT_USER:-}"
+  if [[ -z "$git_user" ]] && command -v gh &>/dev/null && gh auth status -h github.com &>/dev/null; then
     git_user="$(gh api user --jq '.name // empty' 2>/dev/null)"
   fi
   while [[ -z "$git_user" ]]; do
@@ -21,8 +21,8 @@ if ! git config --global --get user.name >/dev/null 2>&1; then
   git config --global user.name "$git_user"
 fi
 if ! git config --global --get user.email >/dev/null 2>&1; then
-  git_email=""
-  if command -v gh &>/dev/null && gh auth status -h github.com &>/dev/null; then
+  git_email="${NX_GIT_EMAIL:-}"
+  if [[ -z "$git_email" ]] && command -v gh &>/dev/null && gh auth status -h github.com &>/dev/null; then
     git_email="$(gh api user --jq '.email // empty' 2>/dev/null)"
   fi
   while [[ -z "$git_email" ]]; do

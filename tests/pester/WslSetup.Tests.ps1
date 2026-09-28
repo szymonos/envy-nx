@@ -159,7 +159,7 @@ Describe 'wsl_setup.ps1 orchestration' {
             $nixArgs = $nixCall -join ' '
             $nixArgs | Should -Match '--shell'
             $nixArgs | Should -Match '--python'
-            $nixArgs | Should -Match '--unattended'
+            $nixArgs | Should -Not -Match '--unattended'
             $nixArgs | Should -Match '--skip-repo-update'
         }
     }
@@ -267,6 +267,26 @@ Describe 'wsl_setup.ps1 orchestration' {
             $scripts | Should -Not -Contain '.assets/provision/install_docker.sh'
             # shell should still be installed (via nix)
             $scripts | Should -Contain 'nix/setup.sh'
+        }
+    }
+
+    Context 'Update run reuses the first GitHub login for the remaining distros' {
+        BeforeEach {
+            Mock Get-WslDistro {
+                [PSCustomObject]@{ Default = $true; Name = 'Ubuntu'; State = 'Running'; Version = 2 }
+                [PSCustomObject]@{ Default = $false; Name = 'Debian'; State = 'Running'; Version = 2 }
+            }
+        }
+
+        It 'copies hosts.yml from the first distro into the next one' {
+            $global:WslTestCheckDistroJson = New-CheckDistro
+
+            & "$Script:RepoRoot/wsl/wsl_setup.ps1" -SkipRepoUpdate 6>$null
+
+            $calls = $global:WslTestCalls | ForEach-Object { $_ -join ' ' }
+            $calls | Where-Object { $_ -match '--distribution Ubuntu .*cat \$HOME/\.config/gh/hosts\.yml' } | Should -Not -BeNullOrEmpty
+            $calls | Where-Object { $_ -match '(?s)--distribution Debian --exec bash -c .*GHEOF' } | Should -Not -BeNullOrEmpty
+            $calls | Where-Object { $_ -match '(?s)--distribution Ubuntu --exec bash -c .*GHEOF' } | Should -BeNullOrEmpty
         }
     }
 

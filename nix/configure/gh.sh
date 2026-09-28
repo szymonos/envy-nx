@@ -8,15 +8,6 @@ nix/configure/gh.sh true
 set -eo pipefail
 
 unattended="${1:-false}"
-# SSH-key registration with GitHub is opt-in: it needs the admin:public_key token
-# scope, and a narrow pre-existing token otherwise triggers an interactive
-# device-code refresh mid-install. Enable with `--register-ssh-key` or
-# NX_REGISTER_SSH_KEY=1. SSO orgs must also authorize the key for SSO separately.
-register_ssh_key="${NX_REGISTER_SSH_KEY:-false}"
-case "$register_ssh_key" in
-1 | true | yes) register_ssh_key="true" ;;
-*) register_ssh_key="false" ;;
-esac
 
 info() { printf "\e[96m%s\e[0m\n" "$*"; }
 ok() { printf "\e[32m%s\e[0m\n" "$*"; }
@@ -39,11 +30,8 @@ elif [[ "$unattended" == "true" ]]; then
   # still generate the local SSH key + known_hosts below (other flows depend on it)
   info "skipping GitHub authentication setup (unattended, not pre-authenticated)."
   authed="false"
-elif [[ "$register_ssh_key" == "true" ]]; then
-  # request admin:public_key upfront only when we will register an SSH key
-  gh auth login --scopes admin:public_key
 else
-  gh auth login
+  gh auth login --scopes admin:public_key
 fi
 
 # register gh as git credential helper (idempotent; needs auth)
@@ -64,12 +52,12 @@ fi
 pub_key_fp=$(awk '{print $2}' "$SSH_KEY.pub" 2>/dev/null || true)
 if [[ "$authed" != "true" ]]; then
   info "SSH key generated; skipped GitHub registration (not authenticated)."
-elif [[ "$register_ssh_key" != "true" ]]; then
-  # read-only check; a token without read:public_key lands on the hint
+elif [[ "$unattended" == "true" ]]; then
+  # pre-authenticated unattended run: report only, never register
   if [[ -n "$pub_key_fp" ]] && gh ssh-key list 2>/dev/null | grep -qF "$pub_key_fp"; then
     ok "SSH key already registered on GitHub"
   else
-    info "SSH key not registered with GitHub (opt in with --register-ssh-key)."
+    info "SSH key not registered with GitHub (unattended)."
     info "  register manually: gh ssh-key add $SSH_KEY.pub"
     info "  SSO orgs must also authorize the key for SSO."
   fi
@@ -85,14 +73,20 @@ else
     ok "SSH key already registered on GitHub (matched by fingerprint)"
   elif ! gh ssh-key list 2>/dev/null | grep -qF "$pub_key_fp"; then
     info "adding SSH key to GitHub..."
-    if ! gh ssh-key add "$SSH_KEY.pub" --title "$host_label $(date +%Y-%m-%d)"; then
+    key_added="false"
+    if gh ssh-key add "$SSH_KEY.pub" --title "$host_label $(date +%Y-%m-%d)"; then
+      key_added="true"
+    else
       # existing token may lack admin:public_key scope. The refresh is an
-      # interactive device-code flow, so only attempt it interactively - never
-      # under --unattended or without a tty (would hang CI / automated runs).
-      if [[ "$unattended" != "true" && -t 0 ]]; then
+      # interactive device-code flow, so it needs a tty.
+      if [[ -t 0 ]]; then
         warn "SSH key add failed; upgrading token scope..."
         if gh auth refresh -h github.com -s admin:public_key; then
-          gh ssh-key add "$SSH_KEY.pub" --title "$host_label $(date +%Y-%m-%d)" || warn "could not add SSH key after refresh"
+          if gh ssh-key add "$SSH_KEY.pub" --title "$host_label $(date +%Y-%m-%d)"; then
+            key_added="true"
+          else
+            warn "could not add SSH key after refresh"
+          fi
         else
           warn "could not refresh admin:public_key scope"
         fi
@@ -100,6 +94,13 @@ else
         warn "SSH key not registered: token lacks admin:public_key scope."
         warn "  fix: gh auth refresh -h github.com -s admin:public_key && gh ssh-key add $SSH_KEY.pub"
       fi
+    fi
+    # SSO orgs reject a new key until it is authorized, which only the web UI can do
+    if [[ "$key_added" == "true" && -t 0 ]]; then
+      ok "SSH key added to GitHub: $host_label"
+      info "If your organization uses SSO, authorize the key at https://github.com/settings/keys"
+      info "  (Configure SSO -> Authorize next to the new key)."
+      read -rp "press Enter to continue " _ || true
     fi
   else
     ok "SSH key already registered on GitHub"

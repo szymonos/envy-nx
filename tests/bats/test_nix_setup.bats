@@ -628,6 +628,12 @@ _scope_pkgs() {
   [[ "$output" == *"default now"* ]]
 }
 
+@test "parse_args: --register-ssh-key is accepted with a deprecation warning" {
+  run phase_bootstrap_parse_args --register-ssh-key
+  [[ $status -eq 0 ]]
+  [[ "$output" == *"default now"* ]]
+}
+
 @test "parse_args: --latest sets upgrade_latest" {
   phase_bootstrap_parse_args --latest
   [[ "$upgrade_latest" == "true" ]]
