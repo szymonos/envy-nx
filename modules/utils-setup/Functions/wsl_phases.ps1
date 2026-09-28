@@ -218,7 +218,9 @@ function Sync-WslGitHubConfig {
     }
 
     Show-LogContext 'pre-populating GitHub CLI config'
+    # never replace a login the distro already has
     $cmnd = [string]::Join("`n",
+        'grep -qs github.com $HOME/.config/gh/hosts.yml && exit 0',
         'mkdir -p $HOME/.config/gh',
         "cat > `$HOME/.config/gh/hosts.yml << 'GHEOF'",
         ($GhConfig -join "`n"),
@@ -457,8 +459,10 @@ function Install-WslScopes {
     # --skip-repo-update: wsl_setup.ps1 already refreshed the repo via
     # Update-GitRepository at script start; the nix path's auto-refresh
     # would be a wasted ls-remote round-trip on the WSL side
+    # no --unattended: gh.sh logs in to GitHub and registers the SSH key before
+    # the -Repos clone that needs them
     $nixArgs = [System.Collections.Generic.List[string]]::new(
-        [string[]]@('--unattended', '--skip-repo-update', '--quiet-summary')
+        [string[]]@('--skip-repo-update', '--quiet-summary')
     )
     if (-not $SkipModulesUpdate) {
         $nixArgs.Add('--update-modules')
@@ -483,6 +487,13 @@ function Install-WslScopes {
     if ($SshKeyFp -and $env:NX_SSH_KEY_FP -ne $SshKeyFp) {
         $env:WSLENV = "${env:WSLENV}:NX_SSH_KEY_FP/u"
         $env:NX_SSH_KEY_FP = $SshKeyFp
+    }
+    # hand the Windows-side identity to git.sh, which otherwise prompts inside the distro
+    if (-not ($Check.git_user -and $Check.git_email) -and -not ($env:NX_GIT_USER -and $env:NX_GIT_EMAIL)) {
+        $identity = Resolve-WslGitIdentity
+        $env:WSLENV = "${env:WSLENV}:NX_GIT_USER/u:NX_GIT_EMAIL/u"
+        $env:NX_GIT_USER = $identity.User
+        $env:NX_GIT_EMAIL = $identity.Email
     }
     Invoke-WslExe --distribution $Distro --exec nix/setup.sh @nixArgs
     if ($LASTEXITCODE -ne 0) {
@@ -592,13 +603,67 @@ function Set-WslGtkTheme {
 
 <#
 .SYNOPSIS
+Resolve the git user.name / user.email to use inside WSL distros.
+.DESCRIPTION
+Reads git global on the Windows host, then falls back to Get-LocalUser,
+ADSI/LDAP and HKCU IdentityCRL, and prompts via Read-Host when no source
+yields a value. Writes resolved values to git global on the Windows host so
+subsequent calls and distros pick them up without prompting.
+#>
+function Resolve-WslGitIdentity {
+    [CmdletBinding()]
+    param ()
+
+    $user = git config --global --get user.name
+    if (-not $user) {
+        $user = try {
+            Get-LocalUser -Name $env:USERNAME | Select-Object -ExpandProperty FullName
+        } catch {
+            try {
+                [string[]]$userArr = ([ADSI]"LDAP://$(WHOAMI /FQDN 2>$null)").displayName.Split(',').Trim()
+                if ($userArr.Count -gt 1) { [array]::Reverse($userArr) }
+                "$userArr"
+            } catch {
+                ''
+            }
+        }
+        while (-not $user) {
+            $user = Read-Host -Prompt 'provide git user name'
+        }
+        git config --global user.name "$user"
+    }
+
+    $email = git config --global --get user.email
+    if (-not $email) {
+        $email = try {
+            (Get-ChildItem -Path 'HKCU:\Software\Microsoft\IdentityCRL\UserExtendedProperties').PSChildName
+        } catch {
+            try {
+                ([ADSI]"LDAP://$(WHOAMI /FQDN 2>$null)").mail
+            } catch {
+                ''
+            }
+        }
+        while ($email -notmatch '.+@.+') {
+            $email = Read-Host -Prompt 'provide git user email'
+        }
+        git config --global user.email "$email"
+    }
+
+    return [pscustomobject]@{
+        User  = $user
+        Email = $email
+    }
+}
+
+<#
+.SYNOPSIS
 Configure git user.name / user.email inside a WSL distro.
 .DESCRIPTION
-Resolves missing values from the Windows host (Get-LocalUser, ADSI/LDAP,
-HKCU IdentityCRL) and prompts the user via Read-Host when no source
-yields a value. Writes the resolved values to git global on the Windows
-host so subsequent distros pick them up without prompting. No-op when
-both Check.git_user and Check.git_email are already true.
+Uses Resolve-WslGitIdentity for missing values and leaves any value already
+set inside the distro untouched (git.sh may have set it during nix/setup.sh,
+after the check ran). No-op when both Check.git_user and Check.git_email are
+already true.
 .PARAMETER Distro
 Name of the WSL distro.
 .PARAMETER Check
@@ -618,54 +683,17 @@ function Set-WslGitConfig {
         return
     }
 
+    $identity = Resolve-WslGitIdentity
     $builder = [System.Text.StringBuilder]::new()
     $builder.AppendLine('. /etc/profile.d/nix.sh 2>/dev/null') | Out-Null
-
-    if (-not $Check.git_user) {
-        $user = git config --global --get user.name
-        if (-not $user) {
-            $user = try {
-                Get-LocalUser -Name $env:USERNAME | Select-Object -ExpandProperty FullName
-            } catch {
-                try {
-                    [string[]]$userArr = ([ADSI]"LDAP://$(WHOAMI /FQDN 2>$null)").displayName.Split(',').Trim()
-                    if ($userArr.Count -gt 1) { [array]::Reverse($userArr) }
-                    "$userArr"
-                } catch {
-                    ''
-                }
-            }
-            while (-not $user) {
-                $user = Read-Host -Prompt 'provide git user name'
-            }
-            git config --global user.name "$user"
-        }
-        # escape single quotes for the bash single-quoted context: end the
-        # quoted string, emit an escaped quote, restart the quoted string.
-        # Handles names like O'Connor without breaking the bash command.
-        $userEsc = $user.Replace("'", "'\''")
-        $builder.AppendLine("git config --global user.name '$userEsc'") | Out-Null
-    }
-
-    if (-not $Check.git_email) {
-        $email = git config --global --get user.email
-        if (-not $email) {
-            $email = try {
-                (Get-ChildItem -Path 'HKCU:\Software\Microsoft\IdentityCRL\UserExtendedProperties').PSChildName
-            } catch {
-                try {
-                    ([ADSI]"LDAP://$(WHOAMI /FQDN 2>$null)").mail
-                } catch {
-                    ''
-                }
-            }
-            while ($email -notmatch '.+@.+') {
-                $email = Read-Host -Prompt 'provide git user email'
-            }
-            git config --global user.email "$email"
-        }
-        $emailEsc = $email.Replace("'", "'\''")
-        $builder.AppendLine("git config --global user.email '$emailEsc'") | Out-Null
+    # escape single quotes for the bash single-quoted context: end the
+    # quoted string, emit an escaped quote, restart the quoted string.
+    # Handles names like O'Connor without breaking the bash command.
+    foreach ($item in @(@('user.name', $identity.User), @('user.email', $identity.Email))) {
+        $valueEsc = $item[1].Replace("'", "'\''")
+        $builder.AppendLine(
+            ("git config --global --get {0} >/dev/null || git config --global {0} '{1}'" -f $item[0], $valueEsc)
+        ) | Out-Null
     }
 
     $extraSettings = [string[]]@(

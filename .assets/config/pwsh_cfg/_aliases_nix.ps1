@@ -584,7 +584,7 @@ Register-ArgumentCompleter -CommandName nx -Native -ScriptBlock {
                 '--latest'
             }
             elseif ($tokens[1].Value -in 'setup') {
-                '--az', '--bun', '--conda', '--docker', '--gcloud', '--k8s-base', '--k8s-dev', '--k8s-ext', '--nodejs', '--playwright', '--pwsh', '--python', '--rice', '--shell', '--terraform', '--zsh', '--all', '--latest', '--allow-unfree', '--unattended', '--register-ssh-key', '--skip-repo-update', '--update-modules', '--omp-theme', '--starship-theme', '--remove', '--help'
+                '--az', '--bun', '--conda', '--docker', '--gcloud', '--k8s-base', '--k8s-dev', '--k8s-ext', '--nodejs', '--playwright', '--pwsh', '--python', '--rice', '--shell', '--terraform', '--zsh', '--all', '--latest', '--allow-unfree', '--unattended', '--skip-repo-update', '--update-modules', '--omp-theme', '--starship-theme', '--remove', '--help'
             }
             elseif ($tokens[1].Value -in 'doctor') {
                 '--strict', '--json'
@@ -633,7 +633,7 @@ Register-ArgumentCompleter -CommandName nx -Native -ScriptBlock {
                                         $scopeNames
                     }
                     default {
-                        '--az', '--bun', '--conda', '--docker', '--gcloud', '--k8s-base', '--k8s-dev', '--k8s-ext', '--nodejs', '--playwright', '--pwsh', '--python', '--rice', '--shell', '--terraform', '--zsh', '--all', '--latest', '--allow-unfree', '--unattended', '--register-ssh-key', '--skip-repo-update', '--update-modules', '--omp-theme', '--starship-theme', '--remove', '--help'
+                        '--az', '--bun', '--conda', '--docker', '--gcloud', '--k8s-base', '--k8s-dev', '--k8s-ext', '--nodejs', '--playwright', '--pwsh', '--python', '--rice', '--shell', '--terraform', '--zsh', '--all', '--latest', '--allow-unfree', '--unattended', '--skip-repo-update', '--update-modules', '--omp-theme', '--starship-theme', '--remove', '--help'
                     }
                 }
             }

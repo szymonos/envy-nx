@@ -375,6 +375,7 @@ Describe 'Sync-WslGitHubConfig' {
         $argStr | Should -Match '--distribution Ubuntu'
         $argStr | Should -Match 'GHEOF'
         $argStr | Should -Match 'github.com:'
+        $argStr | Should -Match 'grep -qs github.com'    # an existing login is kept
     }
 }
 
@@ -548,7 +549,43 @@ Describe 'Install-WslScopes' {
         }
         Mock -CommandName 'Show-LogContext' -ModuleName 'utils-setup' -MockWith { }
         Mock -CommandName 'Test-Path' -ModuleName 'utils-setup' -MockWith { return $false }
+        Mock -CommandName 'Resolve-WslGitIdentity' -ModuleName 'utils-setup' -MockWith {
+            [pscustomobject]@{ User = 'Jane Doe'; Email = 'jane@example.com' }
+        }
+        $script:savedEnv = @{ WSLENV = $env:WSLENV; NX_GIT_USER = $env:NX_GIT_USER; NX_GIT_EMAIL = $env:NX_GIT_EMAIL }
+        $env:NX_GIT_USER = $null
+        $env:NX_GIT_EMAIL = $null
         function global:wsl/wsl_systemd.ps1 { }
+    }
+
+    AfterEach {
+        foreach ($key in $script:savedEnv.Keys) {
+            Set-Item -Path "env:$key" -Value $script:savedEnv[$key]
+        }
+    }
+
+    It 'hands the Windows git identity to nix/setup.sh via WSLENV when the distro has none' {
+        Install-WslScopes `
+            -Distro 'Ubuntu' `
+            -Scopes @('shell') `
+            -Check (New-CheckDistroHashtable -Flags @{ git_user = $false; git_email = $false }) `
+            -WslVersion 2 `
+            -PwshEnvSet $true `
+            -DistroRecord (New-DistroRecord)
+        $env:NX_GIT_USER | Should -Be 'Jane Doe'
+        $env:NX_GIT_EMAIL | Should -Be 'jane@example.com'
+        $env:WSLENV | Should -Match 'NX_GIT_USER/u'
+    }
+
+    It 'skips the git identity handoff when the distro already has one' {
+        Install-WslScopes `
+            -Distro 'Ubuntu' `
+            -Scopes @('shell') `
+            -Check (New-CheckDistroHashtable -Flags @{ git_user = $true; git_email = $true }) `
+            -WslVersion 2 `
+            -PwshEnvSet $true `
+            -DistroRecord (New-DistroRecord)
+        Should -Invoke -CommandName 'Resolve-WslGitIdentity' -ModuleName 'utils-setup' -Times 0
     }
 
     It 'happy path returns Success=$true with same SshKeyFp/PwshEnvSet when no keys present' {
@@ -590,7 +627,7 @@ Describe 'Install-WslScopes' {
         $nixArgStr | Should -Not -Match '--docker'    # docker handled by system-wide install
         $nixArgStr | Should -Match '--omp-theme'
         $nixArgStr | Should -Match 'nerd'
-        $nixArgStr | Should -Match '--unattended'
+        $nixArgStr | Should -Not -Match '--unattended'    # gh.sh must be free to log in and register the SSH key
         $nixArgStr | Should -Match '--skip-repo-update'
     }
 

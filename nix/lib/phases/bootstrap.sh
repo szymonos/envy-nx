@@ -472,8 +472,7 @@ Options:
   --allow-unfree            Allow unfree (proprietary-licensed) nix packages
   --omp-theme <name>        Install oh-my-posh with theme (base, nerd, powerline, ...)
   --starship-theme <name>   Install starship with theme (base, nerd)
-  --unattended              Skip all interactive steps (gh auth, SSH key, git config)
-  --register-ssh-key        Register the generated SSH key with GitHub (opt-in)
+  --unattended              Skip all interactive steps (gh auth, SSH key registration, git config)
   --skip-repo-update        Skip the git fetch + fast-forward of the source repo
   --update-modules          Update installed PowerShell modules
   -h, --help                Show this help
@@ -597,8 +596,8 @@ phase_bootstrap_parse_args() {
       unattended="true"
       ;;
     --register-ssh-key)
-      # gh.sh runs as a child process and reads this env var
-      export NX_REGISTER_SSH_KEY=1
+      # CLEANUP: CQ-005
+      warn "--register-ssh-key is the default now and can be dropped"
       ;;
     --skip-repo-update | --sync-only | --skip-configure)
       # consumed earlier (phase_bootstrap_refresh_repo, nix/setup.sh); accept

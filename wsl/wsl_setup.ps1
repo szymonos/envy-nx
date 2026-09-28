@@ -331,6 +331,10 @@ process {
             $failDistros.Add($Distro) | Out-Null
             continue
         }
+        # reuse the GitHub login from this distro for the remaining ones in the run
+        if (-not ($gh_cfg -match 'github\.com')) {
+            $gh_cfg = wsl.exe --distribution $Distro -- cat '$HOME/.config/gh/hosts.yml' 2>$null
+        }
         #endregion
 
         $script:distroRecords[$Distro].phase = 'post-install'

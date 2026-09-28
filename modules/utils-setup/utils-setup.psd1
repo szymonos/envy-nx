@@ -91,6 +91,7 @@
         'Invoke-WslBaseSetup'
         'Invoke-WslDistroCheck'
         'Resolve-WslDistroScopes'
+        'Resolve-WslGitIdentity'
         'Set-WslGitConfig'
         'Set-WslGtkTheme'
         'Sync-WslGitHubConfig'
