@@ -5,6 +5,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.29.0] - 2026-09-28
+
+Setup now handles GitHub end to end: an interactive run logs in to GitHub and registers the SSH key, including on WSL, where a fresh install previously finished with no GitHub login.
+
+### Changed
+
+- Interactive `nix/setup.sh` runs now register the SSH key with GitHub after logging in, then pause so you can authorize the key for your organization's SSO.
+- `nix/setup.sh --unattended` now never logs in to GitHub or registers the SSH key; it still generates the key and adds github.com to `known_hosts`.
+- WSL setup (`wsl/wsl_setup.ps1`, `wsl/wsl_install.ps1`) no longer runs `nix/setup.sh` unattended, so a fresh install logs in to GitHub and registers the SSH key before `-Repos` clones.
+- Other WSL distros, set up later or in the same run, reuse the first distro's GitHub login and SSH key instead of asking again; an existing login in a distro is never overwritten.
+- WSL setup passes the git name and email resolved on Windows to `nix/setup.sh`, so the in-distro git step does not prompt for them again.
+
+### Deprecated
+
+- `nix/setup.sh --register-ssh-key` does nothing now that registration is the default on interactive runs; it prints a warning and will be removed in a later release.
+
 ## [1.28.3] - 2026-09-28
 
 ### Changed
