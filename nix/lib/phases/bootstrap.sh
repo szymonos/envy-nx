@@ -413,6 +413,20 @@ phase_bootstrap_install_jq() {
   scopes = [];
 }
 BOOTSTRAP
+    # Without a lock, `nix profile add` resolves nixpkgs-unstable HEAD, which
+    # no CI has built. --latest is not parsed yet; phase_nix_profile_update_flake
+    # moves the lock to HEAD afterwards when it was passed.
+    if [[ ! -f "$ENV_DIR/flake.lock" ]]; then
+      # shellcheck source=../../../.assets/lib/nx_rev.sh
+      source "$SCRIPT_ROOT/.assets/lib/nx_rev.sh"
+      local _rev
+      _rev="$(_nx_rev_resolve "$ENV_DIR" false)"
+      case "$_rev" in *" "*)
+        _io_nix flake lock --override-input nixpkgs "github:nixos/nixpkgs/${_rev#* }" "$ENV_DIR" ||
+          warn "flake lock failed - resolving nixpkgs-unstable HEAD"
+        ;;
+      esac
+    fi
     if ! _io_nix profile add "path:$ENV_DIR" 2>&1; then
       warn "nix profile add failed (may already exist) - continuing with upgrade"
     fi

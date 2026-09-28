@@ -34,7 +34,32 @@ err() { _log_msg "ERROR" "91" "1" "$@"; }
 # -- Thin shims for external commands ------------------------------------------
 # Phases call these instead of the raw commands. Tests redefine them to assert
 # the right commands are issued without executing them.
-_io_nix() { nix "$@"; }
+#
+# nix gets a github.com token so flake fetches avoid the unauthenticated API
+# rate limit (60 req/h). Sources: GITHUB_TOKEN (CI/headless), `gh auth token`,
+# then the plaintext token in gh's hosts.yml - on a first run the config (e.g.
+# synced by wsl_setup.ps1) exists before nix has installed gh itself. Both gh
+# sources are scoped to github.com so a GHE token is never sent to github.com.
+# The token goes in NIX_CONFIG, not --extra-access-tokens: argv is
+# world-readable (ps, /proc/<pid>/cmdline). `extra-access-tokens` appends, so
+# an inherited NIX_CONFIG is kept; the prefix assignment scopes it to one call.
+_io_nix() {
+  if [[ -z "${_io_gh_token:-}" ]]; then
+    _io_gh_token="${GITHUB_TOKEN:-}"
+    if [[ -z "$_io_gh_token" ]] && command -v gh >/dev/null 2>&1; then
+      _io_gh_token="$(gh auth token -h github.com 2>/dev/null)" || _io_gh_token=""
+    fi
+    if [[ -z "$_io_gh_token" && -f "$HOME/.config/gh/hosts.yml" ]]; then
+      _io_gh_token="$(sed -n '/^github\.com:/,/^[^ ]/s/^ *oauth_token: *//p' "$HOME/.config/gh/hosts.yml" | head -n 1)"
+    fi
+  fi
+  if [[ -n "$_io_gh_token" ]]; then
+    local _nl=$'\n'
+    NIX_CONFIG="${NIX_CONFIG:+$NIX_CONFIG$_nl}extra-access-tokens = github.com=$_io_gh_token" nix "$@"
+  else
+    nix "$@"
+  fi
+}
 _io_nix_eval() { nix eval --impure --raw --expr "$1"; }
 # No --proto/--tlsv1.2: $1 is $NIX_ENV_TLS_PROBE_URL, which the user may point at
 # an http:// endpoint (nx_doctor.sh strips an http:// prefix from it), and a
