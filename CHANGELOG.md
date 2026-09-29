@@ -5,6 +5,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.29.1] - 2026-09-29
+
+### Fixed
+
+- macOS: Docker containers under colima can see host paths again; the colima cert block now mounts your home directory alongside the certs dir. Run `colima restart` after the next setup run.
+- macOS: setup now updates the colima cert block in profiles already started, instead of skipping them because `colima start` rewrote `colima.yaml` without the block's marker comments.
+- Flag-adding aliases (`cp -iv`, `mv -iv`, `grep -i`, `rg --ignore-case`, and similar) are now defined in bash and zsh only for a human at a terminal, so agent shells no longer hang on prompts or search case-insensitively.
+
 ## [1.29.0] - 2026-09-28
 
 Setup now handles GitHub end to end: an interactive run logs in to GitHub and registers the SSH key, including on WSL, where a fresh install previously finished with no GitHub login.
