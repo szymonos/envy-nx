@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.29.2] - 2026-09-29
+
+### Fixed
+
+- Interactive setup no longer pauses to have you authorize the SSH key for SSO when the key is already on your GitHub account.
+
 ## [1.29.1] - 2026-09-29
 
 ### Fixed
