@@ -20,6 +20,7 @@ catchable
 certifi
 chowned
 chsh
+claudecode
 cloudsdk
 cmatrix
 codegen
@@ -191,6 +192,7 @@ triaging
 ulimits
 unblocker
 unbuildable
+ungated
 unioned
 unsets
 unvalidated
