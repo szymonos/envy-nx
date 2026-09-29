@@ -1,4 +1,14 @@
 #region common aliases
+# Aliases that change the flags of an existing command are for a human at a
+# terminal only. Claude Code replays a snapshot of the interactive shell's
+# aliases into non-TTY tool calls, where `cp -i` blocks on a prompt nobody can
+# answer and `grep -i` silently makes every search case-insensitive.
+# New names (l, ll, md, kc) stay ungated - they never shadow a command.
+_nx_human=false
+if [ -t 0 ] && [ -t 1 ] && [ -z "${CLAUDECODE:-}${AI_AGENT:-}" ]; then
+  _nx_human=true
+fi
+
 # navigation
 alias ..='cd ../'
 alias ...='cd ../../'
@@ -19,20 +29,24 @@ alias _='sudo'
 alias please='sudo'
 
 # file operations
-alias cp='cp -iv'
-alias mv='mv -iv'
-alias mkdir='mkdir -pv'
+if $_nx_human; then
+  alias cp='cp -iv'
+  alias mv='mv -iv'
+  alias mkdir='mkdir -pv'
+fi
 alias md='mkdir -p'
 alias rd='rmdir'
 
 # tools
 alias c='clear'
-alias grep='grep -i --color=auto'
-alias less='less -FRX'
-alias nano='nano -W'
-alias tree='tree -C'
 alias vi='vim'
-alias wget='wget -c'
+if $_nx_human; then
+  alias grep='grep -i --color=auto'
+  alias less='less -FRX'
+  alias nano='nano -W'
+  alias tree='tree -C'
+  alias wget='wget -c'
+fi
 
 # info / shell
 alias path='printf "${PATH//:/\\n}\n"'
@@ -46,11 +60,11 @@ if [ -f /etc/os-release ]; then
   alias systemctl='systemctl --no-pager'
   if grep -qEw 'ID="?alpine' /etc/os-release 2>/dev/null; then
     alias bsh='/usr/bin/env -i ash --noprofile --norc'
-    alias ls='ls -h --color=auto --group-directories-first'
+    $_nx_human && alias ls='ls -h --color=auto --group-directories-first' || true
   else
     alias bsh='/usr/bin/env -i bash --noprofile --norc'
     alias ip='ip --color=auto'
-    alias ls='ls -h --color=auto --group-directories-first --time-style=long-iso'
+    $_nx_human && alias ls='ls -h --color=auto --group-directories-first --time-style=long-iso' || true
   fi
 else
   alias bsh='/usr/bin/env -i bash --noprofile --norc'
@@ -61,7 +75,7 @@ fi
 _nb="$HOME/.nix-profile/bin"
 
 if [ -x "$_nb/eza" ]; then
-  alias eza='eza -g --color=auto --time-style=long-iso --group-directories-first --color-scale=all --git-repos'
+  $_nx_human && alias eza='eza -g --color=auto --time-style=long-iso --group-directories-first --color-scale=all --git-repos' || true
   alias l='eza -1'
   alias lsa='eza -a'
   alias ll='eza -lah'
@@ -78,14 +92,14 @@ else
 fi
 
 [ -x "$_nb/bat" ] && alias batp='bat -pP' || true
-[ -x "$_nb/rg" ] && alias rg='rg --ignore-case' || true
+$_nx_human && [ -x "$_nb/rg" ] && alias rg='rg --ignore-case' || true
 [ -x "$_nb/fastfetch" ] && alias ff='fastfetch' || true
 [ -x "$_nb/pwsh" ] && alias pwsh='pwsh -NoProfileLoadTime' && alias p='pwsh -NoProfileLoadTime' || true
 [ -x "$_nb/kubectx" ] && alias kc='kubectx' || true
 [ -x "$_nb/kubens" ] && alias kn='kubens' || true
-[ -x "$_nb/kubecolor" ] && alias kubectl='kubecolor' || true
+$_nx_human && [ -x "$_nb/kubecolor" ] && alias kubectl='kubecolor' || true
 
-unset _nb
+unset _nb _nx_human
 #endregion
 
 #region nix package management wrapper (apt/brew-like UX)
