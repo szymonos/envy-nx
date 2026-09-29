@@ -37,9 +37,13 @@ COLIMA_VM_CERT="/usr/local/share/ca-certificates/envy-nx.crt"
 # Compose the YAML body that gets sandwiched between the sentinel comments.
 # Top-level keys (mounts, provision) are at column 0 - the block is inserted
 # at the bottom of colima.yaml, so this is valid YAML as-is.
+# The home mount must stay listed: colima mounts ~ only when `mounts` is empty,
+# and any non-empty list replaces that default, hiding host paths from docker.
 _colima_block_content() {
   cat <<YAML
 mounts:
+  - location: "~"
+    writable: true
   - location: "${COLIMA_HOST_CERT_DIR}"
     mountPoint: ${COLIMA_VM_MOUNT}
     writable: false
@@ -55,46 +59,68 @@ provision:
 YAML
 }
 
-# Lima/colima uses Go's yaml.v3 which rejects duplicate top-level keys.
-# colima writes empty `mounts: []` and `provision: null` as scaffolding -
-# our sentinel block defines both keys, so we must strip the defaults before
-# the upsert. Only the literal scaffolding lines are touched; non-default user
-# values are left alone (and the caller skips the upsert with a warning).
-#
-# Returns 0 if safe to proceed (scaffolding stripped or already absent),
-# 1 if the user has customized mounts/provision outside our sentinel block.
-_colima_strip_default_scaffolding() {
-  local yaml="$1"
-  local tmp begin_tag end_tag
-  begin_tag="$(printf '# >>> %s >>>' "$COLIMA_BLOCK_MARKER")"
-  end_tag="$(printf '# <<< %s <<<' "$COLIMA_BLOCK_MARKER")"
-  # Quick scan: are there top-level mounts:/provision: lines outside our block
-  # that aren't the default empty forms? Track block boundaries with awk.
-  local non_default
-  non_default="$(awk -v begin="$begin_tag" -v end="$end_tag" '
-    BEGIN { in_block = 0 }
+# Print the top-level `key:` section found outside the sentinel block: the key
+# line plus its indented lines, blank lines dropped and quotes removed so that
+# colima's re-serialized quoting compares equal to ours.
+_colima_section() {
+  local yaml="$1" key="$2"
+  awk -v key="$key:" -v begin="# >>> $COLIMA_BLOCK_MARKER >>>" -v end="# <<< $COLIMA_BLOCK_MARKER <<<" '
     $0 == begin { in_block = 1; next }
     $0 == end { in_block = 0; next }
     in_block { next }
-    /^mounts:[[:space:]]*\[\][[:space:]]*$/ { next }
-    /^provision:[[:space:]]*null[[:space:]]*$/ { next }
-    /^mounts:[[:space:]]*$/ { print "mounts"; next }
-    /^mounts:/ { print "mounts"; next }
-    /^provision:[[:space:]]*$/ { print "provision"; next }
-    /^provision:/ { print "provision"; next }
-  ' "$yaml" | sort -u)"
-  if [ -n "$non_default" ]; then
-    return 1
-  fi
-  # Safe to strip the scaffolding lines. Write to tmp + atomic rename.
+    in_sec && /^[^[:space:]]/ { in_sec = 0 }
+    index($0, key) == 1 { in_sec = 1 }
+    in_sec && NF { gsub(/"/, ""); sub(/[[:space:]]+$/, ""); print }
+  ' "$yaml"
+}
+
+# Lima/colima uses Go's yaml.v3 which rejects duplicate top-level keys, and our
+# sentinel block defines both `mounts` and `provision`, so any copy of those
+# keys outside the block must go before the upsert. Safe to remove:
+# - colima's empty scaffolding (`mounts: []`, `provision: null`);
+# - our own block with its markers lost: `colima start` re-serializes
+#   colima.yaml, dropping comments and moving the keys to their usual spots.
+#   mounts must match the block exactly (or the certs-only form it had before
+#   the home mount was added); provision must be a single entry that installs
+#   our cert, so a user's extra entry beside it is never deleted.
+# Anything else is user customization and the caller skips the file.
+#
+# Returns 0 if safe to proceed (sections stripped or already absent),
+# 1 if the user has customized mounts/provision outside our sentinel block.
+_colima_strip_default_scaffolding() {
+  local yaml="$1"
+  local tmp mounts provision ours_mounts legacy_mounts
+  mounts="$(_colima_section "$yaml" mounts)"
+  provision="$(_colima_section "$yaml" provision)"
   tmp="$(mktemp)"
-  awk -v begin="$begin_tag" -v end="$end_tag" '
-    BEGIN { in_block = 0 }
+  _colima_block_content >"$tmp"
+  ours_mounts="$(_colima_section "$tmp" mounts)"
+  legacy_mounts="$(printf 'mounts:\n  - location: %s\n    mountPoint: %s\n    writable: false' \
+    "$COLIMA_HOST_CERT_DIR" "$COLIMA_VM_MOUNT")"
+  case "$mounts" in
+  '' | 'mounts: []' | "$ours_mounts" | "$legacy_mounts") ;;
+  *)
+    rm -f "$tmp"
+    return 1
+    ;;
+  esac
+  case "$provision" in
+  '' | 'provision: null') ;;
+  *)
+    if [ "$(printf '%s\n' "$provision" | grep -c '^  - ')" != 1 ] ||
+      ! printf '%s\n' "$provision" | grep -qF "cp $COLIMA_VM_MOUNT/ca-custom.crt"; then
+      rm -f "$tmp"
+      return 1
+    fi
+    ;;
+  esac
+  awk -v begin="# >>> $COLIMA_BLOCK_MARKER >>>" -v end="# <<< $COLIMA_BLOCK_MARKER <<<" '
     $0 == begin { in_block = 1; print; next }
     $0 == end { in_block = 0; print; next }
     in_block { print; next }
-    /^mounts:[[:space:]]*\[\][[:space:]]*$/ { next }
-    /^provision:[[:space:]]*null[[:space:]]*$/ { next }
+    in_sec && /^[^[:space:]]/ { in_sec = 0 }
+    /^(mounts|provision):/ { in_sec = 1 }
+    in_sec && NF { next }
     { print }
   ' "$yaml" >"$tmp"
   command mv -f "$tmp" "$yaml"
