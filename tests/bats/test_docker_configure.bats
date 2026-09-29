@@ -70,6 +70,9 @@ EOF
   [ -f "$HOME/.colima/_templates/default.yaml" ]
   grep -qF '>>> envy-nx:certs >>>' "$HOME/.colima/_templates/default.yaml"
   grep -qF 'mountPoint: /mnt/envy-certs' "$HOME/.colima/_templates/default.yaml"
+  # A non-empty mounts list replaces colima's default home mount, so the block
+  # must list ~ itself or containers can't see host paths.
+  grep -qF 'location: "~"' "$HOME/.colima/_templates/default.yaml"
 
   # Default profile gets the block
   grep -qF '>>> envy-nx:certs >>>' "$HOME/.colima/default/colima.yaml"
@@ -140,6 +143,64 @@ EOF
   run cat "$HOME/.colima/custom/colima.yaml"
   [[ "$output" == *"~/my-data"* ]]
   run ! grep -qF 'envy-nx:certs' "$HOME/.colima/custom/colima.yaml"
+}
+
+# What `colima start` leaves behind: our block re-serialized with the sentinel
+# comments dropped, keys in colima's order, quoting changed. This is the
+# pre-home-mount (certs-only) form, so re-managing it must also add `~`.
+_seed_reserialized_profile() {
+  local target="$1"
+  mkdir -p "$(dirname "$target")"
+  cat >"$target" <<EOF
+cpu: 2
+provision:
+  - mode: system
+    script: |
+      #!/bin/sh
+      [ -f /mnt/envy-certs/ca-custom.crt ] || exit 0
+      cp /mnt/envy-certs/ca-custom.crt /usr/local/share/ca-certificates/envy-nx.crt
+      update-ca-certificates
+
+# Colima default behaviour: \$HOME is mounted as writable.
+mounts:
+  - location: $HOME/.config/certs
+    mountPoint: /mnt/envy-certs
+    writable: false
+
+env: {}
+EOF
+}
+
+@test "darwin: re-manages a profile colima re-serialized without markers" {
+  _seed_reserialized_profile "$HOME/.colima/default/colima.yaml"
+
+  run bash "$SCRIPT" false
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"skipped"* ]]
+  local yaml="$HOME/.colima/default/colima.yaml"
+  run grep -cE '^(mounts|provision):' "$yaml"
+  [ "$output" = "2" ]
+  run grep -cF '>>> envy-nx:certs >>>' "$yaml"
+  [ "$output" = "1" ]
+  grep -qF 'location: "~"' "$yaml"
+  # Keys and comments outside the stripped sections survive.
+  grep -qF 'cpu: 2' "$yaml"
+  grep -qF 'env: {}' "$yaml"
+  grep -qF '# Colima default behaviour' "$yaml"
+}
+
+@test "darwin: skips profile whose provision adds a user entry beside ours" {
+  _seed_reserialized_profile "$HOME/.colima/default/colima.yaml"
+  local yaml="$HOME/.colima/default/colima.yaml"
+  awk '{ print } /^provision:$/ { print "  - mode: user"; print "    script: echo mine" }' "$yaml" >"$yaml.tmp"
+  command mv -f "$yaml.tmp" "$yaml"
+  grep -qF 'echo mine' "$yaml"
+
+  run bash "$SCRIPT" false
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"custom mounts"* ]]
+  grep -qF 'echo mine' "$yaml"
+  run ! grep -qF 'envy-nx:certs' "$yaml"
 }
 
 @test "darwin: applies to multiple profiles independently" {
