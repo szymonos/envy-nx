@@ -22,6 +22,7 @@ setup() {
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"$GH_LOG"
 [ "$1 $2" = "ssh-key list" ] && { [ -n "$GH_LIST_FAIL" ] && exit 1; printf '%s\n' "$GH_KEYS"; }
+[ "$1 $2" = "ssh-key add" ] && [ -n "$GH_ADD_OUT" ] && printf '%s\n' "$GH_ADD_OUT" >&2
 exit 0
 STUB
   chmod +x "$STUB_BIN/gh"
@@ -86,4 +87,31 @@ teardown() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"SSH key already registered on GitHub"* ]]
   ! grep -q '^ssh-key add' "$GH_LOG"
+}
+
+# Run gh.sh interactively under a pseudo-terminal so the `-t 0` SSO pause is reachable;
+# the piped newline answers the pause if it fires. BSD and util-linux `script` differ.
+_run_on_tty() {
+  command -v script >/dev/null || skip "script(1) not available"
+  if [ "$(uname -s)" = Darwin ]; then
+    run bash -c "printf '\n' | script -q /dev/null bash '$SCRIPT' false"
+  else
+    run bash -c "printf '\n' | script -qec \"bash '$SCRIPT' false\" /dev/null"
+  fi
+}
+
+@test "interactive run on a tty prompts for SSO after adding a new key" {
+  export GH_KEYS=$'laptop\tssh-ed25519 BBBBother\t2026-01-01'
+  _run_on_tty
+  [[ "$output" == *"authorize the key"* ]]
+}
+
+@test "interactive run on a tty skips the SSO prompt for a duplicate add" {
+  # list misses the key, but gh reports it on add (exit 0)
+  export GH_LIST_FAIL=1
+  export GH_ADD_OUT='✓ Public key already exists on your account'
+  _run_on_tty
+  grep -q '^ssh-key add' "$GH_LOG"
+  [[ "$output" == *"SSH key already registered on GitHub"* ]]
+  [[ "$output" != *"authorize the key"* ]]
 }

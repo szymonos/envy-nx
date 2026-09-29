@@ -74,19 +74,28 @@ else
   elif ! gh ssh-key list 2>/dev/null | grep -qF "$pub_key_fp"; then
     info "adding SSH key to GitHub..."
     key_added="false"
-    if gh ssh-key add "$SSH_KEY.pub" --title "$host_label $(date +%Y-%m-%d)"; then
-      key_added="true"
-    else
+    # gh exits 0 on a duplicate key, so a lookup that missed it (e.g. a failed
+    # list call) must not be mistaken for a new key that still needs SSO authorization
+    add_key() {
+      local out
+      out=$(gh ssh-key add "$SSH_KEY.pub" --title "$host_label $(date +%Y-%m-%d)" 2>&1) || {
+        printf '%s\n' "$out" >&2
+        return 1
+      }
+      if [[ "$out" == *"already exists"* ]]; then
+        ok "SSH key already registered on GitHub"
+      else
+        printf '%s\n' "$out"
+        key_added="true"
+      fi
+    }
+    if ! add_key; then
       # existing token may lack admin:public_key scope. The refresh is an
       # interactive device-code flow, so it needs a tty.
       if [[ -t 0 ]]; then
         warn "SSH key add failed; upgrading token scope..."
         if gh auth refresh -h github.com -s admin:public_key; then
-          if gh ssh-key add "$SSH_KEY.pub" --title "$host_label $(date +%Y-%m-%d)"; then
-            key_added="true"
-          else
-            warn "could not add SSH key after refresh"
-          fi
+          add_key || warn "could not add SSH key after refresh"
         else
           warn "could not refresh admin:public_key scope"
         fi
