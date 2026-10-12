@@ -5,6 +5,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.30.0] - 2026-10-12
+
+PowerShell kubectl aliases now tab-complete their arguments like plain `kubectl`.
+
+### Added
+
+- All 796 PowerShell kubectl aliases now tab-complete resource names, namespaces and flags through `kubectl __complete`, with `aliases-kubectl` synced to 0.15.0.
+
 ### Changed
 
 - Validated nixpkgs revision advanced to `a322c65bf723` - built with every scope and installed end-to-end on Linux and macOS before landing.
