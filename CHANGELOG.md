@@ -5,6 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+
+- Validated nixpkgs revision advanced to `8edc0c72e3a3` - built with every scope and installed end-to-end on Linux and macOS before landing.
+
 ## [1.30.0] - 2026-10-12
 
 PowerShell kubectl aliases now tab-complete their arguments like plain `kubectl`.
