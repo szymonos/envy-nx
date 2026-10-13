@@ -1,5 +1,6 @@
 ---
 name: address-pr-review
+argument-hint: "[PR-NUMBER]"
 description: State-aware GitHub Copilot PR review handler. Detects review state (not triggered / in progress / has unresolved threads / clean), triggers Copilot via `gh pr edit --add-reviewer` when needed, polls until completion, classifies fresh unresolved comments as fix/resolve-only/skip, applies fixes, resolves threads via GraphQL, and pushes. Only exits when no thread is left unresolved at all, outdated ones included - triage works off the fresh review (matching HEAD SHA), but finishing runs a separate completeness check. Use when the user types `/address-pr-review`, asks to address PR comments, wants to clear review findings, or says "check the PR review." Disabled for auto-invocation.
 disable-model-invocation: true
 ---
@@ -19,7 +20,7 @@ State-aware Copilot PR review handler. Detects the current review state, drives 
 - `gh` CLI installed and authenticated.
 - Copilot enabled on the repository.
 
-**Important:** always trigger Copilot via `pr_review.py trigger`, never via ad-hoc `gh pr edit --add-reviewer` invocations or raw GraphQL mutations from the agent. `pr_review.py trigger` wraps `gh pr edit --add-reviewer copilot-pull-request-reviewer` with the right reviewer login, idempotency handling, and uniform error reporting; one-off calls drift in subtle ways (wrong login alias, no idempotency, no JSON output for the skill's state machine to consume). If `trigger` fails, surface the error to the user - Copilot may need to be enabled in repo settings.
+**Important:** always trigger Copilot via `scripts/pr_review.py trigger`, never via ad-hoc `gh pr edit --add-reviewer` invocations or raw GraphQL mutations from the agent. `scripts/pr_review.py trigger` wraps `gh pr edit --add-reviewer copilot-pull-request-reviewer` with the right reviewer login, idempotency handling, and uniform error reporting; one-off calls drift in subtle ways (wrong login alias, no idempotency, no JSON output for the skill's state machine to consume). If `trigger` fails, surface the error to the user - Copilot may need to be enabled in repo settings.
 
 ## Review states
 
@@ -43,7 +44,7 @@ The skill operates as a state machine. Four states are possible:
 ### Phase 1 - detect state
 
 ```bash
-.claude/skills/address-pr-review/scripts/pr_review.py state --pr <N>
+scripts/pr_review.py state --pr <N>
 ```
 
 Returns JSON with `state`, `headSha`, `freshReviewSha`, `copilotRequested`, and `unresolvedFreshThreads` (fresh only - the finish-time check is `unresolved`, in Phase 2). Exit code: `0`=D, `1`=C, `2`=B, `3`=A.
@@ -54,15 +55,15 @@ If no PR is found on the current branch (or `--pr` is invalid), the script exits
 
 Branch on the state from Phase 1:
 
-- **State A** (not triggered): run `pr_review.py trigger --pr <N>` to request Copilot. Then `pr_review.py wait --pr <N>` to poll until the review completes. The `wait` subcommand returns when the state resolves to C or D. Continue from that state.
-- **State B** (in progress): skip trigger, go straight to `pr_review.py wait --pr <N>`. Same continuation.
+- **State A** (not triggered): run `scripts/pr_review.py trigger --pr <N>` to request Copilot. Then `scripts/pr_review.py wait --pr <N>` to poll until the review completes. The `wait` subcommand returns when the state resolves to C or D. Continue from that state.
+- **State B** (in progress): skip trigger, go straight to `scripts/pr_review.py wait --pr <N>`. Same continuation.
 - **State C** (unresolved fresh threads): proceed to Phase 3.
 - **State D**: no unresolved *fresh* threads. Do not announce the PR clean yet - run the completeness check below first.
 
 #### The completeness check
 
 ```bash
-.claude/skills/address-pr-review/scripts/pr_review.py unresolved --pr <N>
+scripts/pr_review.py unresolved --pr <N>
 ```
 
 Lists **every** unresolved thread, outdated or not, and exits 1 while any remain. `state` cannot see the outdated ones, so a comment nobody actioned goes invisible exactly when you are deciding you are done - and it stays open on the PR, where it still counts against "Require conversation resolution before merging".
@@ -73,7 +74,7 @@ Outdated means the diff moved under the comment, not that the point is moot. Tri
 
 ### Phase 3 - process unresolved fresh threads (State C only)
 
-The `state` JSON already contains `unresolvedFreshThreads` with `{id, path, line, author, body}` for each. Present them as a summary table:
+The `state` JSON already contains `unresolvedFreshThreads` with `{id, path, line, author, body, replyCount, replies}` for each. `replies` holds the latest three replies as `{author, body}` - read them before classifying: a "won't fix" or a question back to the reviewer is already a decision on the thread. Present them as a summary table:
 
 ```text
 ## PR #37 - N unresolved fresh threads
@@ -94,11 +95,13 @@ For each remaining thread, read the comment body + the referenced file at the sp
 - **`resolve-only`** - the comment is already addressed by a prior fix in this session, or the issue genuinely doesn't apply (e.g., stale on a specific line but the file changed elsewhere). Resolve silently.
 - **`skip`** - the comment is a suggestion, design question, or judgment call that needs human input.
 
-Resolve `fix` and `resolve-only` threads via:
+Resolve `fix` and `resolve-only` threads, several in one call:
 
 ```bash
-.claude/skills/address-pr-review/scripts/pr_review.py resolve <thread-id>
+scripts/pr_review.py resolve <thread-id> [<thread-id> ...]
 ```
+
+It prints `{"resolved": [...], "failed": [...]}` and exits 1 when any thread stayed unresolved - name those to the user rather than retrying.
 
 After processing all `fix` and `resolve-only` items:
 

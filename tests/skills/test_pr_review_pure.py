@@ -819,4 +819,82 @@ def test_resolve_reports_whether_the_thread_closed(
     )
 
     assert pr_review.main(["resolve", "PRRT_x"]) == code
-    assert json.loads(capsys.readouterr().out) == {"resolved": resolved}
+    out = json.loads(capsys.readouterr().out)
+    assert out == {
+        "resolved": ["PRRT_x"] if resolved else [],
+        "failed": [] if resolved else ["PRRT_x"],
+    }
+
+
+def test_resolve_takes_several_threads_and_names_the_failures(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """One thread GitHub declined must not hide behind the ones it resolved."""
+    monkeypatch.setattr(
+        pr_review,
+        "_graphql",
+        lambda _q, **v: {
+            "data": {
+                "resolveReviewThread": {
+                    "thread": {"isResolved": v["threadId"] != "PRRT_b"}
+                }
+            }
+        },
+    )
+
+    assert pr_review.main(["resolve", "PRRT_a", "PRRT_b", "PRRT_c"]) == 1
+    out = json.loads(capsys.readouterr().out)
+    assert out == {"resolved": ["PRRT_a", "PRRT_c"], "failed": ["PRRT_b"]}
+
+
+@pytest.mark.parametrize(
+    ("total", "nodes", "count", "shown"),
+    [
+        (1, ["open"], 0, []),  # no replies: the tail is the opening comment
+        (3, ["open", "r1", "r2"], 2, ["r1", "r2"]),
+        (5, ["r2", "r3", "r4"], 4, ["r2", "r3", "r4"]),  # older replies cut off
+    ],
+)
+def test_flatten_thread_shows_the_latest_replies(
+    total: int, nodes: list[str], count: int, shown: list[str]
+) -> None:
+    """A "won't fix" reply has to be visible without a second `gh api` call."""
+    thread = {
+        "id": "PRRT_x",
+        "isOutdated": False,
+        "comments": {"nodes": [{"body": "open", "path": "a.py", "line": 1}]},
+        "latest": {
+            "totalCount": total,
+            "nodes": [{"body": b, "author": {"login": "u"}} for b in nodes],
+        },
+    }
+
+    flat = pr_review._flatten_thread(thread)
+
+    assert flat["replyCount"] == count
+    assert [r["body"] for r in flat["replies"]] == shown
+
+
+def test_gh_retries_a_network_error_before_reaching_github(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A TLS handshake timeout is replayed; an auth error is not."""
+    results = iter(
+        [
+            subprocess.CompletedProcess([], 1, "", "net/http: TLS handshake timeout"),
+            subprocess.CompletedProcess([], 0, "ok", ""),
+        ]
+    )
+    monkeypatch.setattr(pr_review.subprocess, "run", lambda *_a, **_k: next(results))
+    monkeypatch.setattr(pr_review.time, "sleep", lambda _s: None)
+    assert pr_review._gh(["gh", "api"]).stdout == "ok"
+
+    calls: list[int] = []
+
+    def auth_error(*_a: object, **_k: object) -> subprocess.CompletedProcess[str]:
+        calls.append(1)
+        return subprocess.CompletedProcess([], 1, "", "HTTP 401: Bad credentials")
+
+    monkeypatch.setattr(pr_review.subprocess, "run", auth_error)
+    assert pr_review._gh(["gh", "api"]).returncode == 1
+    assert len(calls) == 1

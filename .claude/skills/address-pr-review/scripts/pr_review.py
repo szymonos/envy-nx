@@ -1,6 +1,10 @@
-#!/usr/bin/env -S uv run python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = "~=3.14.0"
+# dependencies = []
+# ///
 """
-pr_review.py - state-aware GitHub PR review thread management.
+scripts/pr_review.py - state-aware GitHub PR review thread management.
 
 Shared by the /address-pr-review and /prepare-pr skills, which each vendor a
 copy. Handles Copilot review lifecycle: detect current state, trigger reviews,
@@ -38,15 +42,19 @@ wait --pr N [--interval 30] [--timeout 480]
     Poll until state resolves to C or D. Same JSON shape as `state`.
     Exit 1 = C, 0 = D, 4 = timeout.
 
-resolve <thread-id>
-    Resolve a single review thread via GraphQL.
+resolve <thread-id> [<thread-id> ...]
+    Resolve review threads via GraphQL. Exit 1 when any stays unresolved.
+
+Every thread carries its opening comment and `replies`: the latest
+REPLIES_SHOWN replies (with `replyCount` for the total), so an earlier
+"won't fix" or a question back to the reviewer is visible without `gh api`.
 
 # :example
 .claude/skills/address-pr-review/scripts/pr_review.py state --pr 37
 .claude/skills/address-pr-review/scripts/pr_review.py unresolved --pr 37
 .claude/skills/address-pr-review/scripts/pr_review.py trigger --pr 37
 .claude/skills/address-pr-review/scripts/pr_review.py wait --pr 37 --timeout 480
-.claude/skills/address-pr-review/scripts/pr_review.py resolve PRRT_xxx
+.claude/skills/address-pr-review/scripts/pr_review.py resolve PRRT_xxx PRRT_yyy
 """
 
 from __future__ import annotations
@@ -67,6 +75,17 @@ COPILOT_REQUESTED_LOGINS = frozenset({COPILOT_REVIEWER_LOGIN, "copilot"})
 #: Ceiling for a single `gh` invocation. Generous, because a GraphQL page over
 #: a large PR is not instant, but finite so `wait` cannot overrun its deadline.
 GH_TIMEOUT = 120
+
+#: `gh` errors raised before the request reached GitHub - the TCP connect or the
+#: TLS handshake never completed - so replaying any call, a mutation included,
+#: cannot apply it twice. A TLS-intercepting corporate proxy produces the
+#: handshake timeout in bursts that clear within seconds.
+TRANSIENT_GH_ERRORS = ("TLS handshake timeout", "dial tcp", "proxyconnect tcp")
+GH_ATTEMPTS = 3
+GH_BACKOFF = 2.0
+
+#: Latest replies shown per thread. The newest is where a conversation stands.
+REPLIES_SHOWN = 3
 
 STATE_QUERY = """
 query($owner: String!, $repo: String!, $pr: Int!) {
@@ -94,7 +113,8 @@ query($owner: String!, $repo: String!, $pr: Int!) {
 }
 """
 
-THREADS_PAGE_QUERY = """
+THREADS_PAGE_QUERY = (
+    """
 query($owner: String!, $repo: String!, $pr: Int!, $cursor: String) {
   repository(owner: $owner, name: $repo) {
     pullRequest(number: $pr) {
@@ -113,12 +133,21 @@ query($owner: String!, $repo: String!, $pr: Int!, $cursor: String) {
               author { login }
             }
           }
+          latest: comments(last: %d) {
+            totalCount
+            nodes {
+              body
+              author { login }
+            }
+          }
         }
       }
     }
   }
 }
 """
+    % REPLIES_SHOWN
+)
 
 RESOLVE_MUTATION = """
 mutation($threadId: ID!) {
@@ -129,6 +158,38 @@ mutation($threadId: ID!) {
 """
 
 
+def _gh(cmd: list[str]) -> subprocess.CompletedProcess[str]:
+    """
+    Run a gh command, retrying the failures in TRANSIENT_GH_ERRORS.
+
+    Exits with a concise message when gh is missing or a call hangs. The
+    timeout matters because `wait` polls: a single `gh` call that blocks on a
+    network stall or an auth prompt would otherwise hang the whole pipeline
+    past its own deadline, with nothing on stderr to act on.
+    """
+    for attempt in range(1, GH_ATTEMPTS + 1):
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=GH_TIMEOUT)
+        except FileNotFoundError:
+            print("gh CLI not found on PATH. Install and authenticate gh.", file=sys.stderr)
+            raise SystemExit(1) from None
+        except subprocess.TimeoutExpired:
+            print(
+                f"gh command timed out after {GH_TIMEOUT}s: {' '.join(cmd[:3])} ...",
+                file=sys.stderr,
+            )
+            raise SystemExit(1) from None
+        transient = any(token in result.stderr for token in TRANSIENT_GH_ERRORS)
+        if result.returncode == 0 or not transient or attempt == GH_ATTEMPTS:
+            return result
+        print(
+            f"gh: network error before reaching GitHub, retrying ({attempt}/{GH_ATTEMPTS - 1})",
+            file=sys.stderr,
+        )
+        time.sleep(GH_BACKOFF * attempt)
+    raise AssertionError("unreachable")  # pragma: no cover
+
+
 def _run_gh(cmd: list[str]) -> str:
     """
     Run a gh command, returning stdout. Exit with a concise message on failure.
@@ -137,22 +198,8 @@ def _run_gh(cmd: list[str]) -> str:
     traceback on common, expected failures (gh not installed, not logged in,
     missing scopes). Surface a readable one-line error the calling skill can
     show the user instead.
-
-    The timeout matters because `wait` polls: a single `gh` call that blocks on
-    a network stall or an auth prompt would otherwise hang the whole pipeline
-    past its own deadline, with nothing on stderr to act on.
     """
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=GH_TIMEOUT)
-    except FileNotFoundError:
-        print("gh CLI not found on PATH. Install and authenticate gh.", file=sys.stderr)
-        raise SystemExit(1) from None
-    except subprocess.TimeoutExpired:
-        print(
-            f"gh command timed out after {GH_TIMEOUT}s: {' '.join(cmd[:3])} ...",
-            file=sys.stderr,
-        )
-        raise SystemExit(1) from None
+    result = _gh(cmd)
     if result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip() or "unknown error"
         print(f"gh command failed ({' '.join(cmd[:3])} ...): {detail}", file=sys.stderr)
@@ -170,37 +217,31 @@ def _auto_pr() -> int:
     """
     Auto-detect PR number from current branch.
 
-    Bounded by the same timeout as every other `gh` call: omitting `--pr` is
-    the normal path, so an unbounded call here would hang `state`, `trigger`
-    and `wait` alike while the rest of the script looked well-behaved.
+    Goes through `_gh` like every other call: omitting `--pr` is the normal
+    path, so an unbounded call here would hang `state`, `trigger` and `wait`
+    alike. A network error that outlasts the retries is reported as one -
+    "No open PR" would send the caller off to push a branch that is pushed.
+
+    Only an OPEN PR counts: a reused branch name otherwise finds its merged or
+    closed PR, and every later verb would act on that review instead.
     """
-    try:
-        result = subprocess.run(
-            # without the state filter a reused branch name finds its merged PR
-            [
-                "gh",
-                "pr",
-                "view",
-                "--json",
-                "number,state",
-                "--jq",
-                'select(.state == "OPEN") | .number',
-            ],
-            capture_output=True,
-            text=True,
-            timeout=GH_TIMEOUT,
-        )
-    except FileNotFoundError:
-        print("gh CLI not found on PATH. Install and authenticate gh.", file=sys.stderr)
-        raise SystemExit(1) from None
-    except subprocess.TimeoutExpired:
-        print(f"gh pr view timed out after {GH_TIMEOUT}s.", file=sys.stderr)
-        raise SystemExit(1) from None
-    if result.returncode != 0:
+    result = _gh(
+        [
+            "gh",
+            "pr",
+            "view",
+            "--json",
+            "number,state",
+            "--jq",
+            'select(.state == "OPEN") | .number',
+        ]
+    )
+    if result.returncode != 0 and any(t in result.stderr for t in TRANSIENT_GH_ERRORS):
         print(f"gh pr view failed: {result.stderr.strip()}", file=sys.stderr)
         raise SystemExit(1)
-    if not result.stdout.strip():
-        print("No open PR on this branch. Push first or specify --pr.", file=sys.stderr)
+    if result.returncode != 0 or not result.stdout.strip():
+        detail = f" (gh: {result.stderr.strip()})" if result.returncode else ""
+        print(f"No open PR on this branch. Push first or specify --pr.{detail}", file=sys.stderr)
         raise SystemExit(1)
     try:
         return int(result.stdout.strip())
@@ -209,8 +250,7 @@ def _auto_pr() -> int:
         # ValueError traceback would undo the point of every other branch in
         # this function.
         print(
-            f"could not read a PR number from gh: {result.stdout.strip()[:200]}",
-            file=sys.stderr,
+            f"could not read a PR number from gh: {result.stdout.strip()[:200]}", file=sys.stderr
         )
         raise SystemExit(1) from None
 
@@ -246,6 +286,13 @@ def _flatten_thread(thread: dict) -> dict:
     """Flatten a thread node into a simple dict for Claude to consume."""
     comments = thread["comments"]["nodes"]
     first = comments[0] if comments else {}
+    latest = thread.get("latest") or {
+        "totalCount": len(comments),
+        "nodes": comments[-REPLIES_SHOWN:],
+    }
+    # `latest` counts the opening comment too; its tail is replies only once
+    # it starts past position 0.
+    skip = max(0, 1 - (latest["totalCount"] - len(latest["nodes"])))
     return {
         "id": thread["id"],
         "isOutdated": thread["isOutdated"],
@@ -253,6 +300,11 @@ def _flatten_thread(thread: dict) -> dict:
         "line": first.get("line") or first.get("originalLine"),
         "author": (first.get("author") or {}).get("login", "unknown"),
         "body": first.get("body", ""),
+        "replyCount": max(0, latest["totalCount"] - 1),
+        "replies": [
+            {"author": (c.get("author") or {}).get("login", "unknown"), "body": c.get("body", "")}
+            for c in latest["nodes"][skip:]
+        ],
     }
 
 
@@ -312,9 +364,7 @@ def _detect_state(owner: str, repo: str, pr: int) -> dict:
         (r for r in copilot_reviews if (r.get("commit") or {}).get("oid") == head_sha),
         None,
     )
-    fresh_review_sha = (
-        (fresh_review.get("commit") or {}).get("oid") if fresh_review else None
-    )
+    fresh_review_sha = (fresh_review.get("commit") or {}).get("oid") if fresh_review else None
 
     # Reported in every state: once a review is submitted the request is
     # consumed, so this is False in C/D and the flag only classifies A vs B.
@@ -328,9 +378,7 @@ def _detect_state(owner: str, repo: str, pr: int) -> dict:
     if fresh_review_sha is not None:
         all_threads = _fetch_all_threads(owner, repo, pr)
         fresh_threads = [
-            _flatten_thread(t)
-            for t in all_threads
-            if not t["isResolved"] and not t["isOutdated"]
+            _flatten_thread(t) for t in all_threads if not t["isResolved"] and not t["isOutdated"]
         ]
         # Outdated threads are excluded because triage wants comments that still
         # describe the current code. That makes D "nothing left to triage" and
@@ -366,11 +414,7 @@ def cmd_state(args: argparse.Namespace) -> int:
 
 def unresolved_threads(owner: str, repo: str, pr: int) -> list[dict]:
     """Every unresolved thread on the PR, outdated ones included."""
-    return [
-        _flatten_thread(t)
-        for t in _fetch_all_threads(owner, repo, pr)
-        if not t["isResolved"]
-    ]
+    return [_flatten_thread(t) for t in _fetch_all_threads(owner, repo, pr) if not t["isResolved"]]
 
 
 def cmd_unresolved(args: argparse.Namespace) -> int:
@@ -446,12 +490,20 @@ def cmd_wait(args: argparse.Namespace) -> int:
 
 
 def cmd_resolve(args: argparse.Namespace) -> int:
-    """Resolve a single thread."""
-    data = _graphql(RESOLVE_MUTATION, threadId=args.thread_id)
-    resolved = data["data"]["resolveReviewThread"]["thread"]["isResolved"]
-    json.dump({"resolved": resolved}, sys.stdout)
+    """Resolve each thread; report which resolved, exit 1 when any did not."""
+    resolved, failed = [], []
+    for thread_id in args.thread_ids:
+        # _run_gh exits on a gh failure; one bad id must not hide the others' outcome.
+        try:
+            data = _graphql(RESOLVE_MUTATION, threadId=thread_id)
+        except SystemExit:
+            failed.append(thread_id)
+            continue
+        thread = ((data.get("data") or {}).get("resolveReviewThread") or {}).get("thread") or {}
+        (resolved if thread.get("isResolved") else failed).append(thread_id)
+    json.dump({"resolved": resolved, "failed": failed}, sys.stdout)
     print()
-    return 0 if resolved else 1
+    return 1 if failed else 0
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -465,24 +517,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     p_unresolved = sub.add_parser(
         "unresolved", help="List ALL unresolved threads (incl. outdated); exit 1 if any"
     )
-    p_unresolved.add_argument(
-        "--pr", type=int, help="PR number (auto-detect if omitted)"
-    )
+    p_unresolved.add_argument("--pr", type=int, help="PR number (auto-detect if omitted)")
 
     p_trigger = sub.add_parser("trigger", help="Request Copilot review")
     p_trigger.add_argument("--pr", type=int, help="PR number (auto-detect if omitted)")
 
     p_wait = sub.add_parser("wait", help="Poll until state resolves to C or D")
     p_wait.add_argument("--pr", type=int, help="PR number (auto-detect if omitted)")
-    p_wait.add_argument(
-        "--interval", type=int, default=30, help="Seconds between polls"
-    )
-    p_wait.add_argument(
-        "--timeout", type=int, default=480, help="Total timeout in seconds"
-    )
+    p_wait.add_argument("--interval", type=int, default=30, help="Seconds between polls")
+    p_wait.add_argument("--timeout", type=int, default=480, help="Total timeout in seconds")
 
-    p_resolve = sub.add_parser("resolve", help="Resolve a review thread")
-    p_resolve.add_argument("thread_id", help="GraphQL node ID (PRRT_*)")
+    p_resolve = sub.add_parser("resolve", help="Resolve review threads")
+    p_resolve.add_argument("thread_ids", nargs="+", help="GraphQL node IDs (PRRT_*)")
 
     args = parser.parse_args(argv)
     handlers = {
