@@ -32,7 +32,7 @@ Platforms: macOS, Linux, WSL (Windows host), Coder / containers.
 ## Premium review triggers
 
 A diff that touches any of these paths is reviewed by the premium model
-(`review_brief.py model`). They handle TLS trust, run as root, write the user's
+(`scripts/review_brief.py run` picks it). They handle TLS trust, run as root, write the user's
 shell rc files, or delete user files - review them with extra care.
 
 - `.assets/lib/certs.sh`
