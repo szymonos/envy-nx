@@ -2,7 +2,7 @@
 
 Agent-readable decision records. Each file is a short constraint extract; the full persuasion narratives live in [`docs/decisions.md`](../../docs/decisions.md) (maintained separately by the author).
 
-New decisions are created by the [`grill-with-docs`](../../.claude/skills/grill-with-docs/SKILL.md) skill or via `Codified-Decision:` commit trailers on merged PRs.
+New decisions are added by hand, following the shape of the existing records, or via `Codified-Decision:` commit trailers on merged PRs.
 
 | #    | Decision                            | Scope                                                           | File                                        |
 | ---- | ----------------------------------- | --------------------------------------------------------------- | ------------------------------------------- |
