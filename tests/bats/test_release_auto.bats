@@ -71,6 +71,44 @@ JSON
   echo "# changelog" >CHANGELOG.md
 }
 
+# Record the current HEAD in the seeded state, after a test commits on top.
+_sync_head() {
+  _py "
+import json, release
+s = release.load_state(); s['head_sha'] = release.head_sha(); release.save_state(s)
+"
+}
+
+# A clone of a bare remote whose `main` holds one commit; cwd moves into it.
+_remote_repo() {
+  local bare="$TMP/remote.git"
+  git init -q --bare "$bare"
+  git clone -q "$bare" "$TMP/work" 2>/dev/null
+  cd "$TMP/work" || return 1
+  git config user.name Test
+  git config user.email test@example.com
+  git config commit.gpgsign false
+  git switch -qc main
+  echo base >base.txt
+  git add base.txt
+  git commit -qm "chore: base"
+  git push -qu origin main
+}
+
+# Branch `feat` one commit ahead of where trunk was; trunk then moves by one.
+_branch_behind_trunk() {
+  git switch -qc feat
+  echo feat >feat.txt
+  git add feat.txt
+  git commit -qm "feat: add feat"
+  git switch -q main
+  echo trunk >trunk.txt
+  git add trunk.txt
+  git commit -qm "chore: trunk moves"
+  git push -q origin main
+  git switch -q feat
+}
+
 # =============================================================================
 # recut - idempotency
 # =============================================================================
@@ -544,21 +582,42 @@ except release.ReleaseError as e:
   [[ "$output" == *OK* ]]
 }
 
-@test "tracked_and_untracked includes staged-only changes" {
+@test "tracked_and_untracked omits a file the branch added and the tree deleted" {
   _seed_plan_and_changes
-  # Stage a brand-new file, then remove it from the working tree so it exists
-  # ONLY in the index. `git diff <base>` alone would miss it; --cached catches it.
-  echo "staged" >.assets/setup/staged_only.sh
-  git add .assets/setup/staged_only.sh
-  rm .assets/setup/staged_only.sh
+  # In a branch commit and the index, but absent from the tag and the disk: a
+  # recut has nothing to stage for it, and `git add` on it would fail.
+  echo "gone" >.assets/setup/gone.sh
+  git add .assets/setup/gone.sh
+  git commit -qm "feat: add gone"
+  rm .assets/setup/gone.sh
+  _sync_head
   run _py "
 import release
 u = release.tracked_and_untracked('v0.1.0')
-assert '.assets/setup/staged_only.sh' in u, u
+assert '.assets/setup/gone.sh' not in u, u
+release.recut(release.load_plan(), release.load_state())
 print('OK')
 "
   [ "$status" -eq 0 ]
   [[ "$output" == *OK* ]]
+  [ -z "$(git log --format= --name-only v0.1.0..HEAD -- .assets/setup/gone.sh)" ]
+}
+
+@test "a failed recut keeps what was staged before the run" {
+  _seed_plan_and_changes
+  git add .assets/setup/thing.sh
+  run _py "
+import release
+def boom(): raise RuntimeError('lint failed')
+try:
+    release.recut(release.load_plan(), release.load_state(), validate=boom)
+except RuntimeError:
+    pass
+print('OK')
+"
+  [ "$status" -eq 0 ]
+  [ "$(git diff --cached --name-only)" = ".assets/setup/thing.sh" ]
+  [ "$(git rev-parse HEAD)" = "$(git rev-parse v0.1.0)" ]
 }
 
 @test "refuse_shared_branch rejects main but allows release/*" {
@@ -803,6 +862,162 @@ print('OK')
 "
   [ "$status" -eq 0 ]
   [[ "$output" == *OK* ]]
+}
+
+@test "head_is_published ignores an upstream that is not the branch's namesake" {
+  _remote_repo
+  # `git switch -c x origin/main` tracks trunk: HEAD equals @{u}, yet the
+  # branch itself was never pushed.
+  git switch -qc feat origin/main
+  [ "$(git rev-parse --abbrev-ref '@{u}')" = "origin/main" ]
+  run _py "
+import release
+assert release.head_is_published() is False
+print('OK')
+"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *OK* ]]
+}
+
+@test "rebase_onto_trunk replays the branch and keeps uncommitted work" {
+  _remote_repo
+  _branch_behind_trunk
+  echo "wip" >wip.txt
+  run _py "
+import release
+r = release.rebase_onto_trunk()
+assert r['rebased'] is True and r['behind'] == 1, r
+print('OK')
+"
+  [ "$status" -eq 0 ]
+  git merge-base --is-ancestor origin/main HEAD
+  [ "$(cat wip.txt)" = "wip" ]
+  [ -z "$(git stash list)" ]
+}
+
+@test "rebase_onto_trunk leaves the branch put when dirty work overlaps trunk" {
+  _remote_repo
+  _branch_behind_trunk
+  echo "mine" >trunk.txt
+  local before
+  before="$(git rev-parse HEAD)"
+  run _py "
+import release
+r = release.rebase_onto_trunk()
+assert r['rebased'] is False and r['paths'] == ['trunk.txt'], r
+print('OK')
+"
+  [ "$status" -eq 0 ]
+  [ "$(git rev-parse HEAD)" = "$before" ]
+  [ "$(cat trunk.txt)" = "mine" ]
+}
+
+@test "rebase_onto_trunk aborts a conflicting rebase and reports it" {
+  _remote_repo
+  _branch_behind_trunk
+  echo "branch side" >base.txt
+  git commit -qam "feat: edit base"
+  git switch -q main
+  echo "trunk side" >base.txt
+  git commit -qam "chore: edit base on trunk"
+  git push -q origin main
+  git switch -q feat
+  local before
+  before="$(git rev-parse HEAD)"
+  run _py "
+import release
+r = release.rebase_onto_trunk()
+assert r['rebased'] is False and 'base.txt' in r['paths'], r
+print('OK')
+"
+  [ "$status" -eq 0 ]
+  [ "$(git rev-parse HEAD)" = "$before" ]
+  [ ! -d "$(git rev-parse --git-path rebase-merge)" ]
+}
+
+@test "_do_push recreates a remote branch deleted on merge despite a stale ref at HEAD" {
+  _remote_repo
+  git switch -qc feat
+  echo feat >feat.txt
+  git add feat.txt
+  git commit -qm "feat: add feat"
+  git push -qu origin feat
+  # Deleted on the remote behind this clone's back: origin/feat survives locally
+  # and still equals HEAD.
+  git --git-dir="$TMP/remote.git" branch -qD feat
+  [ "$(git rev-parse origin/feat)" = "$(git rev-parse HEAD)" ]
+  run _py "
+import release
+assert release._do_push() is True
+print('OK')
+"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *OK* ]]
+  git --git-dir="$TMP/remote.git" rev-parse --verify -q refs/heads/feat
+}
+
+@test "rebase_onto_trunk names git's error when the fetch fails" {
+  _remote_repo
+  git remote set-url origin "$TMP/no-such-remote.git"
+  run _py "
+import release
+r = release.rebase_onto_trunk()
+assert r['rebased'] is False and r['behind'] is None, r
+assert 'failed: ' in r['reason'] and len(r['reason']) > 40, r
+print('OK')
+"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *OK* ]]
+}
+
+@test "start refuses a version whose tag the rebase brought in from main" {
+  _remote_repo
+  git tag v0.1.0
+  git push -q origin v0.1.0
+  git switch -qc feat
+  echo feat >feat.txt
+  git add feat.txt
+  git commit -qm "feat: add feat"
+  # Main moves and ships v0.2.0 from another clone, as a merged PR would.
+  git clone -q -b main "$TMP/remote.git" "$TMP/other"
+  (
+    cd "$TMP/other" || exit 1
+    git config user.name Other
+    git config user.email other@example.com
+    git config commit.gpgsign false
+    echo shipped >shipped.txt
+    git add shipped.txt
+    git commit -qm "chore: ship 0.2.0"
+    git tag v0.2.0
+    git push -q origin main v0.2.0
+  )
+  run _py "
+import release
+try:
+    release.phase_start('0.2.0', skip_review=False)
+except release.ReleaseError as e:
+    print('REFUSED', e)
+"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"REFUSED v0.2.0 is already tagged"* ]]
+}
+
+@test "rebase_onto_trunk reports a rejecting pre-rebase hook instead of failing" {
+  _remote_repo
+  _branch_behind_trunk
+  printf '#!/bin/sh\nexit 1\n' >"$(git rev-parse --git-path hooks)/pre-rebase"
+  chmod +x "$(git rev-parse --git-path hooks)/pre-rebase"
+  local before
+  before="$(git rev-parse HEAD)"
+  run _py "
+import release
+r = release.rebase_onto_trunk()
+assert r['rebased'] is False and 'conflicts' in r['reason'], r
+print('OK')
+"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *OK* ]]
+  [ "$(git rev-parse HEAD)" = "$before" ]
 }
 
 @test "push gate reports whether the review coda will run" {
