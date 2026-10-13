@@ -31,6 +31,13 @@ sys.modules["release"] = release
 _spec.loader.exec_module(release)
 
 
+@pytest.fixture(autouse=True)
+def _gate_in_tmp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep ``emit_gate`` from writing into the real repo's ``.release/``."""
+    monkeypatch.setattr(release, "STATE_DIR", tmp_path / ".release")
+    monkeypatch.setattr(release, "GATE_FILE", tmp_path / ".release" / "gate.json")
+
+
 PLAN = {
     "groups": [
         {"globs": [".assets/**", "*.sh"], "prefix": "feat", "message": "feat(x): y"},
@@ -583,14 +590,13 @@ def test_upsert_pr_ignores_a_merged_pr(
     monkeypatch: pytest.MonkeyPatch, pr_state: str, verb: str
 ) -> None:
     """A reused branch name finds its merged PR; editing it would hide the release."""
-
-    class Result:
-        returncode = 0
-        stdout = pr_state + "\n"
-
     calls: list[list[str]] = []
     monkeypatch.setattr(release, "changelog_section", lambda _v: "### Added\n\n- x")
-    monkeypatch.setattr(release.subprocess, "run", lambda *_a, **_k: Result())
+    monkeypatch.setattr(
+        release,
+        "_run_gh",
+        lambda a: release.subprocess.CompletedProcess(a, 0, pr_state + "\n", ""),
+    )
     monkeypatch.setattr(release, "_gh", calls.append)
 
     release._upsert_pr("1.2.3")
@@ -872,3 +878,203 @@ def test_main_reports_a_gh_timeout_as_an_error(
 
     assert release.main(["status"]) == release.EXIT_ERROR
     assert "timed out after 60s" in capsys.readouterr().err
+
+
+# -- gh retry, gate.json, fix-cycle accounting ------------------------------------
+
+
+def test_run_gh_retries_only_errors_raised_before_reaching_github(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Replaying a call that never reached GitHub cannot apply it twice."""
+    seen: list[str] = []
+    errors = iter(["dial tcp: i/o timeout", "Timeout trying to log in", ""])
+
+    def run(*_a: object, **_k: object) -> release.subprocess.CompletedProcess[str]:
+        err = next(errors)
+        seen.append(err)
+        return release.subprocess.CompletedProcess([], 1 if err else 0, "", err)
+
+    monkeypatch.setattr(release.subprocess, "run", run)
+    monkeypatch.setattr(release.time, "sleep", lambda _s: None)
+    assert release._run_gh(["pr", "view"]).returncode == 0
+    assert len(seen) == 3
+
+    monkeypatch.setattr(
+        release.subprocess,
+        "run",
+        lambda *_a, **_k: release.subprocess.CompletedProcess([], 1, "", "HTTP 403"),
+    )
+    with pytest.raises(release.ReleaseError, match="HTTP 403"):
+        release._gh(["pr", "edit"])
+
+
+def test_emit_gate_saves_the_whole_payload_and_names_it_first(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A harness that truncates the print cannot hide a field from gate.json."""
+    import json
+
+    monkeypatch.chdir(tmp_path)
+
+    assert release.emit_gate("push", {"commits": ["a"]}, ["approve"]) == 10
+
+    sentinel, printed = capsys.readouterr().out.splitlines()
+    payload = json.loads(printed)
+    assert sentinel == "DECISION_NEEDED"
+    assert next(iter(payload)) == "full_context"
+    saved = json.loads(Path(payload["full_context"]).read_text())
+    assert saved == {
+        "kind": "push",
+        "context": {"commits": ["a"]},
+        "options": ["approve"],
+    }
+
+
+@pytest.fixture
+def push_run(monkeypatch: pytest.MonkeyPatch) -> dict:
+    """``cmd_push`` with git, gh and the state file stubbed; returns the saves."""
+    saved: dict = {}
+    state = {"version": "1.2.3", "coda_pushes": 0, "head_sha": "x"}
+    monkeypatch.setattr(release, "load_state", lambda: state)
+    monkeypatch.setattr(release, "guard_resume", lambda _s: None)
+    monkeypatch.setattr(release, "load_plan", lambda: {"groups": []})
+    monkeypatch.setattr(release, "uncommitted_covered_paths", lambda _p: [])
+    monkeypatch.setattr(release, "head_sha", lambda: "y")
+    monkeypatch.setattr(release, "save_state", lambda s: saved.update(dict(s)))
+    return saved
+
+
+def test_push_that_sends_nothing_is_not_a_fix_cycle(
+    push_run: dict,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Retrying a push whose PR update failed must not burn a second cycle."""
+    import json
+
+    monkeypatch.setattr(release, "_do_push", lambda: False)
+    monkeypatch.setattr(release, "_upsert_pr", lambda _v: None)
+
+    args = release.build_parser().parse_args(["push"])
+    assert release.cmd_push(args) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert push_run["coda_pushes"] == 0
+    assert out["pushed"] is None
+    assert out["fix_cycles_left"] == release.CODA_PUSH_CAP
+
+
+def test_push_counts_the_cycle_before_the_pr_update_can_fail(
+    push_run: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The push landed; a failing `gh pr edit` must not leave it uncounted."""
+
+    def fail(_v: str) -> None:
+        raise release.ReleaseError("gh pr edit failed")
+
+    monkeypatch.setattr(release, "_do_push", lambda: True)
+    monkeypatch.setattr(release, "_upsert_pr", fail)
+
+    with pytest.raises(release.ReleaseError):
+        release.cmd_push(release.build_parser().parse_args(["push"]))
+    assert push_run["coda_pushes"] == 1
+
+
+def test_coda_next_says_when_the_last_fix_cycle_ran() -> None:
+    """At zero the final review's threads go to the user, not into a new cycle."""
+    assert "last fix cycle" in release._coda_next(0)
+    assert "last fix cycle" not in release._coda_next(1)
+
+
+# -- second-opinion: a thin wrapper over review_brief.py run --------------------
+
+
+@pytest.fixture
+def opinion_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict:
+    """A release state in a scratch dir; ``seen`` collects the run command."""
+    monkeypatch.chdir(tmp_path)
+    state = {"version": "1.2.3", "last_tag": "v1.2.2", "second_opinion_runs": 0}
+    seen: dict = {"state": state}
+    monkeypatch.setattr(release, "load_state", lambda: state)
+    monkeypatch.setattr(release, "save_state", lambda s: seen.update(saved=dict(s)))
+    monkeypatch.setattr(release, "changelog_section", lambda _v: "### Added\n\n- x")
+    return seen
+
+
+def _stub_run(monkeypatch: pytest.MonkeyPatch, seen: dict, code: int, out: str) -> None:
+    def run(cmd: list[str], **kw: object) -> release.subprocess.CompletedProcess[str]:
+        seen.update(cmd=cmd, timeout=kw.get("timeout"))
+        return release.subprocess.CompletedProcess(cmd, code, out, "")
+
+    monkeypatch.setattr(release.subprocess, "run", run)
+
+
+def test_second_opinion_hands_the_changelog_section_to_run_as_intent(
+    opinion_run: dict,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The release notes are the author's intent; the scoped rerun keeps --files."""
+    import json
+
+    report = {
+        "model": "m",
+        "findings": [{"id": "F-001", "lens": "logic"}],
+        "unparsed": {"inputs": ["### F-9 - huh"]},
+        "diffstat": "x",
+    }
+    _stub_run(monkeypatch, opinion_run, 0, json.dumps(report))
+    args = release.build_parser().parse_args(
+        ["second-opinion", "--files", "a.sh", "--timeout", "100"]
+    )
+
+    assert release.cmd_second_opinion(args) == 0
+    cmd = opinion_run["cmd"]
+    assert cmd[1:3] == ["run", "v1.2.2"]
+    assert Path(cmd[cmd.index("--intent") + 1]).read_text().startswith("### Added")
+    assert cmd[cmd.index("--files") + 1 :] == ["a.sh"]
+    assert opinion_run["timeout"] > 100  # the wrapper outlasts every lens pass
+    out = json.loads(capsys.readouterr().out)
+    assert out["findings"] == report["findings"] and "diffstat" not in out
+    assert out["unparsed"] == report["unparsed"]  # a lens to read by hand
+    assert opinion_run["saved"]["second_opinion_runs"] == 1
+
+
+@pytest.mark.parametrize(
+    ("code", "reason"), [(3, "nothing to review"), (4, "no Copilot CLI")]
+)
+def test_second_opinion_skips_without_spending_a_run(
+    opinion_run: dict,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    code: int,
+    reason: str,
+) -> None:
+    """Parity and a missing Copilot CLI skip the layer; neither blocks the release."""
+    import json
+
+    _stub_run(monkeypatch, opinion_run, code, '{"skipped": "x"}')
+
+    assert (
+        release.cmd_second_opinion(
+            release.build_parser().parse_args(["second-opinion"])
+        )
+        == 0
+    )
+    assert json.loads(capsys.readouterr().out)["skipped"] == reason
+    assert "saved" not in opinion_run
+
+
+def test_second_opinion_failure_is_a_release_error(
+    opinion_run: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every lens failing is an error to surface, not an empty review."""
+    _stub_run(monkeypatch, opinion_run, 1, "")
+
+    with pytest.raises(release.ReleaseError, match="run failed"):
+        release.cmd_second_opinion(
+            release.build_parser().parse_args(["second-opinion"])
+        )
+    assert "saved" not in opinion_run

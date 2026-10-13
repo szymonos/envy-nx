@@ -1,5 +1,6 @@
 ---
 name: release-auto
+argument-hint: "VERSION [skip-review|reopen]"
 description: Orchestrator-driven release prep. A stateful Python driver runs the deterministic release spine headless - lint, extract, version bump, upgrade, commit-plan recut, lint-diff, force-push, PR upsert, both review layers, and the final integration-test run - and stops at a few batched gates where the agent supplies judgment (CHANGELOG prose, cspell classification, commit topology, version verdict, review triage). Use when the user types `/release-auto` with a target version, asks to cut a release the automated way, or wants the orchestrator-driven release. Disabled for auto-invocation.
 disable-model-invocation: true
 ---
@@ -14,9 +15,12 @@ the agent is a **decision oracle** called only at batched gates. Tagging is
 ## When to use
 
 - `/release-auto 1.16.0` - cut 1.16.0 from the current branch
-- `/release-auto 1.16.0 --skip-review` - skip *both* review layers (urgent hotfix, Copilot offline, already reviewed)
-- `/release-auto 1.16.0 --reopen` - re-cut an already-pushed release with no new changes (fold coda follow-ups into clean per-group commits); see `references/recovery.md`
+- `/release-auto 1.16.0 skip-review` - skip *both* review layers (urgent hotfix, Copilot offline, already reviewed)
+- `/release-auto 1.16.0 reopen` - re-cut an already-pushed release with no new changes (fold coda follow-ups into clean per-group commits); see `references/recovery.md`
 - "minor ver" / "patch" - compute the version from `git describe --tags --abbrev=0`
+
+A word after the version is the `start` flag of the same name with `--` in
+front: `skip-review` is `--skip-review`. Anything else is an ordinary request.
 
 ## Prerequisites
 
@@ -26,7 +30,7 @@ the agent is a **decision oracle** called only at batched gates. Tagging is
 ## Mental model
 
 ```text
-start        ──► lint, bump, upgrade             ──► GATE phase1   (exit 10)
+start        ──► rebase, lint, bump, upgrade     ──► GATE phase1   (exit 10)
 resume       ──► cspell/changelog checks, recut  ──► GATE push     (exit 10)
 resume       ──► force-push, PR upsert           ──► SPINE_COMPLETE (exit 0)
 second-opinion / copilot-review ──► fixes ──► recut + push ──► (repeat review)
@@ -37,7 +41,12 @@ push --done  ──► thread check, wipe, label PR    ──► integration --s
 `4` still waiting (re-run the same command), `10` `DECISION_NEEDED` gate.
 
 **Invoke the driver bare - never pipe it.** A pipe reports the tail's status,
-not the driver's 10 or 4. Run each verb on its own.
+not the driver's 10 or 4. Run each verb on its own. If a printed gate payload
+looks truncated, read the file its `full_context` names.
+
+**Answer a gate with the `echo '{...}' |` form, never a heredoc** - a
+worktree-isolated session refuses every heredoc command. A decision whose
+values contain an apostrophe goes in a file: `--decision <path>`.
 
 Every gate payload carries an `instructions` string - follow it; this file
 covers only the judgment behind it.
@@ -52,6 +61,12 @@ covers only the judgment behind it.
 
 Exit 1 means stop: a failed `make lint`/`make upgrade` must be fixed first.
 Leftover state from an earlier run is reported with the command that clears it.
+
+`start` first rebases the branch onto the latest `origin/main`. When it cannot
+(a merge commit on the branch, a conflict, uncommitted edits to files main also
+changed, or a failed fetch), the branch stays put and the gate's `trunk` says
+why; tell the user. `abort` does not undo the rebase: `trunk.from` is the
+pre-rebase HEAD.
 
 ### Step 2 - the phase-1 gate
 
@@ -100,14 +115,18 @@ Two layers, in order; `--skip-review` is the only way to skip either. New
 features are the *most* important case to review.
 
 **4a - heterogeneous model.** A different model family reviews
-`<last-tag>..HEAD` against the CHANGELOG section as stated intent:
+`<last-tag>..HEAD` through three lenses (logic, inputs, impact), with the
+CHANGELOG section as the author's stated intent:
 
 ```bash
 .claude/skills/release-auto/scripts/release.py second-opinion   # Bash timeout 600000
 ```
 
-It picks the model itself (and says why), and skips the layer when the
-Copilot CLI is absent. **Challenge every finding** - the reviewer has no
+It picks the model itself (`model_reasons` says why), and skips the layer when
+the Copilot CLI is absent or nothing changed. Each finding carries its `lens`;
+lenses are not deduplicated, so merge findings that name the same defect.
+`failed` lists lenses that did not finish - report them, their findings are
+missing. **Challenge every finding** - the reviewer has no
 context beyond the brief. Read the flagged code; dismiss with a reason, fix
 when clearly right, `AskUserQuestion` when uncertain - never auto-fix on doubt.
 Report a verdict per finding (`fixed` / `dismissed (reason)` /
@@ -120,6 +139,11 @@ rerun with `--files <fixed files>`; the driver refuses a third run.
 .claude/skills/release-auto/scripts/release.py copilot-review   # Bash timeout 540000
 ```
 
+**A reported issue outranks the running review.** When the user or another
+session reports a defect in this release mid-coda, stop: do not run another
+review. Fix every open report, `recut`, `push`, then review again - a review of
+the old head is spent on code about to change.
+
 It requests the review only when needed (a force-push usually does not
 re-request it) and waits. Exit 4: re-run it. Exit 10 (`review_triage`): every
 thread carries a `proposal` from `review-policy.json` (`null` = no rule
@@ -130,13 +154,17 @@ bullet. **Resolve every `fix`/`resolve-only` thread before re-cutting** -
 the force-push makes them outdated, and an outdated thread still blocks merge:
 
 ```bash
-python3 .claude/skills/address-pr-review/scripts/pr_review.py resolve <thread-id>
+python3 .claude/skills/address-pr-review/scripts/pr_review.py resolve <thread-id> [<thread-id> ...]
 .claude/skills/release-auto/scripts/release.py recut
 .claude/skills/release-auto/scripts/release.py push
 ```
 
-Then run `copilot-review` again. Past two fix cycles the payload sets
-`fix_cycle_cap_reached`: hand what remains to the user.
+Then follow the `next` that `push` prints. A push that changed nothing is not
+a fix cycle. At `fix_cycles_left: 0` the next `copilot-review` is the final
+review (its payload sets `fix_cycle_cap_reached`): hand its threads to the user
+instead of fixing them. The user resolves each one or leaves it open; since
+`push --done` refuses on an open thread, finish with `push --done --force` when
+the user leaves some open.
 
 **`recut` is the lint gate - never validate a coda fix with bare `make lint`.**
 During a release `[Unreleased]` is empty, so bare `make lint` false-positives

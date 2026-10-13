@@ -27,17 +27,16 @@ State lives under ``.release/`` (git-ignored, version-keyed) and is wiped on
 success. ``resume`` refuses if the state version mismatches or HEAD moved
 underneath the orchestrator.
 
-Usage:
-    release.py start --version 1.16.0 [--skip-review]
-    release.py resume --decision .release/decision.json
-    release.py resume --decision -            # read decision JSON from stdin
-    release.py second-opinion [--files ...]   # coda 4a: heterogeneous-model review
-    release.py copilot-review                 # coda 4b: request/await Copilot, triage
-    release.py recut                          # coda re-cut (reconcile+recut+lint)
-    release.py push [--done [--force]]        # force-with-lease + create/update PR
-    release.py integration --since <ts>       # await the integration workflows
-    release.py status
-    release.py abort                          # soft-rewind commits, wipe .release/
+Usage (from the repo root):
+    .claude/skills/release-auto/scripts/release.py start --version X.Y.Z [--skip-review]
+    .claude/skills/release-auto/scripts/release.py resume --decision -
+    .claude/skills/release-auto/scripts/release.py second-opinion [--files ...]
+    .claude/skills/release-auto/scripts/release.py copilot-review
+    .claude/skills/release-auto/scripts/release.py recut
+    .claude/skills/release-auto/scripts/release.py push [--done [--force]]
+    .claude/skills/release-auto/scripts/release.py integration --since <ts>
+    .claude/skills/release-auto/scripts/release.py status
+    .claude/skills/release-auto/scripts/release.py abort
 """
 
 from __future__ import annotations
@@ -63,6 +62,9 @@ PLAN_FILE = STATE_DIR / "commit-plan.json"
 # be picked up by `load_plan()` on a run that never authored one, turning "the
 # phase-1 gate must author it first" into "we silently shipped last release's".
 PREV_PLAN_FILE = STATE_DIR / "commit-plan.prev.json"
+GATE_FILE = STATE_DIR / "gate.json"
+# The release's CHANGELOG section, handed to second-opinion as stated intent.
+INTENT_FILE = STATE_DIR / "intent.md"
 
 EXIT_OK = 0
 EXIT_ERROR = 1
@@ -84,16 +86,26 @@ POLICY = Path(".claude/skills/release-auto/review-policy.json")
 # Sibling skills driven by the review coda.
 PR_REVIEW_SCRIPT = Path(".claude/skills/address-pr-review/scripts/pr_review.py")
 BRIEF_SCRIPT = Path(".claude/skills/second-opinion/scripts/review_brief.py")
-# VS Code Server ships the Copilot CLI outside PATH.
-COPILOT_FALLBACK = Path(
-    "~/.vscode-server/data/User/globalStorage/github.copilot-chat/copilotCli/copilot"
-).expanduser()
 
 # Workflows gated on this PR label run the integration suite. The label also
 # re-runs them on every push, so it is applied once, when nothing is left to push.
 INTEGRATION_LABEL = "test:integration"
 INTEGRATION_PASS = ("success", "skipped", "neutral")
 GH_TIMEOUT = 60
+# `gh` errors raised before the request reached GitHub, so replaying any call -
+# `gh pr create` included - cannot apply it twice. A TLS-intercepting proxy
+# produces the handshake timeout in bursts that clear within seconds. "Timeout
+# trying to log in" is gh failing to reach GitHub, not a missing login.
+TRANSIENT_GH_ERRORS = (
+    "TLS handshake timeout",
+    "dial tcp",
+    "proxyconnect tcp",
+    "Timeout trying to log in",
+)
+GH_ATTEMPTS = 3
+GH_BACKOFF = 2.0
+# The release PR's base, and what `start` rebases onto.
+TRUNK = "main"
 
 BULLET_WORD_CAP = 40
 # Second-opinion runs allowed per release (the review + one scoped rerun), and
@@ -158,42 +170,43 @@ def tree_is_clean() -> bool:
 
 def head_is_published() -> bool:
     """
-    True only if HEAD exactly matches the branch's upstream tracking ref.
+    True only if HEAD exactly matches ``origin/<branch>``.
 
-    False when there is no upstream (never pushed) OR the two SHAs differ for any
+    False when the branch was never pushed OR the two SHAs differ for any
     reason - local ahead, behind, or diverged. Any mismatch means the local and
     published states are not identical, so the nothing-to-release guard should not
     treat this as a finished, published release.
+
+    Not ``@{u}``: ``git switch -c x origin/main`` tracks trunk, and the push
+    goes to ``origin/<branch>`` whatever the upstream says.
     """
-    upstream = git(
-        ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], check=False
+    remote = git(
+        ["rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{current_branch()}"],
+        check=False,
     )
-    if not upstream:
-        return False
-    up_sha = git(["rev-parse", "@{u}"], check=False)
-    return bool(up_sha) and up_sha == head_sha()
+    return bool(remote) and remote == head_sha()
 
 
 def tracked_and_untracked(base: str) -> list[str]:
     """
     Return every path that differs between ``base`` and the working tree.
 
-    Union of committed + staged + unstaged tracked changes (``git diff --name-only
-    base``) and untracked files (``git status --porcelain`` ``??`` entries). This
-    is the *universe* both ``reconcile`` and ``recut`` pre-validation operate on.
+    Tracked changes (``git diff --name-only base``) plus untracked files (``git
+    status --porcelain`` ``??`` entries) - exactly what a recut commits, since it
+    soft-resets to ``base``, unstages everything and stages the working tree.
+    This is the *universe* both ``reconcile`` and ``recut`` pre-validation
+    operate on.
+
+    Not the index or ``base..HEAD``: a file a branch commit (or the index) added
+    and the working tree deleted again is absent from base and disk alike, so
+    ``git add`` would fail on a pathspec that matches nothing.
     """
     paths: set[str] = set()
-    # `git diff <base>` compares base->working tree and misses paths that are
-    # staged in the index but no longer differ in the working tree; `--cached`
-    # compares base->index. Union of the two covers committed + staged + unstaged
-    # tracked changes regardless of where a given change currently sits.
     # `--no-renames` so a rename surfaces as BOTH its delete (source) and add
     # (destination) paths; otherwise the collapsed source path escapes every
     # group's globs and its removal is never staged (a moved file left duplicated).
     tracked = git(["diff", "--no-renames", "--name-only", base], check=False)
     paths.update(p for p in tracked.splitlines() if p)
-    staged = git(["diff", "--no-renames", "--name-only", "--cached", base], check=False)
-    paths.update(p for p in staged.splitlines() if p)
     # -uall expands untracked directories into individual file paths; without it
     # git reports a wholly-untracked dir as a single `?? dir/` entry that no glob
     # meant for files would match, producing a spurious orphan.
@@ -484,12 +497,19 @@ def recut(plan: dict, state: dict, validate=None) -> list[str]:
     mutated on any failure (decision 9a). On any exception after mutation begins,
     the working tree is soft-rewound to the pre-recut HEAD (uncommitted work
     preserved) and the error re-raised. Returns the list of commit subjects.
+
+    The rewind writes back a byte copy of the index file, so whatever was staged
+    before the run is still staged after it. Not ``write-tree``/``read-tree``: a
+    tree drops intent-to-add entries and cannot be written from an index with
+    unmerged entries.
     """
     base = state["reset_target"]
     version = state["version"]
     assigned = prevalidate(plan, base)  # raises before any mutation
 
     pre_head = head_sha()
+    index_file = Path(git(["rev-parse", "--git-path", "index"]))
+    pre_index = index_file.read_bytes() if index_file.is_file() else None
     write_backup(version)
     try:
         git(["reset", "--soft", base])
@@ -506,7 +526,15 @@ def recut(plan: dict, state: dict, validate=None) -> list[str]:
         if validate is not None:
             validate()
     except Exception:
-        restore_soft(pre_head)
+        if pre_index is None:
+            restore_soft(pre_head)
+        else:
+            git(["reset", "--soft", pre_head])
+            # Beside the index, then renamed: an interrupted in-place write would
+            # destroy the staging this rewind exists to keep.
+            tmp = index_file.with_name(index_file.name + ".release-restore")
+            tmp.write_bytes(pre_index)
+            os.replace(tmp, index_file)
         raise
     return subjects
 
@@ -549,7 +577,7 @@ def run_extract(version: str) -> str:
         check=False,
     )
     if result.returncode != 0:
-        raise ReleaseError(f"extract.py failed:\n{result.stderr.strip()}")
+        raise ReleaseError(f"{script} failed:\n{result.stderr.strip()}")
     return result.stdout.strip()
 
 
@@ -615,13 +643,134 @@ def refuse_shared_branch() -> None:
         )
 
 
+def rebase_onto_trunk() -> dict:
+    """
+    Replay the branch onto ``origin/main`` when trunk has moved past its base.
+
+    Uncommitted work is stashed around the rebase, but only when no dirty path
+    is one trunk changed - then re-applying the stash cannot conflict. Not
+    ``--autostash``: when re-applying conflicts it still exits 0, leaving
+    conflict markers in the tree and the stash behind.
+
+    A branch with a merge commit is not rebased: a plain rebase drops merges,
+    and with them any edit that exists only in the merge.
+
+    A failed fetch, an overlap or a conflict leaves the branch where it was and
+    is reported, not raised: a stale base makes the PR out of date, which
+    GitHub shows and the user can fix by hand.
+    """
+    trunk = f"origin/{TRUNK}"
+    try:
+        # --tags: a fetch naming a branch follows no tags, and both the last tag
+        # and the shipped-version check below must see what main has tagged.
+        fetch = subprocess.run(
+            ["git", "fetch", "--tags", "origin", TRUNK],
+            capture_output=True,
+            text=True,
+            timeout=GH_TIMEOUT,
+        )
+        detail = fetch.stderr.strip()[-500:] if fetch.returncode else None
+    except subprocess.TimeoutExpired:
+        detail = f"timed out after {GH_TIMEOUT}s"
+    if detail is not None:
+        return {
+            "rebased": False,
+            "behind": None,
+            "reason": f"`git fetch --tags origin {TRUNK}` failed: {detail}",
+        }
+    if _is_ancestor(trunk, "HEAD"):
+        return {"rebased": False, "behind": 0}
+    base = git(["merge-base", trunk, "HEAD"])
+    behind = int(git(["rev-list", "--count", f"HEAD..{trunk}"]) or 0)
+    if git(["rev-list", "--merges", f"{base}..HEAD"]):
+        return {
+            "rebased": False,
+            "behind": behind,
+            "reason": "the branch has merge commits, which a rebase would drop; "
+            "rebase by hand",
+        }
+    dirty = working_tree_dirty_paths()
+    trunk_paths = git(["diff", "--name-only", "--no-renames", base, trunk]).splitlines()
+    # A path also collides with its ancestors and descendants: trunk adding the
+    # file `dir` blocks restoring an untracked `dir/local.txt` just as surely.
+    overlap = sorted(
+        d
+        for d in dirty
+        if any(
+            d == t or d.startswith(t + "/") or t.startswith(d + "/")
+            for t in trunk_paths
+        )
+    )
+    if overlap:
+        return {
+            "rebased": False,
+            "behind": behind,
+            "reason": "uncommitted edits to files trunk also changed; "
+            "commit them to rebase",
+            "paths": overlap,
+        }
+    before = head_sha()
+    stash_tip = ["rev-parse", "--verify", "--quiet", "refs/stash"]
+    stash_before = git(stash_tip, check=False)
+    if dirty:
+        git(["stash", "push", "--include-untracked", "--quiet"])
+    # A push that saves nothing still exits 0; popping then would apply an
+    # older, unrelated stash.
+    stashed = git(stash_tip, check=False) != stash_before
+    rebase = subprocess.run(["git", "rebase", trunk], capture_output=True, text=True)
+    conflicts: list[str] = []
+    if rebase.returncode:
+        conflicts = git(
+            ["diff", "--name-only", "--diff-filter=U"], check=False
+        ).splitlines()
+        # A rejecting pre-rebase hook fails before any rebase state exists, and
+        # an abort then fails too. The paths are relative to the repo root (cwd).
+        if any(
+            Path(git(["rev-parse", "--git-path", d])).exists()
+            for d in ("rebase-merge", "rebase-apply")
+        ):
+            git(["rebase", "--abort"])
+    if (
+        stashed
+        and subprocess.run(
+            ["git", "stash", "pop", "--index", "--quiet"], capture_output=True
+        ).returncode
+    ):
+        raise ReleaseError(
+            "the rebase finished but restoring your uncommitted work failed; it is "
+            "safe in `git stash list` - run `git stash pop`, resolve, start again"
+        )
+    if rebase.returncode:
+        return {
+            "rebased": False,
+            "behind": behind,
+            "reason": "rebasing onto trunk conflicts; rebase by hand to resolve",
+            "paths": conflicts or [(rebase.stderr or rebase.stdout).strip()[-2000:]],
+        }
+    return {
+        "rebased": True,
+        "behind": behind,
+        "from": before,
+        "onto": git(["rev-parse", trunk]),
+    }
+
+
 # -- gate emission ------------------------------------------------------------
 
 
 def emit_gate(kind: str, context: dict, options: list[str]) -> int:
-    """Print the sentinel + decision payload and return the gate exit code."""
+    """
+    Print the sentinel + decision payload and return the gate exit code.
+
+    The payload is also written whole to ``.release/gate.json``, named first in
+    the print: a harness that truncates long output cuts the middle, and the
+    fields lost there are exactly the ones nobody notices are missing.
+    """
+    payload = {"kind": kind, "context": context, "options": options}
+    STATE_DIR.mkdir(exist_ok=True)
+    GATE_FILE.write_text(json.dumps(payload, indent=2) + "\n")
     print("DECISION_NEEDED")
-    print(json.dumps({"kind": kind, "context": context, "options": options}, indent=2))
+    print(json.dumps({"full_context": str(GATE_FILE.resolve()), **payload}))
     return EXIT_GATE
 
 
@@ -677,6 +826,17 @@ def phase_start(version: str, skip_review: bool, reopen: bool = False) -> int:
             "`start --reopen`."
         )
 
+    # Before lint and the bump, so the release is linted and cut on the trunk the
+    # PR merges into. After it the last tag may be newer (a hotfix on main).
+    trunk = rebase_onto_trunk()
+    tag = last_tag()
+    # Checked after the rebase, which can bring the tag in from main; a tagged
+    # version has shipped, so --reopen does not apply either.
+    if tag_exists(version):
+        raise ReleaseError(
+            f"v{version} is already tagged (shipped) - pick the next version."
+        )
+
     # `lint-diff` on a reopen, not bare `lint`. The CHANGELOG entry is already
     # cut into `## [X.Y.Z]` by then, so `[Unreleased]` is empty and any
     # uncommitted runtime fix trips check-changelog - the same false positive
@@ -714,12 +874,19 @@ def phase_start(version: str, skip_review: bool, reopen: bool = False) -> int:
         "cspell_findings": cspell,
         "diff_name_status": diff,
         "plan_seed": seed_plan(),
+        "trunk": trunk,
         "instructions": (
             "Compose the CHANGELOG entry (Edit CHANGELOG.md), fix any cspell typos, "
             "then author .release/commit-plan.json (file-granularity glob->commit). "
             "When plan_seed.seeded is true the previous release's plan is already "
             "there - edit it rather than starting over. Resume with a decision: "
             '{"cspell_add": [...], "version_final": "X.Y.Z", "plan_written": true}'
+        )
+        + (
+            f" trunk.rebased is false: tell the user the branch is not on the latest "
+            f"origin/{TRUNK} and why (trunk.reason, trunk.paths)."
+            if trunk.get("behind") != 0 and not trunk.get("rebased")
+            else ""
         ),
     }
     return emit_gate("phase1", context, ["author-plan-and-resume", "abort"])
@@ -757,15 +924,13 @@ def _cspell_scan() -> list:
     )
     if result.returncode != 0:
         raise ReleaseError(
-            "cspell_words.py scan failed:\n"
+            f"{script} scan failed:\n"
             + (result.stderr.strip() or result.stdout.strip())
         )
     try:
         return json.loads(result.stdout or "[]")
     except json.JSONDecodeError as exc:
-        raise ReleaseError(
-            f"cspell_words.py scan returned unparseable output: {exc}"
-        ) from exc
+        raise ReleaseError(f"{script} scan returned unparseable output: {exc}") from exc
 
 
 def _cspell_add(words: list[str]) -> None:
@@ -784,8 +949,7 @@ def _cspell_add(words: list[str]) -> None:
     )
     if result.returncode != 0:
         raise ReleaseError(
-            "cspell_words.py add failed:\n"
-            + (result.stderr.strip() or result.stdout.strip())
+            f"{script} add failed:\n" + (result.stderr.strip() or result.stdout.strip())
         )
 
 
@@ -993,6 +1157,7 @@ def resume_push(state: dict, decision: dict) -> int:
         json.dumps(
             {
                 "version": state["version"],
+                "fix_cycles_left": CODA_PUSH_CAP - state.get("coda_pushes", 0),
                 "next": (
                     f"Run the review coda: `{CLI} second-opinion`, then "
                     f"`{CLI} copilot-review`. Fold fixes with `{CLI} recut` + "
@@ -1006,30 +1171,43 @@ def resume_push(state: dict, decision: dict) -> int:
     return EXIT_OK
 
 
-def _do_push() -> None:
-    """Push with ``--force-with-lease``, setting upstream on first push."""
+def _do_push() -> bool:
+    """
+    Push to ``origin/<branch>`` with ``--force-with-lease``; False when in sync.
+
+    Always to the same-named remote branch with ``-u``, never a bare ``git
+    push``: a branch made with ``git switch -c x origin/main`` tracks trunk,
+    and a bare push would refuse (or, under ``push.default=upstream``, hit main).
+    """
     branch = current_branch()
     if not branch or branch == "HEAD":
         raise ReleaseError("detached HEAD - cannot push a release without a branch.")
+    remote = f"refs/remotes/origin/{branch}"
+    # A reused branch name whose remote was deleted on merge keeps a stale
+    # tracking ref, and the lease taken against it rejects the push. `ls-remote
+    # --exit-code` exits 2 for "no such ref" in any locale and, unlike a fetch,
+    # leaves the lease intact when the branch does exist. Checked before the
+    # in-sync shortcut, which a stale ref equal to HEAD would otherwise satisfy.
+    if git(["rev-parse", "--verify", "--quiet", remote], check=False):
+        gone = subprocess.run(
+            ["git", "ls-remote", "--exit-code", "--heads", "origin", branch],
+            capture_output=True,
+            timeout=GH_TIMEOUT,
+        )
+        if gone.returncode == 2:
+            git(["update-ref", "-d", remote])
     if head_is_published():
         # The branch is already in sync with origin - e.g. pushed out-of-band
         # because this tool cannot push to a guarded remote. Skip the push so the
         # caller still runs _upsert_pr() + finalize instead of aborting on a
         # rejected push (which would strand the PR-body sync and state wipe).
         print("branch already in sync with origin - skipping push")
-        return
-    upstream = git(
-        ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], check=False
-    )
-    if upstream:
-        git(["push", "--force-with-lease"])
-    else:
-        # First push from this branch. Set upstream, but still use
-        # --force-with-lease: recut rewrites history, so if the branch already
-        # exists on origin (just not tracked locally) a plain push would be
-        # rejected non-fast-forward. --force-with-lease is safe here - it refuses
-        # only if origin has commits we have not seen.
-        git(["push", "-u", "--force-with-lease", "origin", branch])
+        return False
+    # --force-with-lease even on a first push: recut rewrites history, so a
+    # branch that exists on origin but is not tracked locally would reject a
+    # plain push. The lease refuses only if origin has commits we have not seen.
+    git(["push", "-u", "--force-with-lease", "origin", branch])
+    return True
 
 
 def _upsert_pr(version: str) -> None:
@@ -1042,24 +1220,38 @@ def _upsert_pr(version: str) -> None:
         )
     title = f"chore(release): {version}"
     # `gh pr view` also finds a merged or closed PR for a reused branch name
-    pr_state = subprocess.run(
-        ["gh", "pr", "view", "--json", "state", "--jq", ".state"],
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=GH_TIMEOUT,
-    )
+    pr_state = _run_gh(["pr", "view", "--json", "state", "--jq", ".state"])
     if pr_state.returncode == 0 and pr_state.stdout.strip() == "OPEN":
         _gh(["pr", "edit", "--title", title, "--body", body])
     else:
-        _gh(["pr", "create", "--base", "main", "--title", title, "--body", body])
+        _gh(["pr", "create", "--base", TRUNK, "--title", title, "--body", body])
+
+
+def _run_gh(args: list[str]) -> subprocess.CompletedProcess[str]:
+    """Run a ``gh`` command, retrying the failures in ``TRANSIENT_GH_ERRORS``."""
+    for attempt in range(1, GH_ATTEMPTS + 1):
+        result = subprocess.run(
+            ["gh", *args],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=GH_TIMEOUT,
+        )
+        transient = any(token in result.stderr for token in TRANSIENT_GH_ERRORS)
+        if result.returncode == 0 or not transient or attempt == GH_ATTEMPTS:
+            return result
+        print(
+            "gh: network error before reaching GitHub, retrying "
+            f"({attempt}/{GH_ATTEMPTS - 1})",
+            file=sys.stderr,
+        )
+        time.sleep(GH_BACKOFF * attempt)
+    raise AssertionError("unreachable")  # pragma: no cover
 
 
 def _gh(args: list[str]) -> None:
     """Run a ``gh`` command, raising ``ReleaseError`` on failure."""
-    result = subprocess.run(
-        ["gh", *args], capture_output=True, text=True, check=False, timeout=GH_TIMEOUT
-    )
+    result = _run_gh(args)
     if result.returncode != 0:
         raise ReleaseError(f"gh {' '.join(args)} failed:\n{result.stderr.strip()}")
 
@@ -1272,9 +1464,7 @@ def trigger_integration() -> dict:
 
 def _gh_json(args: list[str]) -> list | dict:
     """Run a ``gh`` command that prints JSON and return it parsed."""
-    result = subprocess.run(
-        ["gh", *args], capture_output=True, text=True, check=False, timeout=GH_TIMEOUT
-    )
+    result = _run_gh(args)
     if result.returncode != 0:
         raise ReleaseError(f"gh {' '.join(args)} failed:\n{result.stderr.strip()}")
     return json.loads(result.stdout or "null")
@@ -1379,22 +1569,15 @@ def cmd_integration(args: argparse.Namespace) -> int:
 # -- review coda --------------------------------------------------------------
 
 
-def _copilot_cli() -> str | None:
-    """Path to the Copilot CLI, or None when it is not installed."""
-    found = shutil.which("copilot")
-    if found:
-        return found
-    return str(COPILOT_FALLBACK) if COPILOT_FALLBACK.is_file() else None
-
-
 def cmd_second_opinion(args: argparse.Namespace) -> int:
     """
     Handle ``release.py second-opinion`` - coda 4a, a different model family.
 
-    Picks the model from the review brief (premium on trigger paths or large
-    diffs) and reviews ``<last-tag>..HEAD`` against the release's CHANGELOG
-    section, or only ``--files`` on the one allowed rerun. A missing Copilot
-    CLI skips the layer rather than blocking the release.
+    Delegates to ``review_brief.py run``, which picks the model from the brief
+    (premium on trigger paths or large diffs) and reviews ``<last-tag>..HEAD``
+    through three lenses, or only ``--files`` on the one allowed rerun. The
+    release's CHANGELOG section goes in as the author's stated intent. A missing
+    Copilot CLI (its exit 4) skips the layer rather than blocking the release.
     """
     state = load_state()
     runs = state.get("second_opinion_runs", 0)
@@ -1403,60 +1586,43 @@ def cmd_second_opinion(args: argparse.Namespace) -> int:
             f"second-opinion already ran {runs} times - move on to "
             f"`{CLI} copilot-review`"
         )
-    copilot = _copilot_cli()
-    if copilot is None:
-        print(json.dumps({"skipped": "copilot CLI not found"}, indent=2))
-        return EXIT_OK
-    tag, version = state["last_tag"], state["version"]
-    brief = subprocess.run(
-        ["uv", "run", "--frozen", "python", str(BRIEF_SCRIPT), "model", tag],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if brief.returncode != 0:
-        raise ReleaseError(f"review_brief.py model failed:\n{brief.stderr.strip()}")
-    choice = json.loads(brief.stdout)
-    diff = f"git diff {tag}..HEAD" + (
-        " -- " + " ".join(args.files) if args.files else ""
-    )
-    prompt = (
-        "Read .claude/skills/second-opinion/REVIEW-BRIEF.md AND the "
-        f"'## [{version}]' section of CHANGELOG.md (the author's stated intent), "
-        f"then review the branch's changes since {tag}. Run: {diff}. Dismiss "
-        "findings that contradict the documented intent unless the code genuinely "
-        "fails to deliver it (then flag the bullet-vs-code gap). Output findings "
-        "using the brief's format and severities."
-    )
+    STATE_DIR.mkdir(exist_ok=True)
+    INTENT_FILE.write_text(changelog_section(state["version"]) + "\n")
+    cmd = [
+        str(BRIEF_SCRIPT),
+        "run",
+        state["last_tag"],
+        "--intent",
+        str(INTENT_FILE),
+        "--timeout",
+        str(args.timeout),
+    ]
+    if args.files:
+        cmd += ["--files", *args.files]
+    # Each lens pass has its own --timeout and they run concurrently, so the
+    # whole run ends a few seconds of git past it.
     result = subprocess.run(
-        [
-            copilot,
-            "-p",
-            prompt,
-            "-s",
-            "--model",
-            choice["model"],
-            "--no-custom-instructions",
-            "--excluded-tools",
-            "skill",
-            "--allow-all-tools",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=args.timeout,
+        cmd, capture_output=True, text=True, check=False, timeout=args.timeout + 30
     )
+    if result.returncode in (3, 4):
+        reason = "nothing to review" if result.returncode == 3 else "no Copilot CLI"
+        try:
+            detail = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            detail = result.stdout.strip()
+        print(json.dumps({"skipped": reason, "detail": detail}, indent=2))
+        return EXIT_OK
     if result.returncode != 0:
-        raise ReleaseError(f"copilot failed:\n{result.stderr.strip()[-2000:]}")
+        tail = (result.stderr.strip() or result.stdout.strip())[-2000:]
+        raise ReleaseError(f"{BRIEF_SCRIPT} run failed:\n{tail}")
+    report = json.loads(result.stdout)
     state["second_opinion_runs"] = runs + 1
     save_state(state)
-    header = {
-        "model": choice["model"],
-        "reasons": choice.get("reasons", []),
-        "run": runs + 1,
-    }
-    print(json.dumps(header))
-    print(result.stdout.strip())
+    # Everything but the diff summary, so a key run adds later still reaches
+    # the agent.
+    dropped = ("trunk", "trunk_ref", "commits", "diffstat")
+    kept = {k: v for k, v in report.items() if k not in dropped}
+    print(json.dumps({"run": runs + 1, **kept}, indent=2))
     return EXIT_OK
 
 
@@ -1681,13 +1847,47 @@ def cmd_push(args: argparse.Namespace) -> int:
         )
     if args.done:
         return _done(state, force=getattr(args, "force", False))
-    _do_push()
-    _upsert_pr(state["version"])
+    # A push that sends nothing asks for no review, so it is not a fix cycle.
+    # The count is saved before the PR update can fail: a retry finds the branch
+    # in sync and would not count it again.
+    pushed = _do_push()
+    if pushed:
+        state["coda_pushes"] = state.get("coda_pushes", 0) + 1
     state["head_sha"] = head_sha()
-    state["coda_pushes"] = state.get("coda_pushes", 0) + 1
     save_state(state)
-    print(json.dumps({"pushed": state["version"], "pr": "updated"}, indent=2))
+    _upsert_pr(state["version"])
+    left = max(0, CODA_PUSH_CAP - state.get("coda_pushes", 0))
+    print(
+        json.dumps(
+            {
+                "pushed": state["version"] if pushed else None,
+                "pr": "updated",
+                "fix_cycles_left": left,
+                "next": _coda_next(left),
+            },
+            indent=2,
+        )
+    )
     return EXIT_OK
+
+
+def _coda_next(left: int) -> str:
+    """What the coda does after a push, given the fix cycles it has left."""
+    if left:
+        return (
+            f"Run `{CLI} copilot-review` (after `{CLI} second-opinion` if it has not "
+            f"run). Fold fixes with `{CLI} recut` + `{CLI} push`; finish with "
+            f"`{CLI} push --done`."
+        )
+    # Said here, not only at triage: by then the agent has already decided
+    # whether the review's fixes go into another cycle.
+    return (
+        f"That was the last fix cycle. Run `{CLI} copilot-review` once more for the "
+        "final review and hand its threads to the user without fixing them. The user "
+        "decides each one: resolve it, or leave it open. `push --done` refuses while "
+        f"any thread is open, so finish with `{CLI} push --done` once they are "
+        "resolved, or with `push --done --force` when the user leaves some open."
+    )
 
 
 def _done(state: dict, *, force: bool) -> int:
@@ -1837,7 +2037,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_second.add_argument("--files", nargs="+", help="Limit the rerun to these files")
     p_second.add_argument(
-        "--timeout", type=int, default=570, help="Seconds (default 570)"
+        "--timeout", type=int, default=540, help="Seconds per lens pass (default 540)"
     )
     p_second.set_defaults(func=cmd_second_opinion)
 

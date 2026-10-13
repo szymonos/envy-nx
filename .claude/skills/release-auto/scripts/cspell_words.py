@@ -10,9 +10,9 @@ Two modes:
         project-words.txt and re-sort. Idempotent.
 
 Usage:
-  cspell_words.py scan
-  cspell_words.py scan --since v1.8.0          # override auto-detected base ref
-  cspell_words.py add backrefs idna pathspec
+  .claude/skills/release-auto/scripts/cspell_words.py scan
+  .claude/skills/release-auto/scripts/cspell_words.py scan --since v1.8.0
+  .claude/skills/release-auto/scripts/cspell_words.py add backrefs idna pathspec
 """
 
 from __future__ import annotations
