@@ -1,6 +1,6 @@
 [project]
 name = "envy-nx"
-version = "1.30.0"
+version = "1.31.0"
 requires-python = "~=3.13.0"
 dependencies = ["PyYAML"]
 
@@ -19,6 +19,12 @@ python_files = ["test_*.py"]
 [tool.ruff]
 line-length = 88
 indent-width = 4
+# Vendored verbatim from the upstream skills repo, which lints
+# it under its own config; reformatting here would break the byte-identical copy.
+extend-exclude = [
+  ".claude/skills/address-pr-review",
+  ".claude/skills/second-opinion/scripts",
+]
 
 [tool.ruff.lint]
 fixable = ["ALL"]
