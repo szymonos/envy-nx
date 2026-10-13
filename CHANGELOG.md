@@ -5,6 +5,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.31.0] - 2026-10-13
+
+The agent skills are refactored: `/second-opinion` reviews through three lenses, `/release-auto` picks up the driver fixes from its `/prepare-pr` sibling, and the shared review skills now come byte-identical from one upstream source.
+
+### Added
+
+- `/second-opinion` now reviews through three parallel lenses (logic, inputs, impact), includes uncommitted work, and picks `gpt-6-luna` or `gpt-6-sol` itself from the brief's trigger paths and the diff size.
+- `/release-auto` `start` now rebases the branch onto the latest `origin/main`, and the phase-1 gate says why when it cannot.
+- `/address-pr-review` threads now show their latest replies, and `resolve` takes several thread IDs in one call.
+
+### Changed
+
+- `/release-auto` `second-opinion` now runs `review_brief.py run` with the release notes as the author's stated intent; a missing Copilot CLI or an empty diff skips the layer.
+- `/release-auto` and `/address-pr-review` now retry `gh` calls that fail before reaching GitHub, such as TLS handshake timeouts behind an intercepting proxy.
+- `/release-auto` `push` now reports `fix_cycles_left`, a push that sends nothing no longer counts as a fix cycle, and every gate payload is also saved to `.release/gate.json`.
+- `/address-pr-review` and `/second-opinion` are now vendored byte-identical from an upstream skills repo, so ruff skips them here.
+- Validated nixpkgs revision advanced to `8edc0c72e3a3` - built with every scope and installed end-to-end on Linux and macOS before landing.
+
+### Fixed
+
+- `/release-auto` `recut` no longer fails on a file a branch commit added and the working tree deleted, and a failed recut keeps what was staged before the run.
+- `/release-auto` no longer reports a branch that tracks `origin/main` as published, always pushes to `origin/<branch>`, and drops a stale tracking ref left by a remote branch deleted on merge.
+
+### Removed
+
+- The `grill-with-docs` and `slide-deck-builder` skills, no longer used in this repo.
+
 ## [1.30.0] - 2026-10-12
 
 PowerShell kubectl aliases now tab-complete their arguments like plain `kubectl`.
