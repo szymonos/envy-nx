@@ -22,6 +22,8 @@ State-aware Copilot PR review handler. Detects the current review state, drives 
 
 **Important:** always trigger Copilot via `scripts/pr_review.py trigger`, never via ad-hoc `gh pr edit --add-reviewer` invocations or raw GraphQL mutations from the agent. `scripts/pr_review.py trigger` wraps `gh pr edit --add-reviewer copilot-pull-request-reviewer` with the right reviewer login, idempotency handling, and uniform error reporting; one-off calls drift in subtle ways (wrong login alias, no idempotency, no JSON output for the skill's state machine to consume). If `trigger` fails, surface the error to the user - Copilot may need to be enabled in repo settings.
 
+For a call no verb covers, run `scripts/pr_review.py api <gh api args>` instead of `gh api`: same arguments, retried through transient TLS handshake timeouts.
+
 ## Review states
 
 The skill operates as a state machine. Four states are possible:
@@ -105,7 +107,15 @@ It prints `{"resolved": [...], "failed": [...]}` and exits 1 when any thread sta
 
 After processing all `fix` and `resolve-only` items:
 
-- If any `skip` items remain: present them to the user via `AskUserQuestion`. For each, offer three options: "Fix it" (Claude fixes now), "Resolve without fix" (intentional choice), "Leave open" (for later / human reviewer to decide). Act on user's choices.
+- If any `skip` items remain: present them to the user via `AskUserQuestion`. For each, offer three options: "Fix it" (Claude fixes now), "Resolve without fix" (intentional choice, with a one- or two-sentence draft reply giving the reason), "Leave open" (for later / human reviewer to decide). Act on user's choices. A thread resolved without a fix gets the approved reply first, and is resolved only after `reply` exits 0:
+
+  ```bash
+  scripts/pr_review.py reply <thread-id> --body '<the approved reply>'
+  scripts/pr_review.py reply <thread-id> --body - < <file>
+  ```
+
+  The second form is for a reply containing an apostrophe; write that file with the file-writing tool, never a heredoc - worktree-isolated sessions refuse heredocs.
+
 - Report: "N fixed, M resolved (stale/intentional), K surfaced to user."
 
 ### Phase 4 - commit and push
@@ -123,7 +133,7 @@ If any files were edited in Phase 3:
 
 The push will trigger a new Copilot review automatically. The skill is **one-shot** - it does not re-invoke itself after pushing. The user decides whether to re-run.
 
-If no files were edited (all threads were `resolve-only` or `skip` → leave-open), skip the commit - just report the resolution results.
+If no files were edited (every thread was `resolve-only`, `skip` → leave-open, or `skip` → resolved without a fix after its reply), skip the commit - just report the resolution results.
 
 ## Anti-patterns
 
@@ -131,7 +141,7 @@ If no files were edited (all threads were `resolve-only` or `skip` → leave-ope
 - **Treating "outdated" as "handled".** `isOutdated: true` means the diff moved under the comment, not that anyone read it. Don't assume the fresh review re-raises it: Copilot is not obliged to repeat a finding, and an unresolved outdated thread still blocks merge under conversation-resolution rules.
 - **Skipping a thread because its review is stale.** Thread selection is not SHA-scoped - `state` and `unresolved` both return threads from *any* prior review. A finding does not stop being true because a newer commit landed; triage it on its merits.
 - **Resolving `skip` items silently.** The human might want to act on them - a "consider X" suggestion might actually be a good idea. Surface, don't suppress.
-- **Posting reply comments before resolving.** Silent resolve is the design choice - keeps the PR history clean. The fix is visible in the diff; the resolution is visible in the thread state.
+- **Replying to threads the user did not close without a fix.** Silent resolve is the default - keeps the PR history clean. The fix is visible in the diff; the resolution is visible in the thread state. The one exception is a thread the user chose to resolve without a fix: nothing else records why, so it gets the reply they approved.
 - **Looping `wait` on timeout.** If `wait` exits 4 (timeout), don't immediately re-call it. Surface to the user; Copilot may be queued or rate-limited.
 - **Copying the reviewer's suggested fix verbatim.** The reviewer (Copilot or human) suggests direction; Claude writes the actual fix using its knowledge of the codebase's patterns and accepted decisions.
 - **Resolving threads for human reviewers' comments without checking.** The skill processes ALL unresolved fresh threads regardless of author. If a human reviewer left a comment expecting a human reply, resolving silently would be rude. Classify these as `skip` unless the fix is unambiguous.

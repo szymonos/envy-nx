@@ -45,6 +45,13 @@ wait --pr N [--interval 30] [--timeout 480]
 resolve <thread-id> [<thread-id> ...]
     Resolve review threads via GraphQL. Exit 1 when any stays unresolved.
 
+reply <thread-id> --body TEXT|-
+    Post a reply to a review thread; `-` reads the body from stdin.
+
+api <gh api args...>
+    Run `gh api` with the arguments verbatim, retried like every other call.
+    For any call no verb above covers; relays gh's output and exit code.
+
 Every thread carries its opening comment and `replies`: the latest
 REPLIES_SHOWN replies (with `replyCount` for the total), so an earlier
 "won't fix" or a question back to the reviewer is visible without `gh api`.
@@ -55,6 +62,9 @@ REPLIES_SHOWN replies (with `replyCount` for the total), so an earlier
 .claude/skills/address-pr-review/scripts/pr_review.py trigger --pr 37
 .claude/skills/address-pr-review/scripts/pr_review.py wait --pr 37 --timeout 480
 .claude/skills/address-pr-review/scripts/pr_review.py resolve PRRT_xxx PRRT_yyy
+.claude/skills/address-pr-review/scripts/pr_review.py reply PRRT_xxx --body 'Intentional.'
+.claude/skills/address-pr-review/scripts/pr_review.py reply PRRT_xxx --body - < /tmp/reply.md
+.claude/skills/address-pr-review/scripts/pr_review.py api repos/{owner}/{repo}/pulls/37/comments
 """
 
 from __future__ import annotations
@@ -83,6 +93,16 @@ GH_TIMEOUT = 120
 TRANSIENT_GH_ERRORS = ("TLS handshake timeout", "dial tcp", "proxyconnect tcp")
 GH_ATTEMPTS = 3
 GH_BACKOFF = 2.0
+
+#: `gh api` options that take a value (`gh api --help`). The argument after one
+#: is its value, never an option.
+GH_API_VALUE_OPTIONS = frozenset(
+    {
+        *("-F", "--field", "-f", "--raw-field", "-H", "--header", "-X", "--method"),
+        *("-q", "--jq", "-t", "--template", "-p", "--preview"),
+        *("--input", "--cache", "--hostname"),
+    }
+)
 
 #: Latest replies shown per thread. The newest is where a conversation stands.
 REPLIES_SHOWN = 3
@@ -157,8 +177,18 @@ mutation($threadId: ID!) {
 }
 """
 
+REPLY_MUTATION = """
+mutation($threadId: ID!, $body: String!) {
+  addPullRequestReviewThreadReply(input: {pullRequestReviewThreadId: $threadId, body: $body}) {
+    comment { url }
+  }
+}
+"""
 
-def _gh(cmd: list[str]) -> subprocess.CompletedProcess[str]:
+
+def _gh(
+    cmd: list[str], stdin: bytes | None = None, *, binary: bool = False
+) -> subprocess.CompletedProcess:
     """
     Run a gh command, retrying the failures in TRANSIENT_GH_ERRORS.
 
@@ -166,10 +196,15 @@ def _gh(cmd: list[str]) -> subprocess.CompletedProcess[str]:
     timeout matters because `wait` polls: a single `gh` call that blocks on a
     network stall or an auth prompt would otherwise hang the whole pipeline
     past its own deadline, with nothing on stderr to act on.
+
+    `binary` returns stdout and stderr as bytes, untouched by decoding or
+    newline translation.
     """
     for attempt in range(1, GH_ATTEMPTS + 1):
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=GH_TIMEOUT)
+            result = subprocess.run(
+                cmd, input=stdin, capture_output=True, text=not binary, timeout=GH_TIMEOUT
+            )
         except FileNotFoundError:
             print("gh CLI not found on PATH. Install and authenticate gh.", file=sys.stderr)
             raise SystemExit(1) from None
@@ -179,7 +214,8 @@ def _gh(cmd: list[str]) -> subprocess.CompletedProcess[str]:
                 file=sys.stderr,
             )
             raise SystemExit(1) from None
-        transient = any(token in result.stderr for token in TRANSIENT_GH_ERRORS)
+        stderr = result.stderr.decode(errors="replace") if binary else result.stderr
+        transient = any(token in stderr for token in TRANSIENT_GH_ERRORS)
         if result.returncode == 0 or not transient or attempt == GH_ATTEMPTS:
             return result
         print(
@@ -506,8 +542,88 @@ def cmd_resolve(args: argparse.Namespace) -> int:
     return 1 if failed else 0
 
 
+def cmd_reply(args: argparse.Namespace) -> int:
+    """Post a reply to one review thread."""
+    body = sys.stdin.read() if args.body == "-" else args.body
+    if not body.strip():
+        print("reply body is empty", file=sys.stderr)
+        return 2
+    data = _graphql(REPLY_MUTATION, threadId=args.thread_id, body=body)
+    reply = (data.get("data") or {}).get("addPullRequestReviewThreadReply") or {}
+    url = (reply.get("comment") or {}).get("url")
+    if not url:
+        print(f"reply not posted to {args.thread_id}: {json.dumps(data)[:300]}", file=sys.stderr)
+        return 1
+    print(json.dumps({"replied": args.thread_id, "url": url}))
+    return 0
+
+
+def _api_reads_stdin(gh_args: list[str]) -> bool:
+    """
+    Whether `gh api` would read stdin: `--input -`, or a typed field set to `@-`.
+
+    Parses the way gh's flag library (pflag) does, so an option's value is
+    never read as an option itself (`--template '--input=-'` is template text).
+    Every spelling counts: `-F k=@-`, `-Fk=@-`, `-F=k=@-`, `-iF k=@-`,
+    `--field k=@-`, `--field=k=@-`. `-f`/`--raw-field` take `@-` literally,
+    and a repeated `--input` keeps its last value.
+    """
+    input_value = ""
+    typed_stdin = False
+    args = iter(gh_args)
+    for arg in args:
+        if arg == "--":
+            break
+        if arg.startswith("--"):
+            name, eq, value = arg.partition("=")
+            if name not in GH_API_VALUE_OPTIONS:
+                continue
+            if not eq:
+                value = next(args, "")
+        elif arg.startswith("-") and len(arg) > 1:
+            # A shorthand group (`-iF`) runs to its first value-taking flag,
+            # which takes the rest of the group or else the next argument. Flag
+            # names end at `=`: in `-i=f` the `f` is the value of boolean `-i`.
+            group = arg[1:]
+            names = group.partition("=")[0]
+            at = next((i for i, c in enumerate(names) if f"-{c}" in GH_API_VALUE_OPTIONS), None)
+            if at is None:
+                continue
+            name, rest = f"-{group[at]}", group[at + 1 :]
+            value = rest.removeprefix("=") if rest else next(args, "")
+        else:
+            continue
+        if name == "--input":
+            input_value = value
+        # gh splits key=value on the first `=`; only a value of exactly `@-` reads stdin.
+        elif name in ("-F", "--field") and value.partition("=")[2] == "@-":
+            typed_stdin = True
+    return typed_stdin or input_value == "-"
+
+
+def cmd_api(gh_args: list[str]) -> int:
+    """
+    Run `gh api` with `gh_args` verbatim, relaying its stdout, stderr and exit code.
+
+    Stdin is read up front only when gh would read it: an agent's shell can
+    leave stdin open with nothing on it, and an unconditional read would block
+    until the timeout. gh never inherits stdin, so a retry gets the same input.
+    Output is relayed as bytes, so a binary response survives.
+    """
+    stdin = sys.stdin.buffer.read() if _api_reads_stdin(gh_args) else b""
+    result = _gh(["gh", "api", *gh_args], stdin=stdin, binary=True)
+    sys.stdout.buffer.write(result.stdout)
+    sys.stderr.buffer.write(result.stderr)
+    return result.returncode
+
+
 def main(argv: Sequence[str] | None = None) -> int:
-    """Parse args, dispatch to state/trigger/wait/resolve."""
+    """Parse args, dispatch to a subcommand."""
+    argv = list(sys.argv[1:] if argv is None else argv)
+    # argparse.REMAINDER rejects a leading option (`api --method POST ...`), so
+    # `api` takes its arguments before argparse sees them.
+    if argv[:1] == ["api"]:
+        return cmd_api(argv[1:])
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[1])
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -530,6 +646,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     p_resolve = sub.add_parser("resolve", help="Resolve review threads")
     p_resolve.add_argument("thread_ids", nargs="+", help="GraphQL node IDs (PRRT_*)")
 
+    p_reply = sub.add_parser("reply", help="Reply to a review thread")
+    p_reply.add_argument("thread_id", help="GraphQL node ID (PRRT_*)")
+    p_reply.add_argument("--body", required=True, help="Reply text, or - to read stdin")
+
+    sub.add_parser("api", help="Run `gh api ARGS...` verbatim, with retries")
+
     args = parser.parse_args(argv)
     handlers = {
         "state": cmd_state,
@@ -537,6 +659,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "trigger": cmd_trigger,
         "wait": cmd_wait,
         "resolve": cmd_resolve,
+        "reply": cmd_reply,
     }
     return handlers[args.command](args)
 
