@@ -79,6 +79,10 @@ CLI = str(Path(__file__).resolve())
 # Files that always ride with the CHANGELOG commit (content-coupled to the bump).
 CHANGELOG_RIDERS = ("CHANGELOG.md", "project-words.txt", "pyproject.toml", "uv.lock")
 
+# What ships to a user's machine. A release touching none of it - agent skills,
+# tests, CI, design docs - adds no feature, whatever its CHANGELOG sections say.
+PRODUCT_GLOBS = ("nix/**", ".assets/**", "wsl/**", "modules/**")
+
 SECTION_HEADER_RE = re.compile(r"^## \[([^\]]+)\](?:\s*-\s*(\S+))?\s*$")
 SHARED = Path(".claude/skills/release-auto/scripts")
 # Committed review policy; copilot-review pre-matches every thread against it.
@@ -996,7 +1000,12 @@ def resume_phase1(state: dict, decision: dict) -> int:
             ["classify-and-resume", "abort"],
         )
 
-    problems = changelog_problems(final, changelog_section(final), state["last_tag"])
+    problems = changelog_problems(
+        final,
+        changelog_section(final),
+        state["last_tag"],
+        tracked_and_untracked(state["last_tag"]),
+    )
     unconfirmed = problems["suggest_version"] and not decision.get("version_confirmed")
     if problems["long_bullets"] or unconfirmed:
         save_state(state)
@@ -1006,8 +1015,9 @@ def resume_phase1(state: dict, decision: dict) -> int:
                 **problems,
                 "instructions": (
                     f"Split any long_bullets over {BULLET_WORD_CAP} words into two "
-                    "bullets. If suggest_version is set, the sections do not match "
-                    "the version bump: ask the user, rename the CHANGELOG heading if "
+                    "bullets. If suggest_version is set, the sections and changed "
+                    "paths do not match the version bump: ask the user, rename the "
+                    "CHANGELOG heading if "
                     "they switch, and resume with version_final set to their choice "
                     'plus "version_confirmed": true.'
                 ),
@@ -1048,14 +1058,16 @@ def resume_phase1(state: dict, decision: dict) -> int:
     return emit_gate("push", context, ["approve", "abort"])
 
 
-def changelog_problems(version: str, body: str, last: str) -> dict:
+def changelog_problems(version: str, body: str, last: str, paths: list[str]) -> dict:
     """
     Check the composed release section: bullet length and version-vs-sections.
 
-    ``Added``/``Removed`` in a patch release suggests the next minor; a minor or
-    major holding only ``Fixed``/``Security`` suggests the next patch. Both are
-    measured from ``last`` (the previous tag), since that is what users upgrade
-    from. A version that is not ``X.Y.Z`` skips the suggestion.
+    ``Added``/``Removed`` in a patch release suggests the next minor, but only
+    when ``paths`` (everything changed since ``last``) reach ``PRODUCT_GLOBS``.
+    A minor or major holding only ``Fixed``/``Security``, or touching no product
+    path, suggests the next patch. Both are measured from ``last`` (the previous
+    tag), since that is what users upgrade from. A version that is not ``X.Y.Z``
+    skips the suggestion.
     """
     bullets: list[str] = []
     for ln in body.splitlines():
@@ -1073,9 +1085,12 @@ def changelog_problems(version: str, body: str, last: str) -> dict:
         major, minor, last_patch = (int(x) for x in last.lstrip("v").split(".")[:3])
     except (IndexError, ValueError):
         patch = None
-    if patch and sections & {"Added", "Removed"}:
+    # ponytail: release-wide, not per bullet - a product fix beside a tooling
+    # `Added` still suggests a minor. The gate only asks, so the user settles it.
+    product = any(PurePosixPath(p).full_match(g) for p in paths for g in PRODUCT_GLOBS)
+    if patch and product and sections & {"Added", "Removed"}:
         suggest = f"{major}.{minor + 1}.0"
-    elif patch == 0 and sections and sections <= {"Fixed", "Security"}:
+    elif patch == 0 and (not product or sections and sections <= {"Fixed", "Security"}):
         suggest = f"{major}.{minor}.{last_patch + 1}"
     return {"long_bullets": long_bullets, "suggest_version": suggest}
 
@@ -1705,8 +1720,10 @@ def cmd_copilot_review(args: argparse.Namespace) -> int:
                 "Show the user every thread with its proposal (null = no rule "
                 "matched) in one question; confirm or override each. Resolve fix "
                 "and resolve-only threads with pr_review.py resolve <id> before "
-                f"re-cutting, then `{CLI} recut` + `{CLI} push` and run "
-                "copilot-review again."
+                "re-cutting. A thread the user resolves without a fix first gets "
+                "the reason they approved via pr_review.py reply <id> --body -, "
+                f"and is resolved only once that exits 0. Then `{CLI} recut` + "
+                f"`{CLI} push` and run copilot-review again."
                 + (
                     " The fix-cycle cap is reached: hand the remaining threads to "
                     "the user instead of fixing them in this run."
@@ -1884,7 +1901,8 @@ def _coda_next(left: int) -> str:
     return (
         f"That was the last fix cycle. Run `{CLI} copilot-review` once more for the "
         "final review and hand its threads to the user without fixing them. The user "
-        "decides each one: resolve it, or leave it open. `push --done` refuses while "
+        "decides each one: resolve it, after a pr_review.py reply giving the reason, "
+        "or leave it open. `push --done` refuses while "
         f"any thread is open, so finish with `{CLI} push --done` once they are "
         "resolved, or with `push --done --force` when the user leaves some open."
     )
@@ -1913,8 +1931,9 @@ def _done(state: dict, *, force: bool) -> int:
                 "instructions": (
                     "null threads = the lookup failed; otherwise triage each "
                     "thread (outdated ones too) and resolve it with pr_review.py "
-                    f"resolve <id>, then re-run `{CLI} push --done`. `--force` "
-                    "finishes regardless."
+                    "resolve <id> - one resolved without a fix first gets the "
+                    "approved reason via pr_review.py reply <id> --body - - then "
+                    f"re-run `{CLI} push --done`. `--force` finishes regardless."
                 ),
             },
             ["resolve-and-rerun", "force"],

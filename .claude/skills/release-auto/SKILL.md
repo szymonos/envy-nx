@@ -19,6 +19,13 @@ the agent is a **decision oracle** called only at batched gates. Tagging is
 - `/release-auto 1.16.0 reopen` - re-cut an already-pushed release with no new changes (fold coda follow-ups into clean per-group commits); see `references/recovery.md`
 - "minor ver" / "patch" - compute the version from `git describe --tags --abbrev=0`
 
+**No version given: choose the bump by what a user of envy-nx gains, not by
+CHANGELOG section names.** Minor means a new capability on their machine: a
+scope, an `nx` verb or flag, a platform, a tool installed. Everything else is a
+patch: fixes, refinements, and anything confined to contributor tooling (agent
+skills, tests, CI, design docs), even when it is filed under `Added`. State the
+bump and why before running `start`.
+
 A word after the version is the `start` flag of the same name with `--` in
 front: `skip-review` is `--skip-review`. Anything else is an ordinary request.
 
@@ -91,8 +98,9 @@ echo '{"cspell_add": [], "version_final": "<X.Y.Z>", "plan_written": true}' | .c
 ```
 
 The driver may gate again before touching git: `cspell` (words the new prose
-introduced) or `changelog` (a bullet over 40 words, or sections that do not
-match the bump - e.g. `Added` in a patch). For a version suggestion, ask the
+introduced) or `changelog` (a bullet over 40 words, or a bump the release does
+not earn - `Added` in a patch that touches `PRODUCT_GLOBS`, or a minor that
+touches none of them). For a version suggestion, ask the
 user; never switch silently. Then it recuts headless and runs `make lint-diff`
 inside the same atomic block. An orphan path or empty group fails before any
 git mutation: fix the plan's globs and resume again.
@@ -159,10 +167,25 @@ python3 .claude/skills/address-pr-review/scripts/pr_review.py resolve <thread-id
 .claude/skills/release-auto/scripts/release.py push
 ```
 
+A thread the user resolves **without a fix** - `skip`, or a `fix` proposal
+they override - is the one exception to silent resolve: nothing else records
+why. A confirmed `resolve-only` stays silent; its reason lives in
+`review-policy.json`. Offer a one- or two-sentence draft reason in the same
+question, post the approved text, and resolve only once `reply` exits 0:
+
+```bash
+python3 .claude/skills/address-pr-review/scripts/pr_review.py reply <thread-id> --body '<the approved reason>'
+python3 .claude/skills/address-pr-review/scripts/pr_review.py reply <thread-id> --body - < <file>
+```
+
+The second form is for a reason containing an apostrophe; write that file with
+the file-writing tool, never a heredoc.
+
 Then follow the `next` that `push` prints. A push that changed nothing is not
 a fix cycle. At `fix_cycles_left: 0` the next `copilot-review` is the final
 review (its payload sets `fix_cycle_cap_reached`): hand its threads to the user
-instead of fixing them. The user resolves each one or leaves it open; since
+instead of fixing them. The user resolves each one (with a reply, as above) or
+leaves it open; since
 `push --done` refuses on an open thread, finish with `push --done --force` when
 the user leaves some open.
 
