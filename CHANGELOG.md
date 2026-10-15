@@ -5,6 +5,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.31.1] - 2026-10-15
+
+### Added
+
+- `/address-pr-review` `pr_review.py` gains `reply` to answer a review thread and `api` to run any `gh api` call with the same TLS-handshake retry.
+- `/address-pr-review` and `/release-auto` now post the reason the user approved before resolving a review thread without a fix.
+
+### Changed
+
+- `/release-auto` now suggests a minor only when the release changes what ships to a user's machine; a release confined to agent skills, tests or CI stays a patch.
+
 ## [1.31.0] - 2026-10-13
 
 The agent skills are refactored: `/second-opinion` reviews through three lenses, `/release-auto` picks up the driver fixes from its `/prepare-pr` sibling, and the shared review skills now come byte-identical from one upstream source.
