@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import io
 import json
 import subprocess
 import sys
@@ -898,3 +899,210 @@ def test_gh_retries_a_network_error_before_reaching_github(
     monkeypatch.setattr(pr_review.subprocess, "run", auth_error)
     assert pr_review._gh(["gh", "api"]).returncode == 1
     assert len(calls) == 1
+
+
+# -- reply -----------------------------------------------------------------------
+
+
+def _stub_reply(monkeypatch: pytest.MonkeyPatch, url: str | None) -> list[dict]:
+    """Answer the reply mutation with `url` (None = not created); record variables."""
+    seen: list[dict] = []
+
+    def fake(query: str, **variables: str) -> dict:
+        assert query is pr_review.REPLY_MUTATION
+        seen.append(variables)
+        comment = {"url": url} if url else None
+        return {"data": {"addPullRequestReviewThreadReply": {"comment": comment}}}
+
+    monkeypatch.setattr(pr_review, "_graphql", fake)
+    return seen
+
+
+def test_reply_posts_the_body_to_the_thread(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The thread id and body reach the mutation untouched; the URL is reported."""
+    seen = _stub_reply(monkeypatch, "https://github.com/o/r/pull/1#discussion_r9")
+
+    assert pr_review.main(["reply", "PRRT_x", "--body", "Intentional: `x` stays"]) == 0
+    assert seen == [{"threadId": "PRRT_x", "body": "Intentional: `x` stays"}]
+    assert json.loads(capsys.readouterr().out)["url"].endswith("discussion_r9")
+
+
+def test_reply_reads_a_dash_body_from_stdin(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Backticks and `$` survive a quoted heredoc, not a shell argument."""
+    seen = _stub_reply(monkeypatch, "https://example/r")
+    monkeypatch.setattr(
+        pr_review.sys, "stdin", io.StringIO("Uses `$HOME` on purpose.\n")
+    )
+
+    assert pr_review.main(["reply", "PRRT_x", "--body", "-"]) == 0
+    assert seen[0]["body"] == "Uses `$HOME` on purpose.\n"
+
+
+def test_an_empty_reply_is_refused(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A blank comment on a reviewer's thread is worse than none."""
+    seen = _stub_reply(monkeypatch, "https://example/r")
+    monkeypatch.setattr(pr_review.sys, "stdin", io.StringIO("  \n"))
+
+    assert pr_review.main(["reply", "PRRT_x", "--body", "-"]) == 2
+    assert seen == []
+    assert "empty" in capsys.readouterr().err
+
+
+def test_a_reply_github_did_not_create_fails(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The caller resolves only after a reply landed, so none must not exit 0."""
+    _stub_reply(monkeypatch, None)
+
+    assert pr_review.main(["reply", "PRRT_x", "--body", "ok"]) == 1
+    assert "PRRT_x" in capsys.readouterr().err
+
+
+# -- api -------------------------------------------------------------------------
+
+_HANDSHAKE = b"net/http: TLS handshake timeout"
+
+
+def _stub_api(
+    monkeypatch: pytest.MonkeyPatch, *results: tuple[int, bytes, bytes]
+) -> list[tuple[list[str], object]]:
+    """Answer successive `subprocess.run` calls; record `(argv, stdin)`."""
+    calls: list[tuple[list[str], object]] = []
+    pending = list(results)
+
+    def fake(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        assert kwargs["text"] is False
+        calls.append((cmd, kwargs.get("input")))
+        code, out, err = pending.pop(0)
+        return subprocess.CompletedProcess(cmd, code, out, err)
+
+    monkeypatch.setattr(pr_review.subprocess, "run", fake)
+    monkeypatch.setattr(pr_review.time, "sleep", lambda _s: None)
+    return calls
+
+
+def _stdin_of(data: bytes) -> io.TextIOWrapper:
+    """A stand-in for `sys.stdin` whose `.buffer` holds `data`."""
+    return io.TextIOWrapper(io.BytesIO(data))
+
+
+def test_api_forwards_arguments_verbatim_even_a_leading_option(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`api --method POST ...` is what argparse.REMAINDER would reject."""
+    calls = _stub_api(monkeypatch, (0, b'{"id": 1}\n', b""))
+    argv = ["--method", "POST", "repos/o/r/issues/1/comments", "-f", "body=hi"]
+
+    assert pr_review.main(["api", *argv]) == 0
+    assert calls == [(["gh", "api", *argv], b"")]
+    assert capsys.readouterr().out == '{"id": 1}\n'
+
+
+def test_api_relays_gh_s_failure_unchanged(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The caller reads gh's own error and exit code, as if it had run gh."""
+    _stub_api(
+        monkeypatch, (1, b'{"message": "Not Found"}', b"gh: Not Found (HTTP 404)")
+    )
+
+    assert pr_review.main(["api", "repos/o/missing"]) == 1
+    out, err = capsys.readouterr()
+    assert "Not Found" in out
+    assert "HTTP 404" in err
+
+
+def test_api_relays_a_binary_response_byte_for_byte(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An artifact zip is not UTF-8, and a CRLF in a raw file must stay one."""
+    payload = b"PK\x03\x04\xff\xfe\r\n"
+    _stub_api(monkeypatch, (0, payload, b""))
+    out = io.BytesIO()
+    monkeypatch.setattr(pr_review.sys, "stdout", io.TextIOWrapper(out))
+
+    assert pr_review.main(["api", "repos/o/r/actions/artifacts/1/zip"]) == 0
+    assert out.getvalue() == payload
+
+
+def test_api_is_retried_on_a_tls_handshake_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The retry is the reason to go through the wrapper instead of raw `gh api`."""
+    calls = _stub_api(monkeypatch, (1, b"", _HANDSHAKE), (0, b"{}", b""))
+
+    assert pr_review.main(["api", "graphql", "-f", "query=q"]) == 0
+    assert len(calls) == 2
+
+
+def test_a_retry_sends_the_same_stdin(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Inherited stdin is spent by the first attempt; the retry would send nothing."""
+    calls = _stub_api(monkeypatch, (1, b"", _HANDSHAKE), (0, b"{}", b""))
+    monkeypatch.setattr(pr_review.sys, "stdin", _stdin_of(b'{"event": "COMMENT"}'))
+
+    pr_review.main(["api", "--input=-", "repos/o/r/pulls/1/reviews"])
+
+    assert [stdin for _cmd, stdin in calls] == [b'{"event": "COMMENT"}'] * 2
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["--input", "-", "repos/o/r/pulls/1/reviews"],
+        ["--input=-", "repos/o/r/pulls/1/reviews"],
+        ["graphql", "-F", "query=@-"],
+        ["graphql", "-Fquery=@-"],
+        ["graphql", "--field", "query=@-"],
+        ["graphql", "--field=query=@-"],
+        ["graphql", "-F=query=@-"],
+        ["graphql", "-iF", "query=@-"],
+        ["graphql", "-iFquery=@-"],
+        ["repos/o/r/issues", "-i=f", "--input=-"],
+        ["repos/o/r/issues", "-i=t", "--input", "-"],
+        ["--input", "request.json", "--input", "-", "repos/o/r/pulls/1/reviews"],
+        ["--method", "POST", "--input", "-", "repos/o/r/pulls/1/reviews"],
+    ],
+)
+def test_api_reads_stdin_when_gh_would(
+    monkeypatch: pytest.MonkeyPatch, argv: list[str]
+) -> None:
+    """`--input -` and a typed field set to `@-`, in every spelling gh accepts."""
+    calls = _stub_api(monkeypatch, (0, b"", b""))
+    monkeypatch.setattr(pr_review.sys, "stdin", _stdin_of(b"payload"))
+
+    pr_review.main(["api", *argv])
+
+    assert calls[0][1] == b"payload"
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["repos/o/r"],
+        ["repos/o/r/issues/1/comments", "-f", "body=@-"],
+        ["repos/o/r/issues/1/comments", "--raw-field", "body=@-"],
+        ["repos/o/r/issues/1/comments", "-f", "body=-"],
+        ["repos/o/r/issues/1/comments", "-F", "body=prefix=@-"],
+        ["repos/o/r/issues/1/comments", "--field=body=prefix=@-"],
+        ["user", "--template", "--input=-"],
+        ["user", "-it", "--input=-"],
+        ["repos/o/r", "--input", "-", "--input", "request.json"],
+        ["repos/o/r", "--paginate=true", "-X=GET"],
+        ["repos/o/r/issues/1/comments", "-f", "--field=body=@-"],
+        ["repos/o/r", "--jq", ".x", "--", "--input=-"],
+    ],
+)
+def test_api_leaves_stdin_alone_otherwise(
+    monkeypatch: pytest.MonkeyPatch, argv: list[str]
+) -> None:
+    """`-f` takes `@-` literally; reading stdin would block on an open, empty one."""
+    calls = _stub_api(monkeypatch, (0, b"", b""))
+    monkeypatch.setattr(pr_review.sys, "stdin", _stdin_of(b"unread"))
+
+    pr_review.main(["api", *argv])
+
+    assert calls[0][1] == b""
