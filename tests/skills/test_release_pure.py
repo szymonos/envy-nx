@@ -524,8 +524,31 @@ def test_changelog_problems_version(
 ) -> None:
     """Sections that do not match the bump suggest the version users expect."""
     body = _section(*sections)
+    paths = [".assets/lib/nx.sh"]
     assert (
-        release.changelog_problems(version, body, "v1.26.1")["suggest_version"]
+        release.changelog_problems(version, body, "v1.26.1", paths)["suggest_version"]
+        == expected
+    )
+
+
+@pytest.mark.parametrize(
+    ("version", "sections", "expected"),
+    [
+        ("1.26.2", ("Added",), None),  # a new agent skill verb is still a patch
+        ("1.26.2", ("Removed",), None),
+        ("1.27.0", ("Added",), "1.26.2"),  # a minor with no product change
+        ("1.27.0", ("Changed",), "1.26.2"),
+        ("1.27.0", (), "1.26.2"),  # no headings at all
+    ],
+)
+def test_changelog_problems_version_without_a_product_change(
+    version: str, sections: tuple[str, ...], expected: str | None
+) -> None:
+    """Agent skills, tests and CI ship nothing to a user's machine: never a minor."""
+    paths = [".claude/skills/x/SKILL.md", "tests/test_x.py", "CHANGELOG.md"]
+    body = _section(*sections)
+    assert (
+        release.changelog_problems(version, body, "v1.26.1", paths)["suggest_version"]
         == expected
     )
 
@@ -536,9 +559,9 @@ def test_changelog_problems_flags_only_bullets_over_the_cap() -> None:
     over = "- " + " ".join(["w"] * 41)
     body = f"### Fixed\n\n{at_cap}\n{over}\n"
 
-    assert release.changelog_problems("1.26.2", body, "v1.26.1")["long_bullets"] == [
-        over
-    ]
+    assert release.changelog_problems("1.26.2", body, "v1.26.1", [])[
+        "long_bullets"
+    ] == [over]
 
 
 # -- propose: review-policy matching ------------------------------------------
@@ -814,7 +837,9 @@ def test_changelog_problems_counts_a_wrapped_bullet_whole() -> None:
     """A bullet wrapped onto a continuation line is still one bullet."""
     body = "### Fixed\n\n- " + " ".join(["w"] * 30) + "\n  " + " ".join(["w"] * 20)
 
-    long_bullets = release.changelog_problems("1.26.2", body, "v1.26.1")["long_bullets"]
+    long_bullets = release.changelog_problems("1.26.2", body, "v1.26.1", [])[
+        "long_bullets"
+    ]
 
     assert len(long_bullets) == 1
 
