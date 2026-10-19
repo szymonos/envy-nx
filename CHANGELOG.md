@@ -5,6 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+
+- Validated nixpkgs revision advanced to `f20cd90e28fe` - built with every scope and installed end-to-end on Linux and macOS before landing.
+
 ## [1.31.1] - 2026-10-15
 
 ### Added
