@@ -5,6 +5,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.31.2] - 2026-10-22
+
+### Changed
+
+- Validated nixpkgs revision advanced to `f20cd90e28fe` - built with every scope and installed end-to-end on Linux and macOS before landing.
+
+### Fixed
+
+- `/second-opinion` now kills the whole Copilot process group when a review pass times out, so no orphaned reviewer keeps running.
+- `/second-opinion` `run` now accepts absolute `--files` paths and rejects paths outside the repository; `check` no longer offers to write a brief that resolves outside it.
+
 ## [1.31.1] - 2026-10-15
 
 ### Added
