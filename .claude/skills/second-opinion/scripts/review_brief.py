@@ -27,15 +27,18 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import contextlib
 import fnmatch
 import json
 import os
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -77,6 +80,8 @@ COMPLEX_LINES = 1200
 NON_CODE = ("*.md", "*.lock", "*.txt", "*.svg", "*.png")
 #: A review of a large diff takes minutes; past this it is hung, not thinking.
 COPILOT_TIMEOUT = 1200
+#: Seconds a timed-out pass gets to exit on SIGTERM before SIGKILL.
+KILL_GRACE = 5
 
 
 def _find_brief(start: Path | None = None) -> Path | None:
@@ -197,16 +202,16 @@ def cmd_check(args: argparse.Namespace) -> int:
     root = Path(args.repo_root).resolve()
     brief_path = brief_for(root)
 
-    local_dir = root / ".claude" / "skills" / "second-opinion"
+    write_to = root / ".claude" / "skills" / "second-opinion" / BRIEF_FILENAME
     # Always the repo's own copy: rewriting the bundled brief through the skill's
-    # symlink would retarget it at this repo for every other repo too. The same
-    # happens when the repo's skill directory is itself a link out of the repo, so
-    # there is no safe target then.
-    shared = local_dir.exists() and not local_dir.resolve().is_relative_to(root)
+    # symlink would retarget it at this repo for every other repo too. A link
+    # anywhere on the way - `.claude/skills`, the skill directory or the brief
+    # itself - can lead out of the repo the same way, so there is no safe target then.
+    shared = not write_to.resolve().is_relative_to(root)
     result: dict = {
         "brief_exists": brief_path is not None and brief_path.exists(),
         "brief_path": str(brief_path) if brief_path else None,
-        "write_to": None if shared else str(local_dir / BRIEF_FILENAME),
+        "write_to": None if shared else str(write_to),
         "brief_repo": None,
         "current_repo": None,
         "match": False,
@@ -527,16 +532,55 @@ def copilot_command(
     ]
 
 
+def _run_group(cmd: list[str], *, cwd: Path, timeout: int) -> subprocess.CompletedProcess:
+    """
+    subprocess.run in a session of its own, killed whole on timeout.
+
+    subprocess.run kills only Copilot, leaving the tools it launched running in a
+    clone that is about to be removed. POSIX only: Windows has no os.killpg.
+    """
+    with subprocess.Popen(
+        cmd,
+        cwd=cwd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    ) as proc:
+        try:
+            out, err = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            deadline = time.monotonic() + KILL_GRACE
+            _signal_group(proc.pid, signal.SIGTERM)
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                proc.communicate(timeout=KILL_GRACE)
+            # A tool that redirected its output outlives the pipes; give it the
+            # rest of the grace period for its TERM handler.
+            while time.monotonic() < deadline and _signal_group(proc.pid, 0):
+                time.sleep(0.1)
+            _signal_group(proc.pid, signal.SIGKILL)
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                proc.communicate(timeout=KILL_GRACE)
+            raise
+    return subprocess.CompletedProcess(cmd, proc.returncode, out, err)
+
+
+def _signal_group(pgid: int, sig: int) -> bool:
+    """Send sig to the process group; False once the group has no process left."""
+    try:
+        os.killpg(pgid, sig)
+    except ProcessLookupError:
+        return False
+    return True
+
+
 def _review(workdir: Path, brief: Path, diff_range: str, model: str, lens: str, args) -> dict:
     """One lens pass in its own clone: its raw output file and findings, or what stopped it."""
     try:
-        done = subprocess.run(
+        done = _run_group(
             copilot_command(brief, diff_range, model, lens, args.intent, args.files, args.copilot),
             cwd=workdir,
-            capture_output=True,
-            text=True,
             timeout=args.timeout,
-            check=False,
         )
     except subprocess.TimeoutExpired:
         return {"lens": lens, "error": f"copilot gave no answer in {args.timeout}s"}
@@ -621,6 +665,28 @@ def _run_passes(root: Path, brief: Path, diff_range: str, model: str, args) -> l
             )
 
 
+def repo_relative(root: Path, files: Sequence[str]) -> list[str]:
+    """
+    --files with absolute paths made relative to root; ValueError for one outside it.
+
+    git accepts an absolute in-repo pathspec, but every pass runs in a clone elsewhere.
+    The last component is kept unresolved, so a symlink stays the path git tracks.
+    """
+    relative = []
+    for f in files:
+        path = Path(f)
+        if path.is_absolute():
+            path = path.resolve() if path.name == ".." else path.parent.resolve() / path.name
+            if not path.is_relative_to(root):
+                raise ValueError(f"--files {f} is outside the repo {root}")
+            f = str(path.relative_to(root))
+            # A leading `:` would turn the file name into pathspec magic.
+            if f.startswith(":"):
+                f = f"./{f}"
+        relative.append(f)
+    return relative
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     """
     Resolve the base, run one Copilot pass per lens in parallel, print merged findings.
@@ -631,6 +697,11 @@ def cmd_run(args: argparse.Namespace) -> int:
     finished is listed in `failed`, exit 0.
     """
     root = Path(args.repo_root).resolve()
+    try:
+        args.files = repo_relative(root, args.files)
+    except ValueError as exc:
+        _emit({"error": str(exc)})
+        return 1
     result = resolve_base(root, args.commit)
     if "error" in result:
         _emit(result)
