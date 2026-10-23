@@ -208,25 +208,36 @@ Every shell configuration tool eventually reaches for `~/.bashrc`. The naive app
 Configuration is written between sentinel markers and **fully regenerated** on each run:
 
 ```bash
-# >>> nix:managed >>>
-# :path
-. $HOME/.nix-profile/etc/profile.d/nix.sh
-export PATH="$HOME/.nix-profile/bin:$PATH"
-export NIX_SSL_CERT_FILE="$HOME/.config/certs/ca-bundle.crt"
-# :aliases
-. "$HOME/.config/shell/aliases_nix.sh"
-# :oh-my-posh
-[ -x "$HOME/.nix-profile/bin/oh-my-posh" ] && eval "$(oh-my-posh init bash ...)"
-# <<< nix:managed <<<
-
 # >>> env:managed >>>
 # :local path
-if [ -d "$HOME/.local/bin" ]; then
-  export PATH="$HOME/.local/bin:$PATH"
-fi
+case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *)
+  [ -d "$HOME/.local/bin" ] && export PATH="$HOME/.local/bin:$PATH"
+esac
+
 # :certs
-export NODE_EXTRA_CA_CERTS="$HOME/.config/certs/ca-custom.crt"
+if [ -f "$HOME/.config/certs/ca-custom.crt" ]; then
+  export NODE_EXTRA_CA_CERTS="$HOME/.config/certs/ca-custom.crt"
+fi
+# ...
 # <<< env:managed <<<
+
+# >>> nix:managed >>>
+# :path
+[ -f "/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh" ] && . "/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh"
+case ":$PATH:" in *":$HOME/.nix-profile/bin:"*) ;; *)
+  export PATH="$HOME/.nix-profile/bin:$PATH"
+esac
+export NIX_SSL_CERT_FILE="$HOME/.config/certs/ca-bundle.crt"
+
+# :aliases
+. "$HOME/.config/shell/aliases_nix.sh"
+# ...
+
+# :oh-my-posh
+if [ -x "$HOME/.nix-profile/bin/oh-my-posh" ] && [ "${BASH_VERSINFO[0]:-0}" -ge 4 ] && [[ $- == *i* ]]; then
+  eval "$(oh-my-posh init bash --config $HOME/.config/nix-env/omp/theme.omp.json)"
+fi
+# <<< nix:managed <<<
 ```
 
 Two blocks are written to each rc file, with an explicit purpose split:

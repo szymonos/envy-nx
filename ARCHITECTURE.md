@@ -327,6 +327,8 @@ Shell profile injection (`~/.bashrc`, `~/.zshrc`, PowerShell `$PROFILE`) uses a 
 - `nix:managed` - nix-specific (PATH, nix aliases, completions, prompt init). Removed by `nix/uninstall.sh`.
 - `env:managed` - generic env (local PATH, cert env vars, generic aliases/functions). Survives uninstall.
 
+PATH and env sections must run in every shell; completion and prompt sections are gated on `[[ $- == *i* ]]`. Non-interactive bash still sources `~/.bashrc` when `SSH_CLIENT` is set, and the minimal bash git runs credential helpers through has no `complete` builtin. The `bash without completion` bats test enforces this.
+
 Block rendering lives in `nx_profile.sh` (`_nx_render_env_block`, `_nx_render_nix_block`). The `nix/configure/profiles.sh` / `.zsh` scripts handle provisioning (file copy, CA certs, zsh plugins) then delegate block management to `nx profile regenerate`. This means `nx profile regenerate` works standalone after the repo is removed.
 
 Alias files are routed to the correct block by install source:
@@ -337,25 +339,36 @@ Alias files are routed to the correct block by install source:
 - `aliases_nix.sh` - always `nix:managed` (nix-specific by definition).
 
 ```bash
-# >>> nix:managed >>>
-# :path
-. $HOME/.nix-profile/etc/profile.d/nix.sh
-export PATH="$HOME/.nix-profile/bin:$PATH"
-export NIX_SSL_CERT_FILE="$HOME/.config/certs/ca-bundle.crt"
-# :aliases
-. "$HOME/.config/shell/aliases_nix.sh"
-# :oh-my-posh
-[ -x "$HOME/.nix-profile/bin/oh-my-posh" ] && eval "$(oh-my-posh init bash ...)"
-# <<< nix:managed <<<
-
 # >>> env:managed >>>
 # :local path
-if [ -d "$HOME/.local/bin" ]; then
-  export PATH="$HOME/.local/bin:$PATH"
-fi
+case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *)
+  [ -d "$HOME/.local/bin" ] && export PATH="$HOME/.local/bin:$PATH"
+esac
+
 # :certs
-export NODE_EXTRA_CA_CERTS="$HOME/.config/certs/ca-custom.crt"
+if [ -f "$HOME/.config/certs/ca-custom.crt" ]; then
+  export NODE_EXTRA_CA_CERTS="$HOME/.config/certs/ca-custom.crt"
+fi
+# ...
 # <<< env:managed <<<
+
+# >>> nix:managed >>>
+# :path
+[ -f "/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh" ] && . "/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh"
+case ":$PATH:" in *":$HOME/.nix-profile/bin:"*) ;; *)
+  export PATH="$HOME/.nix-profile/bin:$PATH"
+esac
+export NIX_SSL_CERT_FILE="$HOME/.config/certs/ca-bundle.crt"
+
+# :aliases
+. "$HOME/.config/shell/aliases_nix.sh"
+# ...
+
+# :oh-my-posh
+if [ -x "$HOME/.nix-profile/bin/oh-my-posh" ] && [ "${BASH_VERSINFO[0]:-0}" -ge 4 ] && [[ $- == *i* ]]; then
+  eval "$(oh-my-posh init bash --config $HOME/.config/nix-env/omp/theme.omp.json)"
+fi
+# <<< nix:managed <<<
 ```
 
 **PowerShell** - `_aliases_nix.ps1` provides `_NxProfileRegenerate` + region helpers. Nix-managed regions use the `nix:` prefix (`#region nix:base`, `#region nix:path`, `#region nix:certs`). Generic regions (certs, conda, make completer, MSAL browser auth) use unprefixed names and are written by `setup_profile_user.ps1`. The uninstaller only removes `nix:`-prefixed regions. On headless Linux, setup also merges `Az.EnableLoginByWam=false` into `~/.Azure/PSConfig.json` without requiring Az.Accounts to be installed, and adds a guarded `DISPLAY=:0` profile region when a genuine or managed `wslview` is the only viable MSAL opener.
