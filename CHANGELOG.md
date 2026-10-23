@@ -5,6 +5,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.31.3] - 2026-10-23
+
+### Fixed
+
+- Git commands that use the GitHub credential helper no longer print `complete: command not found` from PowerShell over SSH, for example in a Coder workspace.
+- The managed bash profile and `completions.bash` now set up tab completion and the oh-my-posh or Starship prompt only in interactive shells. With `SSH_CLIENT` set, git's minimal bash still sources `~/.bashrc`; PATH and environment setup run there unchanged.
+
 ## [1.31.2] - 2026-10-22
 
 ### Changed
