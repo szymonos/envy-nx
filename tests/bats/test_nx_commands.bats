@@ -872,8 +872,13 @@ EOF
 
   run bash --norc -c 'enable -n complete; . "$1"' _ "$TEST_DIR/rc"
   [ -z "$output" ] || fail "non-interactive source printed: $output"
-  run bash --norc -i -c '. "$1" 2>/dev/null; complete -p nx k make uv fzf gcloud starship' _ "$TEST_DIR/rc"
-  [ "$status" -eq 0 ] || fail "interactive source lost completions: $output"
+  # `bash -i` would grab the controlling terminal and get stopped when the
+  # suite runs as a background job, so force the guard open instead.
+  for f in "$TEST_DIR/rc" "$HOME/.config/shell/completions.bash"; do
+    sed 's/\[\[ \$- == \*i\* \]\]/true/' "$f" >"$f.tmp" && mv "$f.tmp" "$f"
+  done
+  run bash --norc -c '. "$1" 2>/dev/null; complete -p nx k make uv fzf gcloud starship' _ "$TEST_DIR/rc"
+  [ "$status" -eq 0 ] || fail "guarded sections lost completions: $output"
 }
 
 @test "profile regenerate --dry-run --shell bash succeeds when rc file does not exist" {
