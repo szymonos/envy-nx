@@ -22,13 +22,66 @@ import concurrent.futures
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BATS_DIR = REPO_ROOT / "tests" / "bats"
+
+# Tests run with no controlling terminal. Anything that opens /dev/tty -
+# `bash -i` taking job control, zsh's zle, `read </dev/tty`, a sudo or ssh
+# prompt - gets stopped by SIGTTIN/SIGTTOU or waits for input when the suite
+# runs as a background job of a real terminal (prek under `make lint`), and
+# CI has no terminal to show it. A new session has no terminal to open, so
+# those fail fast instead of hanging. Redirecting stdin alone is not enough.
+DETACHED = {"start_new_session": True, "stdin": subprocess.DEVNULL}
+
+# A new session also means terminal Ctrl-C reaches only this runner, so it
+# tracks each child's process group and kills them on interrupt.
+_LIVE: set[subprocess.Popen] = set()
+_LIVE_LOCK = threading.Lock()
+
+
+def _run(
+    cmd: list[str], env: dict, capture: bool = False
+) -> subprocess.CompletedProcess:
+    """Run cmd detached from the terminal, tracked for _kill_live()."""
+    pipes = (
+        {"stdout": subprocess.PIPE, "stderr": subprocess.PIPE, "text": True}
+        if capture
+        else {}
+    )
+    proc = subprocess.Popen(cmd, env=env, **DETACHED, **pipes)
+    with _LIVE_LOCK:
+        _LIVE.add(proc)
+    try:
+        out, err = proc.communicate()
+    except KeyboardInterrupt:
+        _killpg(proc)
+        raise
+    finally:
+        with _LIVE_LOCK:
+            _LIVE.discard(proc)
+    return subprocess.CompletedProcess(cmd, proc.returncode, out, err)
+
+
+def _killpg(proc: subprocess.Popen) -> None:
+    """SIGTERM a child's process group (bats and its tests)."""
+    try:
+        os.killpg(proc.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+
+
+def _kill_live() -> None:
+    """Kill every running child's group; worker threads never see Ctrl-C."""
+    with _LIVE_LOCK:
+        for proc in _LIVE:
+            _killpg(proc)
 
 
 def build_source_map() -> dict[str, list[Path]]:
@@ -161,9 +214,10 @@ def main(argv: list[str] | None = None) -> int:
     if len(sorted_files) <= 1:
         # Single-file: stream stdout/stderr directly, no buffering or summary.
         # Pre-commit users running on one .bats file just want the bats output.
-        return subprocess.run(
-            timeout_prefix + ["bats"] + sorted_files, env=env
-        ).returncode
+        try:
+            return _run(timeout_prefix + ["bats"] + sorted_files, env).returncode
+        except KeyboardInterrupt:
+            return 130
 
     # Multi-file: parallelize across 4 workers (Python ThreadPoolExecutor;
     # bats's native -j needs GNU parallel, not bootstrapped here). Capture
@@ -172,12 +226,19 @@ def main(argv: list[str] | None = None) -> int:
     # output unreadable. Cap at 4: tests do heavy mktemp/io and disks
     # thrash above that.
     results: list[dict] = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
+    ex = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+    try:
         futures = [
             ex.submit(_run_one_bats, f, env, timeout_prefix) for f in sorted_files
         ]
         for fut in concurrent.futures.as_completed(futures):
             results.append(fut.result())
+    except KeyboardInterrupt:
+        ex.shutdown(wait=False, cancel_futures=True)
+        _kill_live()
+        print("\n>>> [bats] interrupted", file=sys.stderr)
+        return 130
+    ex.shutdown()
 
     results.sort(key=lambda r: r["file"])
     _print_summary(results)
@@ -225,7 +286,7 @@ def _run_one_bats(bats_file: str, env: dict, timeout_prefix: list[str]) -> dict:
     print(f">>> [bats] starting {bats_file}", file=sys.stderr, flush=True)
     cmd = timeout_prefix + ["bats", bats_file]
     t0 = time.perf_counter()
-    proc = subprocess.run(cmd, env=env, capture_output=True, text=True)
+    proc = _run(cmd, env, capture=True)
     elapsed = time.perf_counter() - t0
 
     passed, failed, skipped, failing = _parse_tap(proc.stdout)

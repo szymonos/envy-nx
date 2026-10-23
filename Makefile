@@ -45,13 +45,12 @@ test: test-unit test-nix test-linux-setup ## Run all tests (unit + Docker smoke)
 
 test-unit: ## Run bats + Pester + pytest unit tests in parallel (fast, no Docker)
 	@printf "\n\033[95;1m== Running unit tests ==\033[0m\n\n"
-	@# Bats: parallelize across files via xargs -P. bats's native -j requires
-	@# GNU parallel which isn't bootstrapped by this repo. Capped at 4 workers
-	@# - tests do lots of mktemp/io and disks thrash above that.
-	@# Shell glob (not `find -maxdepth`) for portability: `-maxdepth` is a
-	@# GNU extension that BSD find on stock macOS lacks. The bats dir is
-	@# flat (no subdirs to recurse into), so the glob is sufficient.
-	@printf '%s\0' tests/bats/*.bats | xargs -0 -P 4 -n 1 bats
+	@# Bats: through the same runner as the pre-commit hook - 4 parallel
+	@# workers, no controlling terminal (see tests/hooks/run_bats.py). Shell
+	@# glob (not `find -maxdepth`): BSD find on stock macOS lacks -maxdepth.
+	@# The runner skips when bats is missing (optional for the hook); here it is required.
+	@command -v bats >/dev/null || { printf '\033[31;1mbats not found\033[0m\n' >&2; exit 1; }
+	@python3 -m tests.hooks.run_bats tests/bats/*.bats
 	@# Pester: file-level parallelism via ForEach-Object -Parallel inside a
 	@# single pwsh session (avoids paying ~3s pwsh startup per file). The
 	@# helper script is also reusable from CI / hooks / dev shell.
