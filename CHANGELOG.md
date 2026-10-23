@@ -5,6 +5,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.31.4] - 2026-10-23
+
+### Fixed
+
+- `make lint` and `make test-unit` no longer hang when run from a terminal: the bats completion test no longer starts an interactive bash, which the terminal suspended.
+- Bats tests now run with no controlling terminal, so a test that opens `/dev/tty` (an interactive shell, a prompt) fails fast instead of hanging; `make test-unit` uses the same runner as the hook.
+
 ## [1.31.3] - 2026-10-23
 
 ### Fixed
