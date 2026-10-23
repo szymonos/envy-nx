@@ -73,4 +73,6 @@ function _nx_completions() {
     while IFS= read -r line; do COMPREPLY+=("$line"); done < <(compgen -W "--help -h" -- "$cur")
   fi
 }
-complete -F _nx_completions nx
+if [[ $- == *i* ]]; then
+  complete -F _nx_completions nx
+fi

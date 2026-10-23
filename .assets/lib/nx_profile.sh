@@ -119,7 +119,12 @@ function _nx_render_env_block() {
     printf '  case ":$PATH:" in *":$HOME/google-cloud-sdk/bin:"*) ;; *)\n'
     printf '    export PATH="$HOME/google-cloud-sdk/bin:$PATH"\n'
     printf '  esac\n'
-    printf '  if [ -n "${BASH_VERSION:-}" ] && [ -f "$HOME/google-cloud-sdk/completion.bash.inc" ]; then\n'
+    # Completion and prompt setup (here, :fzf, :uv, :kubectl, :make,
+    # :oh-my-posh, :starship) is gated on an interactive shell: nixpkgs bash sources
+    # ~/.bashrc non-interactively when SSH_CLIENT is set (SSH_SOURCE_BASHRC),
+    # and git runs `!` credential helpers through a minimal bash build that
+    # has no `complete` builtin.
+    printf '  if [ -n "${BASH_VERSION:-}" ] && [[ $- == *i* ]] && [ -f "$HOME/google-cloud-sdk/completion.bash.inc" ]; then\n'
     printf '    . "$HOME/google-cloud-sdk/completion.bash.inc"\n'
     printf '  elif [ -n "${ZSH_VERSION:-}" ] && [ -f "$HOME/google-cloud-sdk/completion.zsh.inc" ]; then\n'
     printf '    . "$HOME/google-cloud-sdk/completion.zsh.inc"\n'
@@ -221,7 +226,7 @@ function _nx_render_nix_block() {
 
   if [ -x "$HOME/.nix-profile/bin/fzf" ]; then
     printf '\n# :fzf\n'
-    printf '[ -x "$HOME/.nix-profile/bin/fzf" ] && eval "$(fzf --%s)"\n' "$shell"
+    printf '[ -x "$HOME/.nix-profile/bin/fzf" ] && [[ $- == *i* ]] && eval "$(fzf --%s)"\n' "$shell"
   fi
 
   if [ -x "$HOME/.nix-profile/bin/fnm" ]; then
@@ -245,8 +250,10 @@ function _nx_render_nix_block() {
     printf '\n# :uv\n'
     printf 'if [ -x "$HOME/.nix-profile/bin/uv" ]; then\n'
     printf '  export UV_SYSTEM_CERTS=true\n'
-    printf '  eval "$(uv generate-shell-completion %s)"\n' "$shell"
-    printf '  eval "$(uvx --generate-shell-completion %s)"\n' "$shell"
+    printf '  if [[ $- == *i* ]]; then\n'
+    printf '    eval "$(uv generate-shell-completion %s)"\n' "$shell"
+    printf '    eval "$(uvx --generate-shell-completion %s)"\n' "$shell"
+    printf '  fi\n'
     printf 'fi\n'
   fi
 
@@ -262,7 +269,7 @@ function _nx_render_nix_block() {
 
   if [ -x "$HOME/.nix-profile/bin/kubectl" ]; then
     printf '\n# :kubectl\n'
-    printf 'if [ -x "$HOME/.nix-profile/bin/kubectl" ]; then\n'
+    printf 'if [ -x "$HOME/.nix-profile/bin/kubectl" ] && [[ $- == *i* ]]; then\n'
     printf '  source <(kubectl completion %s)\n' "$shell"
     if [ "$shell" = "bash" ]; then
       printf '  complete -o default -F __start_kubectl k\n'
@@ -275,7 +282,7 @@ function _nx_render_nix_block() {
     # `complete -W` is emitted text for the user's bashrc, not a runtime
     # invocation; split into three printfs so the multi-line $(if/elif)
     # helper command can be its own printf with simple single-quote escaping.
-    printf 'complete -W "'
+    printf '[[ $- == *i* ]] && complete -W "'
     printf '$(if [ -f Makefile ]; then grep -oE '\''^[a-zA-Z0-9_-]+:([^=]|$)'\'' Makefile | sed '\''s/[^a-zA-Z0-9_-]*$//'\''
 elif [ -f makefile ]; then grep -oE '\''^[a-zA-Z0-9_-]+:([^=]|$)'\'' makefile | sed '\''s/[^a-zA-Z0-9_-]*$//'\''
 fi)'
@@ -293,7 +300,7 @@ fi)'
       #     without needing to re-render ~/.bashrc.
       # zsh and pwsh are unaffected and use the unguarded init below / their
       # own renderer.
-      printf 'if [ -x "$HOME/.nix-profile/bin/oh-my-posh" ] && [ "${BASH_VERSINFO[0]:-0}" -ge 4 ]; then\n'
+      printf 'if [ -x "$HOME/.nix-profile/bin/oh-my-posh" ] && [ "${BASH_VERSINFO[0]:-0}" -ge 4 ] && [[ $- == *i* ]]; then\n'
       printf '  eval "$(oh-my-posh init bash --config $HOME/.config/nix-env/omp/theme.omp.json)"\n'
       printf 'fi\n'
     else
@@ -303,7 +310,7 @@ fi)'
 
   if [ -x "$HOME/.nix-profile/bin/starship" ]; then
     printf '\n# :starship\n'
-    printf '[ -x "$HOME/.nix-profile/bin/starship" ] && eval "$(starship init %s)"\n' "$shell"
+    printf '[ -x "$HOME/.nix-profile/bin/starship" ] && [[ $- == *i* ]] && eval "$(starship init %s)"\n' "$shell"
   fi
 
   if [ "$shell" = "zsh" ]; then

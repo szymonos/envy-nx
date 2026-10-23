@@ -855,6 +855,27 @@ EOF
   [[ "$output" != *"# :compinit"* ]]
 }
 
+@test "profile regenerate bash block sources cleanly in a bash without completion" {
+  # git runs `!` credential helpers through a minimal bash that has no
+  # `complete` builtin, and that bash sources ~/.bashrc when SSH_CLIENT is set.
+  # Every stub emits a `complete` call, so any unguarded completion or prompt
+  # section fails the non-interactive source.
+  mkdir -p "$HOME/.nix-profile/bin" "$HOME/.config/shell" "$HOME/.config/nix-env/omp" "$HOME/google-cloud-sdk/bin"
+  for b in fzf uv uvx kubectl oh-my-posh starship; do
+    printf '#!/bin/sh\necho "complete -F _f %s"\n' "$b" >"$HOME/.nix-profile/bin/$b"
+    chmod +x "$HOME/.nix-profile/bin/$b"
+  done
+  cp "${NX_SCRIPT%/lib/nx.sh}/config/shell_cfg/completions.bash" "$HOME/.config/shell/"
+  echo 'complete -F _f gcloud' >"$HOME/google-cloud-sdk/completion.bash.inc"
+  touch "$HOME/.config/nix-env/omp/theme.omp.json"
+  nx profile regenerate --dry-run --shell bash >"$TEST_DIR/rc"
+
+  run bash --norc -c 'enable -n complete; . "$1"' _ "$TEST_DIR/rc"
+  [ -z "$output" ] || fail "non-interactive source printed: $output"
+  run bash --norc -i -c '. "$1" 2>/dev/null; complete -p nx k make uv fzf gcloud starship' _ "$TEST_DIR/rc"
+  [ "$status" -eq 0 ] || fail "interactive source lost completions: $output"
+}
+
 @test "profile regenerate --dry-run --shell bash succeeds when rc file does not exist" {
   rm -f "$HOME/.bashrc" "$HOME/.zshrc"
   run nx profile regenerate --dry-run --shell bash

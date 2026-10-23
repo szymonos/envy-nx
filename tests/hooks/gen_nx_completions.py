@@ -299,7 +299,12 @@ def emit_bash(manifest):  # noqa: C901 -- structural: bash completer has many sh
     out.append(f"    {bash_compgen(HELP_FLAGS)}")
     out.append("  fi")
     out.append("}")
-    out.append("complete -F _nx_completions nx")
+    # Non-interactive bash can still source ~/.bashrc (SSH_SOURCE_BASHRC, e.g.
+    # git's credential-helper shell under SSH_CLIENT), and minimal bash builds
+    # have no `complete` builtin.
+    out.append("if [[ $- == *i* ]]; then")
+    out.append("  complete -F _nx_completions nx")
+    out.append("fi")
     out.append("")
     return "\n".join(out)
 
