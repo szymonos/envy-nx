@@ -67,10 +67,12 @@
     {
       "name": "overlay",
       "family": "scope",
-      "summary": "manage overlay directory",
+      "summary": "manage overlay directories",
       "subverbs": [
-        { "name": "list", "summary": "show overlay directory and contents" },
-        { "name": "status", "summary": "show overlay sync status" }
+        { "name": "list", "summary": "show overlay directories and contents" },
+        { "name": "status", "summary": "show overlay sync status" },
+        { "name": "set", "summary": "use a directory as the organization overlay", "args": [{ "name": "path", "required": true }] },
+        { "name": "unset", "summary": "stop using the organization overlay" }
       ]
     },
     {
@@ -113,8 +115,8 @@
         { "long": "--conda", "summary": "Miniforge" },
         { "long": "--docker", "summary": "Docker post-install check" },
         { "long": "--gcloud", "summary": "Google Cloud CLI" },
-        { "long": "--k8s-base", "summary": "kubectl, kubelogin, k9s, kubecolor" },
-        { "long": "--k8s-dev", "summary": "argo, cilium, flux, helm, hubble, kustomize, trivy" },
+        { "long": "--k8s-base", "summary": "kubectl, kubelogin, helm, k9s, kubecolor" },
+        { "long": "--k8s-dev", "summary": "argo, cilium, flux, hubble, kustomize, trivy" },
         { "long": "--k8s-ext", "summary": "minikube, k3d, kind" },
         { "long": "--nodejs", "summary": "Node.js" },
         { "long": "--playwright", "summary": "Playwright CLI + Chromium" },
@@ -133,6 +135,7 @@
         { "long": "--omp-theme", "summary": "oh-my-posh theme name", "takes_value": true, "value_completer": "theme_omp" },
         { "long": "--starship-theme", "summary": "starship theme name", "takes_value": true, "value_completer": "theme_starship" },
         { "long": "--remove", "summary": "remove scopes", "takes_value": true, "value_completer": "all_scopes" },
+        { "long": "--overlay-dir", "summary": "use a directory as the organization overlay", "takes_value": true },
         { "long": "--help", "short": "-h", "summary": "show help" }
       ]
     },

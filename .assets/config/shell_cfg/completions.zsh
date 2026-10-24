@@ -16,7 +16,7 @@ function _nx() {
     'list:list installed packages'
     'ls:list installed packages'
     'scope:manage scopes'
-    'overlay:manage overlay directory'
+    'overlay:manage overlay directories'
     'pin:manage nixpkgs revision pin'
     'profile:manage shell profile blocks'
     'setup:add or remove scopes and themes, then upgrade (runs nix/setup.sh)'
@@ -84,8 +84,10 @@ function _nx() {
     if (( CURRENT == 3 )); then
       local -a overlay_cmds
       overlay_cmds=(
-        'list:show overlay directory and contents'
+        'list:show overlay directories and contents'
         'status:show overlay sync status'
+        'set:use a directory as the organization overlay'
+        'unset:stop using the organization overlay'
       )
       _describe 'overlay command' overlay_cmds
     fi
@@ -155,8 +157,8 @@ function _nx() {
         '--conda:Miniforge'
         '--docker:Docker post-install check'
         '--gcloud:Google Cloud CLI'
-        '--k8s-base:kubectl, kubelogin, k9s, kubecolor'
-        '--k8s-dev:argo, cilium, flux, helm, hubble, kustomize, trivy'
+        '--k8s-base:kubectl, kubelogin, helm, k9s, kubecolor'
+        '--k8s-dev:argo, cilium, flux, hubble, kustomize, trivy'
         '--k8s-ext:minikube, k3d, kind'
         '--nodejs:Node.js'
         '--playwright:Playwright CLI + Chromium'
@@ -175,6 +177,7 @@ function _nx() {
         '--omp-theme:oh-my-posh theme name'
         '--starship-theme:starship theme name'
         '--remove:remove scopes'
+        '--overlay-dir:use a directory as the organization overlay'
         '--help:show help'
         '-h:show help'
       )

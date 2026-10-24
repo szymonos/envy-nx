@@ -48,18 +48,18 @@ nx doctor               # run health checks
 
 ## Available scopes
 
-| Scope       | Packages                                    |
-| ----------- | ------------------------------------------- |
-| `shell`     | fzf, eza, bat, ripgrep, yq                  |
-| `python`    | uv, prek                                    |
-| `pwsh`      | PowerShell 7                                |
-| `k8s-base`  | kubectl, kubelogin, k9s, kubecolor, kubectx |
-| `k8s-dev`   | helm, flux, kustomize, trivy, argo, cilium  |
-| `az`        | Azure CLI, azcopy                           |
-| `terraform` | terraform, tflint                           |
-| `nodejs`    | Node.js                                     |
-| `conda`     | Miniforge                                   |
-| `docker`    | Docker post-install configuration           |
+| Scope       | Packages                                          |
+| ----------- | ------------------------------------------------- |
+| `shell`     | fzf, eza, bat, ripgrep, yq                        |
+| `python`    | uv, prek                                          |
+| `pwsh`      | PowerShell 7                                      |
+| `k8s-base`  | kubectl, kubelogin, helm, k9s, kubecolor, kubectx |
+| `k8s-dev`   | flux, kustomize, trivy, argo, cilium              |
+| `az`        | Azure CLI, azcopy                                 |
+| `terraform` | terraform, tflint                                 |
+| `nodejs`    | Node.js                                           |
+| `conda`     | Miniforge                                         |
+| `docker`    | Docker post-install configuration                 |
 
 Prompt engines (oh-my-posh, starship) and additional scopes (gcloud, bun, playwright, rice, zsh) are also available. Run `nix/setup.sh --help` for the full list.
 
