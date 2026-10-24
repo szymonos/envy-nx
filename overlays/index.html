@@ -1,0 +1,916 @@
+
+<!DOCTYPE html>
+
+<html class="no-js" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width,initial-scale=1" name="viewport"/>
+<meta content="Universal, cross-platform developer environment provisioning with Nix" name="description"/>
+<link href="https://szymonos.github.io/envy-nx/overlays/" rel="canonical"/>
+<link href="../customization/" rel="prev"/>
+<link href="../assets/images/favicon.png" rel="icon"/>
+<meta content="mkdocs-1.6.1, mkdocs-material-9.7.7" name="generator"/>
+<title>Overlays - Dev Environment Setup</title>
+<link href="../assets/stylesheets/main.ec1eaa64.min.css" rel="stylesheet"/>
+<link href="../assets/stylesheets/palette.ab4e12ef.min.css" rel="stylesheet"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&amp;display=fallback" rel="stylesheet"/>
+<style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+<link href="../assets/stylesheets/layout-wide-screen.css" rel="stylesheet"/>
+<link href="../assets/stylesheets/mermaid-lightbox.css" rel="stylesheet"/>
+<script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+</head>
+<body data-md-color-accent="blue" data-md-color-primary="indigo" data-md-color-scheme="slate" dir="ltr">
+<input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox"/>
+<input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox"/>
+<label class="md-overlay" for="__drawer"></label>
+<div data-md-component="skip">
+<a class="md-skip" href="#overlays">
+          Skip to content
+        </a>
+</div>
+<div data-md-component="announce">
+</div>
+<header class="md-header md-header--shadow" data-md-component="header">
+<nav aria-label="Header" class="md-header__inner md-grid">
+<a aria-label="Dev Environment Setup" class="md-header__button md-logo" data-md-component="logo" href=".." title="Dev Environment Setup">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
+</a>
+<label class="md-header__button md-icon" for="__drawer">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"></path></svg>
+</label>
+<div class="md-header__title" data-md-component="header-title">
+<div class="md-header__ellipsis">
+<div class="md-header__topic">
+<span class="md-ellipsis">
+            Dev Environment Setup
+          </span>
+</div>
+<div class="md-header__topic" data-md-component="header-topic">
+<span class="md-ellipsis">
+            
+              Overlays
+            
+          </span>
+</div>
+</div>
+</div>
+<label class="md-header__button md-icon" for="__search">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+</label>
+<div class="md-search" data-md-component="search" role="dialog">
+<label class="md-search__overlay" for="__search"></label>
+<div class="md-search__inner" role="search">
+<form class="md-search__form" name="search">
+<input aria-label="Search" autocapitalize="off" autocomplete="off" autocorrect="off" class="md-search__input" data-md-component="search-query" name="query" placeholder="Search" required="" spellcheck="false" type="text"/>
+<label class="md-search__icon md-icon" for="__search">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
+</label>
+<nav aria-label="Search" class="md-search__options">
+<button aria-label="Clear" class="md-search__icon md-icon" tabindex="-1" title="Clear" type="reset">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
+</button>
+</nav>
+</form>
+<div class="md-search__output">
+<div class="md-search__scrollwrap" data-md-scrollfix="" tabindex="0">
+<div class="md-search-result" data-md-component="search-result">
+<div class="md-search-result__meta">
+            Initializing search
+          </div>
+<ol class="md-search-result__list" role="presentation"></ol>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="md-header__source">
+<a class="md-source" data-md-component="source" href="https://github.com/szymonos/envy-nx" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewbox="0 0 512 512" xmlns="http://www.w3.org/2000/svg"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"></path></svg>
+</div>
+<div class="md-source__repository">
+    szymonos/envy-nx
+  </div>
+</a>
+</div>
+</nav>
+</header>
+<div class="md-container" data-md-component="container">
+<main class="md-main" data-md-component="main">
+<div class="md-main__inner md-grid">
+<div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Navigation" class="md-nav md-nav--primary" data-md-level="0">
+<label class="md-nav__title" for="__drawer">
+<a aria-label="Dev Environment Setup" class="md-nav__button md-logo" data-md-component="logo" href=".." title="Dev Environment Setup">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
+</a>
+    Dev Environment Setup
+  </label>
+<div class="md-nav__source">
+<a class="md-source" data-md-component="source" href="https://github.com/szymonos/envy-nx" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewbox="0 0 512 512" xmlns="http://www.w3.org/2000/svg"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"></path></svg>
+</div>
+<div class="md-source__repository">
+    szymonos/envy-nx
+  </div>
+</a>
+</div>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="..">
+<span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../benefits/">
+<span class="md-ellipsis">
+    
+  
+    Benefits
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../nx/">
+<span class="md-ellipsis">
+    
+  
+    The nx CLI
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../architecture/">
+<span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../decisions/">
+<span class="md-ellipsis">
+    
+  
+    Design Decisions
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../standards/">
+<span class="md-ellipsis">
+    
+  
+    Quality &amp; Testing
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../enterprise/">
+<span class="md-ellipsis">
+    
+  
+    Enterprise Readiness
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../proxy/">
+<span class="md-ellipsis">
+    
+  
+    Corporate Proxy
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../releasing/">
+<span class="md-ellipsis">
+    
+  
+    Releasing
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../customization/">
+<span class="md-ellipsis">
+    
+  
+    Customization
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item md-nav__item--active">
+<input class="md-nav__toggle md-toggle" id="__toc" type="checkbox"/>
+<label class="md-nav__link md-nav__link--active" for="__toc">
+<span class="md-ellipsis">
+    
+  
+    Overlays
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<a class="md-nav__link md-nav__link--active" href="./">
+<span class="md-ellipsis">
+    
+  
+    Overlays
+  
+
+    
+  </span>
+</a>
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#two-overlays-one-machine">
+<span class="md-ellipsis">
+      
+        Two overlays, one machine
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#quick-start">
+<span class="md-ellipsis">
+      
+        Quick start
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#folder-layout">
+<span class="md-ellipsis">
+      
+        Folder layout
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#scope-files">
+<span class="md-ellipsis">
+      
+        Scope files
+      
+    </span>
+</a>
+<nav aria-label="Scope files" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#the-scopes-header">
+<span class="md-ellipsis">
+      
+        The # scopes: header
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#standard-scopes">
+<span class="md-ellipsis">
+      
+        Standard scopes
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#shell-config">
+<span class="md-ellipsis">
+      
+        Shell config
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#hooks">
+<span class="md-ellipsis">
+      
+        Hooks
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#what-changes-when">
+<span class="md-ellipsis">
+      
+        What changes when
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#what-users-can-and-cant-do">
+<span class="md-ellipsis">
+      
+        What users can and can't do
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#building-an-image-on-an-overlay">
+<span class="md-ellipsis">
+      
+        Building an image on an overlay
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#testing-an-overlay-before-you-ship-it">
+<span class="md-ellipsis">
+      
+        Testing an overlay before you ship it
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#reference">
+<span class="md-ellipsis">
+      
+        Reference
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#two-overlays-one-machine">
+<span class="md-ellipsis">
+      
+        Two overlays, one machine
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#quick-start">
+<span class="md-ellipsis">
+      
+        Quick start
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#folder-layout">
+<span class="md-ellipsis">
+      
+        Folder layout
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#scope-files">
+<span class="md-ellipsis">
+      
+        Scope files
+      
+    </span>
+</a>
+<nav aria-label="Scope files" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#the-scopes-header">
+<span class="md-ellipsis">
+      
+        The # scopes: header
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#standard-scopes">
+<span class="md-ellipsis">
+      
+        Standard scopes
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#shell-config">
+<span class="md-ellipsis">
+      
+        Shell config
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#hooks">
+<span class="md-ellipsis">
+      
+        Hooks
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#what-changes-when">
+<span class="md-ellipsis">
+      
+        What changes when
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#what-users-can-and-cant-do">
+<span class="md-ellipsis">
+      
+        What users can and can't do
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#building-an-image-on-an-overlay">
+<span class="md-ellipsis">
+      
+        Building an image on an overlay
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#testing-an-overlay-before-you-ship-it">
+<span class="md-ellipsis">
+      
+        Testing an overlay before you ship it
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#reference">
+<span class="md-ellipsis">
+      
+        Reference
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-content" data-md-component="content">
+<article class="md-content__inner md-typeset">
+<h1 id="overlays">Overlays<a class="headerlink" href="#overlays" title="Permanent link">¤</a></h1>
+<p>An overlay is a folder that adds your own packages, shell config and setup scripts on top of the standard
+Envy-NX scopes. A team or an organization uses one to describe its environment in a single place,
+for example the tools every Coder workspace or Dev Container should have. Envy-NX reads the folder on
+every setup run, so a change to the overlay reaches every machine on its next run.</p>
+<p>This page is for the people who write an overlay or build an image on one. For the user-side view, see
+<a href="../customization/">Customization</a>.</p>
+<h2 id="two-overlays-one-machine">Two overlays, one machine<a class="headerlink" href="#two-overlays-one-machine" title="Permanent link">¤</a></h2>
+<table>
+<thead>
+<tr>
+<th>Overlay</th>
+<th>Where it lives</th>
+<th>Who owns it</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Organization</td>
+<td>any folder, chosen with <code>nx overlay set &lt;path&gt;</code></td>
+<td>a team, an org, or an image</td>
+</tr>
+<tr>
+<td>Personal</td>
+<td><code>~/.config/nix-env/local/</code></td>
+<td>the user, usually through <code>nx scope add</code></td>
+</tr>
+</tbody>
+</table>
+<p>Setup takes the organization overlay from <code>nix/setup.sh --overlay-dir &lt;path&gt;</code>, else the
+<code>NIX_ENV_OVERLAY_DIR</code> variable, else the path it saved last time, and saves the one it used. Setup
+applies both overlays: the organization overlay first, then the personal one. The organization overlay
+decides what it provides. Users add their own tools on top, but cannot remove or replace what the
+organization overlay installs.</p>
+<h2 id="quick-start">Quick start<a class="headerlink" href="#quick-start" title="Permanent link">¤</a></h2>
+<ol>
+<li>
+<p>Create a folder with one scope file:</p>
+<div class="highlight"><pre><span></span><code>team-overlay/
+└── scopes/
+    └── team.nix
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="c1"># Team tools on top of the standard scopes</span>
+<span class="c1"># scopes: shell python nodejs</span>
+<span class="c1"># bins: btop psql</span>
+<span class="p">{</span> pkgs <span class="p">}:</span> <span class="k">with</span> pkgs<span class="p">;</span> <span class="p">[</span>
+  btop
+  postgresql
+<span class="p">]</span>
+</code></pre></div>
+</li>
+<li>
+<p>Point Envy-NX at it and run setup:</p>
+<div class="highlight"><pre><span></span><code>nx<span class="w"> </span>overlay<span class="w"> </span><span class="nb">set</span><span class="w"> </span>~/src/team-overlay
+nx<span class="w"> </span>setup
+</code></pre></div>
+<p>Envy-NX remembers the path in <code>~/.config/nix-env/overlay_dir</code>, so later runs use it from any
+shell. <code>nx overlay unset</code> forgets it.</p>
+</li>
+<li>
+<p>Check the result:</p>
+<div class="highlight"><pre><span></span><code>nx<span class="w"> </span>overlay<span class="w">      </span><span class="c1"># the overlay's scopes, header scopes, shell config and hooks</span>
+nx<span class="w"> </span>doctor<span class="w">       </span><span class="c1"># confirms the commands in `# bins:` are on PATH</span>
+</code></pre></div>
+</li>
+</ol>
+<p>That is the whole loop. Edit the folder, run <code>nx setup</code> again, and the machine follows.</p>
+<h2 id="folder-layout">Folder layout<a class="headerlink" href="#folder-layout" title="Permanent link">¤</a></h2>
+<div class="highlight"><pre><span></span><code>team-overlay/
+├── scopes/                 # scope files - installed because they are here
+│   └── team.nix
+├── shell_cfg/              # shell files sourced at login
+│   └── aliases_team.sh
+└── hooks/
+    └── post-setup.d/       # scripts run after setup, in name order
+        └── 10-npm-globals.sh
+</code></pre></div>
+<p>Every part is optional. Other files in the folder are ignored.</p>
+<h2 id="scope-files">Scope files<a class="headerlink" href="#scope-files" title="Permanent link">¤</a></h2>
+<p>A scope file in <code>scopes/</code> is installed because it is there. Setup copies it into
+<code>~/.config/nix-env/scopes/</code> as <code>local_&lt;name&gt;.nix</code> and enables it on every run. Delete the file and the
+next run removes the scope and its packages.</p>
+<ul>
+<li><strong>File name.</strong> Letters, digits, <code>-</code> and <code>_</code> only, not starting with <code>local_</code>, for example <code>team.nix</code>
+  or <code>data_tools.nix</code>. Setup
+  skips any other name with a warning. Prefer <code>_</code>: <code>nx</code> commands turn <code>-</code> into <code>_</code> in scope names.</li>
+<li><strong>Packages.</strong> One nixpkgs attribute name per line between <code>[</code> and <code>]</code>. Find names with
+  <code>nx search &lt;term&gt;</code> or on <a href="https://search.nixos.org/packages">search.nixos.org</a>.</li>
+<li><strong><code># bins:</code></strong> lists the commands the packages provide. <code>nx doctor</code> checks that each one is on PATH.
+  Optional, but it turns a missing package into a visible warning.</li>
+<li><strong>Tools nixpkgs does not have.</strong> A scope file is a Nix function, so it can build a tool from a
+  release binary. See <a href="../customization/#packages-that-are-not-in-nixpkgs">Packages that are not in nixpkgs</a>.</li>
+</ul>
+<h3 id="the-scopes-header">The <code># scopes:</code> header<a class="headerlink" href="#the-scopes-header" title="Permanent link">¤</a></h3>
+<p>Some tools are not plain packages. <code>gcloud</code>, <code>nodejs</code> and <code>az</code> run an install step that a scope file
+cannot repeat. Name those standard scopes in the header instead of passing setup flags:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># scopes: python nodejs gcloud k8s_base az</span>
+</code></pre></div>
+<ul>
+<li>Setup enables the named scopes exactly as if they were passed as flags. Their dependencies come
+  along, and their install steps run.</li>
+<li>An unknown name prints a warning and is skipped, so an overlay written for a newer Envy-NX release
+  still works on an older one.</li>
+<li>Use the names from the list below, with underscores (<code>k8s_base</code>). Only the first <code># scopes:</code> line
+  in a file counts.</li>
+</ul>
+<h3 id="standard-scopes">Standard scopes<a class="headerlink" href="#standard-scopes" title="Permanent link">¤</a></h3>
+<p>Every scope can go in the header. These are the ones whose install steps matter for an overlay:</p>
+<table>
+<thead>
+<tr>
+<th>Scope</th>
+<th>Install step</th>
+<th>Brings in</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>nodejs</code></td>
+<td>fnm from Nix, then the Node.js LTS into <code>~/.local/share/fnm</code>, so <code>npm i -g</code> works</td>
+<td></td>
+</tr>
+<tr>
+<td><code>python</code></td>
+<td>uv and prek from Nix; Python versions are managed by uv</td>
+<td></td>
+</tr>
+<tr>
+<td><code>az</code></td>
+<td>azure-cli installed with uv, set up to trust the corporate CA bundle</td>
+<td><code>python</code></td>
+</tr>
+<tr>
+<td><code>gcloud</code></td>
+<td>Google's tarball into <code>~/google-cloud-sdk</code>, so <code>gcloud components install</code> works</td>
+<td></td>
+</tr>
+<tr>
+<td><code>k8s_base</code></td>
+<td>kubectl, kubelogin, helm, k9s; with <code>gcloud</code>, also the GKE auth plugin</td>
+<td></td>
+</tr>
+<tr>
+<td><code>k8s_dev</code></td>
+<td>flux, kustomize, trivy and other cluster tools</td>
+<td><code>k8s_base</code></td>
+</tr>
+<tr>
+<td><code>terraform</code></td>
+<td>tfswitch, which puts <code>terraform</code> into <code>~/.local/bin</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>conda</code></td>
+<td>Miniforge into <code>~/miniforge3</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>playwright</code></td>
+<td>the playwright CLI as a uv tool</td>
+<td><code>python</code></td>
+</tr>
+<tr>
+<td><code>pwsh</code></td>
+<td>PowerShell, plus the <code>pwsh</code> profile</td>
+<td><code>shell</code></td>
+</tr>
+<tr>
+<td><code>zsh</code></td>
+<td>zsh plugins only; the zsh binary must come from the system</td>
+<td><code>shell</code></td>
+</tr>
+</tbody>
+</table>
+<p>The full list with every package is in the <a href="../">scope table</a>.</p>
+<h2 id="shell-config">Shell config<a class="headerlink" href="#shell-config" title="Permanent link">¤</a></h2>
+<p>Files in <code>shell_cfg/</code> are copied to <code>~/.config/shell/overlay/</code> on every setup run, and the managed
+block in <code>~/.bashrc</code> and <code>~/.zshrc</code> sources them after the standard aliases, so an overlay alias wins.</p>
+<ul>
+<li><strong>Pick the shell by extension.</strong> <code>.sh</code> loads in bash and zsh, <code>.bash</code> in bash only, <code>.zsh</code> in zsh
+  only. Other files are copied but not loaded. Names may use letters, digits, <code>.</code>, <code>-</code> and <code>_</code>.</li>
+<li><strong>Write <code>.sh</code> files for both shells.</strong> No bash-only syntax such as <code>[[ =~ ]]</code> captures or arrays
+  indexed from 0, and use <code>function name() {</code> rather than <code>name() {</code>.</li>
+<li><strong>A personal file with the same name replaces the organization's one.</strong> The organization decides
+  the tools, the user decides their shell.</li>
+<li><strong>Deleting a file removes it</strong> from <code>~/.config/shell/overlay/</code> on the next setup run.</li>
+<li>PowerShell does not read these files.</li>
+</ul>
+<h2 id="hooks">Hooks<a class="headerlink" href="#hooks" title="Permanent link">¤</a></h2>
+<p>Scripts in <code>hooks/post-setup.d/*.sh</code> run near the end of setup, after the packages, the scopes' install
+steps and the shell profiles are done. Only the GitHub Copilot CLI, zsh plugins and PowerShell modules
+install later. Use them for tools that a command installs rather than a package: global npm
+packages, <code>uv tool install</code>, gcloud components.</p>
+<ul>
+<li>
+<p><strong>They run on every setup run.</strong> On a Coder workspace that means every start. Check first, then
+  install, so a run with nothing to do is fast:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># hooks/post-setup.d/10-npm-globals.sh</span>
+<span class="nv">v</span><span class="o">=</span><span class="m">5</span>.6.3
+npm<span class="w"> </span>ls<span class="w"> </span>-g<span class="w"> </span><span class="s2">"typescript@</span><span class="nv">$v</span><span class="s2">"</span><span class="w"> </span>&gt;/dev/null<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="o">||</span><span class="w"> </span>npm<span class="w"> </span>install<span class="w"> </span>-g<span class="w"> </span><span class="s2">"typescript@</span><span class="nv">$v</span><span class="s2">"</span>
+</code></pre></div>
+</li>
+<li>
+<p><strong>Each runs as its own <code>bash</code> process</strong> as the user, with <code>ENV_DIR</code>, <code>NIX_ENV_PLATFORM</code> and
+  <code>NIX_ENV_SCOPES</code> set. PATH covers the Nix profile, <code>~/.local/bin</code>, fnm's default Node and
+  <code>~/google-cloud-sdk/bin</code>, so <code>npm</code>, <code>uv</code> and <code>gcloud</code> work.</p>
+</li>
+<li><strong>A failing hook prints a warning</strong> and setup still finishes. Read the setup output when you change
+  a hook.</li>
+<li><strong>Deleting a hook stops it running, but does not undo it.</strong> To remove what a hook installed, ship a
+  hook that uninstalls it.</li>
+<li>Organization overlay hooks run first, then personal ones. There are no pre-setup hooks in an overlay.</li>
+</ul>
+<h2 id="what-changes-when">What changes when<a class="headerlink" href="#what-changes-when" title="Permanent link">¤</a></h2>
+<p>Setup applies the overlay on every run. An edit to the organization overlay reaches existing machines
+on their next run, not only new ones:</p>
+<table>
+<thead>
+<tr>
+<th>When you …</th>
+<th>every machine, on its next setup run …</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>add a package to a scope file</td>
+<td>installs it</td>
+</tr>
+<tr>
+<td>remove a package from a scope file</td>
+<td>uninstalls it</td>
+</tr>
+<tr>
+<td>add a scope file</td>
+<td>installs its packages</td>
+</tr>
+<tr>
+<td>delete a scope file</td>
+<td>uninstalls its packages</td>
+</tr>
+<tr>
+<td>add a name to <code># scopes:</code></td>
+<td>installs that scope, with its install step</td>
+</tr>
+<tr>
+<td>remove a name from <code># scopes:</code></td>
+<td>removes that scope <strong>once</strong>, with its remove step, and prints it (see below)</td>
+</tr>
+<tr>
+<td>add or change a hook</td>
+<td>runs it, then keeps running it on every run</td>
+</tr>
+<tr>
+<td>delete a hook</td>
+<td>stops running it; what it installed stays</td>
+</tr>
+</tbody>
+</table>
+<p>Removing a name from the header deserves care:</p>
+<ul>
+<li><strong>The remove step deletes the scope's home folder</strong> on an unattended run, without asking.
+  Dropping <code>gcloud</code> deletes <code>~/google-cloud-sdk</code> with its components (the login in <code>~/.config/gcloud</code>
+  stays). Dropping <code>nodejs</code> deletes fnm's Node, including every global npm package users installed.
+  Dropping <code>python</code> deletes uv's Pythons and tools.</li>
+<li><strong>A scope another scope needs stays.</strong> Dropping <code>python</code> while <code>az</code> is still named keeps <code>python</code>,
+  because <code>az</code> depends on it.</li>
+<li><strong>It happens once.</strong> A user who adds the scope back afterwards with <code>nx setup --gcloud</code> keeps it.</li>
+</ul>
+<h2 id="what-users-can-and-cant-do">What users can and can't do<a class="headerlink" href="#what-users-can-and-cant-do" title="Permanent link">¤</a></h2>
+<ul>
+<li><strong>Add anything on top.</strong> <code>nx install &lt;pkg&gt;</code>, <code>nx setup --&lt;scope&gt;</code> for a scope the overlay does not
+  name, or their own scopes with <code>nx scope add</code>. All of it survives image upgrades.</li>
+<li><strong>Not remove what the organization overlay provides.</strong> <code>nx scope remove</code>, <code>nx scope edit</code> and
+  <code>nix/setup.sh --remove</code> refuse its scopes and the scopes its headers name, and print which file
+  provides them. Removing something for everyone is a change to the overlay.</li>
+<li><strong>Not replace it.</strong> Adding a scope the overlay already provides does nothing and says so, and a
+  <code>--omp-theme</code> or <code>--starship-theme</code> flag cannot swap out a prompt engine the overlay names. A prompt
+  engine the overlay names also replaces the other engine if the user had it, including one a
+  personal overlay names. A personal
+  scope file with the same name as an organization one is ignored with a warning.</li>
+</ul>
+<p>This is a default the organization controls, not a lock. A user can install a removed tool again
+themselves, or stop using the organization overlay with <code>nx overlay unset</code> (and by dropping
+<code>NIX_ENV_OVERLAY_DIR</code> if it is set).</p>
+<h2 id="building-an-image-on-an-overlay">Building an image on an overlay<a class="headerlink" href="#building-an-image-on-an-overlay" title="Permanent link">¤</a></h2>
+<p>A container image (a Coder workspace template, a Dev Container) bakes the overlay in and runs the same
+setup command at build time and at every start. The overlay is then the one description of the
+environment, and the image passes no scope flags.</p>
+<div class="highlight"><pre><span></span><code><span class="c"># Nix itself is installed earlier in the image, single-user (--no-daemon), owned by the workspace user.</span>
+
+<span class="c"># Envy-NX: the latest release, no git history needed</span>
+<span class="k">RUN</span><span class="w"> </span>curl<span class="w"> </span>--proto<span class="w"> </span><span class="s1">'=https'</span><span class="w"> </span>--tlsv1.2<span class="w"> </span>-fsSL<span class="w"> </span>--connect-timeout<span class="w"> </span><span class="m">30</span><span class="w"> </span>--max-time<span class="w"> </span><span class="m">600</span><span class="w"> </span>-o<span class="w"> </span>/tmp/envy-nx.tar.gz<span class="w"> </span><span class="se">\</span>
+<span class="w">      </span>https://github.com/szymonos/envy-nx/releases/latest/download/envy-nx.tar.gz<span class="w"> </span><span class="se">\</span>
+<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>mkdir<span class="w"> </span>-p<span class="w"> </span>/opt/envy-nx<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>tar<span class="w"> </span>xzf<span class="w"> </span>/tmp/envy-nx.tar.gz<span class="w"> </span>-C<span class="w"> </span>/opt/envy-nx<span class="w"> </span>--strip-components<span class="o">=</span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
+<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>rm<span class="w"> </span>/tmp/envy-nx.tar.gz
+
+<span class="c"># The overlay lives next to the Dockerfile in your template repository</span>
+<span class="k">COPY</span><span class="w"> </span>nix-overlay/<span class="w"> </span>/opt/nix-overlay/
+<span class="k">ENV</span><span class="w"> </span><span class="nv">NIX_ENV_OVERLAY_DIR</span><span class="o">=</span>/opt/nix-overlay
+
+<span class="k">USER</span><span class="w"> </span><span class="s">coder</span>
+<span class="k">RUN</span><span class="w"> </span>/opt/envy-nx/nix/setup.sh<span class="w"> </span>--unattended
+</code></pre></div>
+<p>The image sets the path with <code>ENV</code>, which takes precedence over the saved path, so every shell and
+every setup run in the workspace agrees on it. <code>nix/setup.sh --overlay-dir /opt/nix-overlay</code> works
+too, and saves the path for later runs.</p>
+<p>And at every workspace start, from the entrypoint:</p>
+<div class="highlight"><pre><span></span><code>/opt/envy-nx/nix/setup.sh<span class="w"> </span>--skip-repo-update<span class="w"> </span>--unattended
+</code></pre></div>
+<p>Things to know:</p>
+<ul>
+<li><strong>Run setup at start, not only at build.</strong> The workspace home is a volume that hides whatever the
+  build wrote to <code>$HOME</code>: <code>~/.nix-profile</code>, the shell profiles, and the tools installed into the home
+  folder (Node through fnm, the gcloud tarball, uv tools). The build still pays off: the packages it
+  downloaded stay in <code>/nix/store</code>, so the start only links them.</li>
+<li><strong>The first start of a new workspace is slower.</strong> It downloads the tools that install into <code>$HOME</code>.
+  Later starts find them on the volume and finish quickly.</li>
+<li><strong>The start applies image upgrades.</strong> A new image with a changed overlay or a newer Envy-NX reaches
+  an existing home on its next start, and scopes the user added stay.</li>
+<li><strong>Pick the Envy-NX version on purpose.</strong> <code>releases/latest</code> takes every release, each of which passed
+  Envy-NX CI on Linux and macOS. To hold a version, download <code>releases/download/v&lt;X.Y.Z&gt;/envy-nx.tar.gz</code>
+  instead and bump it with your template releases.</li>
+<li><strong>A missing overlay folder stops setup.</strong> If the organization overlay is not there or not readable,
+  for example a mount that has not arrived yet, setup exits with an error before it changes any scope. Fix the
+  path, or run <code>nx overlay unset</code> (and drop the variable) to stop using it.</li>
+<li><strong>No root in the overlay.</strong> An overlay installs nothing that needs root. Daemons, system packages
+  and anything run through <code>sudo</code> stay in the image.</li>
+</ul>
+<h2 id="testing-an-overlay-before-you-ship-it">Testing an overlay before you ship it<a class="headerlink" href="#testing-an-overlay-before-you-ship-it" title="Permanent link">¤</a></h2>
+<p>Try every change on one machine before it goes into an image:</p>
+<div class="highlight"><pre><span></span><code>nx<span class="w"> </span>overlay<span class="w"> </span><span class="nb">set</span><span class="w"> </span>~/src/team-overlay<span class="w">   </span><span class="c1"># your working copy</span>
+nx<span class="w"> </span>setup<span class="w">                 </span><span class="c1"># applies scopes, header scopes, shell config and hooks</span>
+nx<span class="w"> </span>overlay<span class="w">               </span><span class="c1"># what was picked up, and anything ignored</span>
+nx<span class="w"> </span>doctor<span class="w">                </span><span class="c1"># every `# bins:` command on PATH</span>
+</code></pre></div>
+<p>Use <code>nx setup</code>, not <code>nx upgrade</code>. <code>nx upgrade</code> skips install steps, so a scope you just added to the
+header would get its packages but not its installer.</p>
+<p>Before you ship, check that:</p>
+<ul>
+<li>setup prints no <code>unknown scope</code> or <code>ignored</code> warning for your files,</li>
+<li>every hook runs twice in a row without error, and the second run is quick,</li>
+<li><code>nx doctor</code> reports no missing commands.</li>
+</ul>
+<h2 id="reference">Reference<a class="headerlink" href="#reference" title="Permanent link">¤</a></h2>
+<ul>
+<li><a href="../customization/">Customization</a> - the user side: personal scopes, packages, pinning.</li>
+<li><a href="https://github.com/szymonos/envy-nx/blob/main/design/decisions/0013-overlays-org-extension-point.md">Decision 0013</a> - why overlays work this way, and the options that were rejected.</li>
+<li><a href="https://github.com/szymonos/envy-nx/blob/main/design/overlay_catalog.md"><code>design/overlay_catalog.md</code></a> - the planned <code>nx overlay add</code>, for subscribing to an overlay from a git repository.</li>
+</ul>
+</article>
+</div>
+<script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+</div>
+</main>
+<footer class="md-footer">
+<div class="md-footer-meta md-typeset">
+<div class="md-footer-meta__inner md-grid">
+<div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" rel="noopener" target="_blank">
+      Material for MkDocs
+    </a>
+</div>
+</div>
+</div>
+</footer>
+</div>
+<div class="md-dialog" data-md-component="dialog">
+<div class="md-dialog__inner md-typeset"></div>
+</div>
+<script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.indexes", "navigation.sections", "content.code.copy", "content.tabs.link"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+<script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+<script src="../assets/javascripts/diagram-zoom.js"></script>
+</body>
+</html>
