@@ -229,7 +229,6 @@ function _NxProfileRegenerate {
         '        [Environment]::SetEnvironmentVariable(''PATH'', [string]::Join([IO.Path]::PathSeparator, $env:PATH, $abs))'
         '    }'
         '}'
-        'if ($env:LD_LIBRARY_PATH) { $env:LD_LIBRARY_PATH = $null }'
         '#endregion'
     )
     if (_NxUpdateProfileRegion -Lines $profileContent -RegionName 'nix:path' -Content $nixRegion) {

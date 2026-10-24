@@ -159,10 +159,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         pwsh_path = str(pwsh)
 
-    env = {**__import__("os").environ}
-    env.pop("LD_LIBRARY_PATH", None)
-
-    result = subprocess.run([pwsh_path, "-nop", "-c", pester_cmd], env=env)
+    result = subprocess.run([pwsh_path, "-nop", "-c", pester_cmd])
     return result.returncode
 
 
