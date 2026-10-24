@@ -1,8 +1,8 @@
 #!/usr/bin/env bats
 # Tests for _io_pwsh_nop wrapper (in .assets/lib/helpers.sh).
-# Verifies that the wrapper prefers the nix bin/pwsh wrapper, clears
-# LD_LIBRARY_PATH inside the nix-pwsh session, and falls back to system
-# pwsh (no LD_LIBRARY_PATH dance) when nix-pwsh is not installed.
+# Verifies that the wrapper prefers the nix bin/pwsh wrapper, passes the
+# command through unprefixed, and falls back to system pwsh when nix-pwsh
+# is not installed.
 # shellcheck disable=SC2034
 bats_require_minimum_version 1.5.0
 
@@ -65,10 +65,10 @@ STUB
 }
 
 # =============================================================================
-# LD_LIBRARY_PATH clearing inside nix-pwsh
+# Command passthrough (nix-pwsh needs no LD_LIBRARY_PATH clear, decision 0014)
 # =============================================================================
 
-@test "_io_pwsh_nop: -c mode prepends LD_LIBRARY_PATH clear (nix-pwsh)" {
+@test "_io_pwsh_nop: -c mode passes the command through unprefixed (nix-pwsh)" {
   mkdir -p "$TEST_HOME/.nix-profile/bin"
   cat >"$TEST_HOME/.nix-profile/bin/pwsh" <<'STUB'
 #!/usr/bin/env bash
@@ -83,11 +83,10 @@ STUB
   local output
   output="$(_io_pwsh_nop -c 'Write-Host hello')"
 
-  [[ "$output" == *'$env:LD_LIBRARY_PATH = $null'* ]]
-  [[ "$output" == *'Write-Host hello'* ]]
+  [ "$output" = 'Write-Host hello' ]
 }
 
-@test "_io_pwsh_nop: script mode prepends LD_LIBRARY_PATH clear (nix-pwsh)" {
+@test "_io_pwsh_nop: script mode passes the script call through unprefixed (nix-pwsh)" {
   mkdir -p "$TEST_HOME/.nix-profile/bin"
   cat >"$TEST_HOME/.nix-profile/bin/pwsh" <<'STUB'
 #!/usr/bin/env bash
@@ -102,9 +101,7 @@ STUB
   local output
   output="$(_io_pwsh_nop /some/script.ps1 -Param)"
 
-  [[ "$output" == *'$env:LD_LIBRARY_PATH = $null'* ]]
-  [[ "$output" == *'/some/script.ps1'* ]]
-  [[ "$output" == *'-Param'* ]]
+  [ "$output" = '& "/some/script.ps1" -Param' ]
 }
 
 # =============================================================================
@@ -128,7 +125,7 @@ STUB
   grep -q "$fake_dir/pwsh" "$BATS_TEST_TMPDIR/system_pwsh.log"
 }
 
-@test "_io_pwsh_nop: system-pwsh fallback omits LD_LIBRARY_PATH prefix" {
+@test "_io_pwsh_nop: system-pwsh fallback passes the command through unprefixed" {
   local fake_dir="$BATS_TEST_TMPDIR/system_bin"
   mkdir -p "$fake_dir"
   cat >"$fake_dir/pwsh" <<'STUB'
@@ -145,8 +142,7 @@ STUB
   local output
   output="$(_io_pwsh_nop -c 'Write-Host hello')"
 
-  [[ "$output" != *'LD_LIBRARY_PATH'* ]]
-  [[ "$output" == *'Write-Host hello'* ]]
+  [ "$output" = 'Write-Host hello' ]
 }
 
 @test "_io_pwsh_nop: returns 1 with clear error when no pwsh anywhere" {

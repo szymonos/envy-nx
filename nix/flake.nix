@@ -53,9 +53,34 @@
             then pkgs.lib.lowPrio pkg
             else pkg;
 
+          # nixpkgs wraps pwsh in a script that prefixes LD_LIBRARY_PATH with the
+          # libraries .NET dlopens (icu, openssl, ...). Every child process
+          # inherits it, and nix itself then loads a libcurl built against a
+          # newer glibc and dies. glibc's dlopen searches the calling library's
+          # RUNPATH, so appending the same directories there lets the wrapper set
+          # telemetry vars only. Darwin keeps upstream: its wrapper sets
+          # DYLD_FALLBACK_LIBRARY_PATH, which only applies when a library is not
+          # found at its install name - nix binaries reference absolute paths.
+          # See design/decisions/0014-pwsh-runpath-not-ld-library-path.md.
+          patchPwsh = pkg:
+            if pkgs.stdenv.hostPlatform.isLinux && pkgs.lib.getName pkg == "powershell"
+            then pkg.overrideAttrs (old: {
+              appendRunpaths = [ (pkgs.lib.makeLibraryPath old.buildInputs) ];
+              # autoPatchelfHook runs after this hook's body, so only the wrapper
+              # is rebuilt here; the RUNPATH goes through appendRunpaths.
+              postFixup = (old.postFixup or "") + ''
+                makeWrapper $out/share/powershell/.pwsh-wrapped $out/share/powershell/pwsh \
+                  --inherit-argv0 \
+                  --set POWERSHELL_TELEMETRY_OPTOUT 1 \
+                  --set DOTNET_CLI_TELEMETRY_OPTOUT 1
+                cp $out/share/powershell/pwsh $out/bin/pwsh
+              '';
+            })
+            else pkg;
+
         in pkgs.buildEnv {
           name = "dev-env";
-          paths = map demote (basePkgs ++ initPkgs ++ scopePkgs ++ extraPkgs);
+          paths = map (p: demote (patchPwsh p)) (basePkgs ++ initPkgs ++ scopePkgs ++ extraPkgs);
         };
     in
     {

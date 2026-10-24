@@ -129,9 +129,9 @@ for sc in $scopes; do
   }
 done
 
-if [ -z "$system" ]; then
-  system="$(nix eval --impure --raw --expr builtins.currentSystem)"
-fi
+# A plain assignment, so set -e stops the script when nix eval fails.
+host_system="$(nix eval --impure --raw --expr builtins.currentSystem)"
+[ -n "$system" ] || system="$host_system"
 
 work_dir="$(mktemp -d "${TMPDIR:-/tmp}/scope-env.XXXXXX")"
 $keep || trap 'rm -rf "$work_dir"' EXIT
@@ -222,6 +222,25 @@ for sc in $scopes; do
     printf '\e[32m%-14s %-24s ok\e[0m\n' "$sc" "$bin"
   done
 done
+
+# Decision 0014: the flake gives pwsh its libraries through RUNPATH, so pwsh
+# must start (ICU loads at startup) without exporting LD_LIBRARY_PATH to its
+# children. Only on the build host's own system - a cross build cannot run.
+if [ -x "$out_path/bin/pwsh" ] && [ "$system" = "$host_system" ]; then
+  case "$system" in
+  *-linux)
+    # GNU timeout is always there on Linux; a hung startup fails the check.
+    leak="$(env -u LD_LIBRARY_PATH HOME="$work_dir" timeout 120 "$out_path/bin/pwsh" -nop -c \
+      '(Get-Culture) > $null; [Environment]::GetEnvironmentVariable("LD_LIBRARY_PATH")' 2>&1)" || leak="pwsh failed: $leak"
+    if [ -n "$leak" ]; then
+      printf '\e[31m%-14s %-24s %s\e[0m\n' pwsh 'LD_LIBRARY_PATH' "$leak"
+      failed=1
+    else
+      printf '\e[32m%-14s %-24s ok\e[0m\n' pwsh 'no LD_LIBRARY_PATH'
+    fi
+    ;;
+  esac
+fi
 
 if [ "$failed" -ne 0 ]; then
   printf '\n\e[31;1m>> scope env check FAILED\e[0m\n' >&2

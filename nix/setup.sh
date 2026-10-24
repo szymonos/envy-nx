@@ -31,12 +31,13 @@ nix/setup.sh --help
 '
 set -eo pipefail
 
-# When launched from a pwsh shell, clean up .NET side-effects:
-# 1. LD_LIBRARY_PATH: .NET injects nix store library paths that cause glibc
-#    conflicts when nix commands run as children.
-# 2. PATH: pwsh adds its share/powershell directory to PATH, which contains
-#    the unwrapped pwsh binary (no LD_LIBRARY_PATH setup for libicu/openssl).
-#    This shadows the nix bin/pwsh wrapper and causes startup aborts.
+# A pwsh built from the upstream nixpkgs wrapper (installed before the flake
+# patched it, see design/decisions/0014) leaks into this process when setup is
+# launched from it - and setup is what installs the patched build:
+# 1. LD_LIBRARY_PATH carries nix store libraries that break nix (glibc).
+# 2. PATH gains share/powershell, whose unwrapped pwsh aborts without that
+#    LD_LIBRARY_PATH and shadows the bin/pwsh wrapper.
+# CLEANUP: CQ-006
 unset LD_LIBRARY_PATH 2>/dev/null || true
 PATH="$(printf '%s' "$PATH" | tr ':' '\n' | grep -v '/share/powershell$' | tr '\n' ':')"
 PATH="${PATH%:}"

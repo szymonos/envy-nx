@@ -231,19 +231,11 @@ _io_step() {
   printf '%s%s\n' "$_IO_STEP_PREFIX" "$*" >&2
 }
 
-# Invoke pwsh -nop, handling nix-built and system pwsh differences.
-#
-# Nix-built pwsh's .NET runtime re-injects /nix/store library paths into
-# LD_LIBRARY_PATH at startup, which then leaks into child processes (nix
-# commands, glibc-mismatched). We must clear it inside the pwsh session
-# AND invoke the nix wrapper at ~/.nix-profile/bin/pwsh -- NOT the
-# unwrapped share/powershell/pwsh, which lacks libicu/openssl indirection
-# and aborts on startup. System-packaged pwsh has neither issue, so the
-# LD_LIBRARY_PATH dance is unnecessary.
+# Invoke pwsh -nop, preferring nix-built pwsh over a system install.
 #
 # Resolution order:
-#   1. ~/.nix-profile/bin/pwsh exists -> use it, LD_LIBRARY_PATH cleared.
-#   2. Otherwise `command -v pwsh` (system install) -> use as-is.
+#   1. ~/.nix-profile/bin/pwsh exists -> use it.
+#   2. Otherwise `command -v pwsh` (system install, e.g. Coder) -> use it.
 #   3. Neither -> return 1 with a clear error message.
 #
 # Usage: _io_pwsh_nop script.ps1 [-Param ...]
@@ -261,10 +253,9 @@ _io_step() {
 #     so it is the right path for inline commands or any payload that has
 #     already had its quoting handled by the caller.
 _io_pwsh_nop() {
-  local _pwsh _prefix=""
+  local _pwsh
   if [[ -x "$HOME/.nix-profile/bin/pwsh" ]]; then
     _pwsh="$HOME/.nix-profile/bin/pwsh"
-    _prefix='$env:LD_LIBRARY_PATH = $null; '
   else
     _pwsh="$(command -v pwsh 2>/dev/null)"
     if [[ -z "$_pwsh" ]]; then
@@ -274,10 +265,10 @@ _io_pwsh_nop() {
   fi
   if [[ "${1:-}" == "-c" ]]; then
     shift
-    "$_pwsh" -nop -c "${_prefix}$1"
+    "$_pwsh" -nop -c "$1"
   else
     local _cmd
-    printf -v _cmd '%s& "%s"' "$_prefix" "$1"
+    printf -v _cmd '& "%s"' "$1"
     shift
     [[ $# -gt 0 ]] && _cmd+=" $*"
     "$_pwsh" -nop -c "$_cmd"

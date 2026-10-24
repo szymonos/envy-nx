@@ -22,6 +22,39 @@ Pick ONE signal per item (all are reasonable for a single-maintainer project):
 
 ---
 
+## CQ-006: Drop the pwsh `LD_LIBRARY_PATH` / PATH scrub at `nix/setup.sh` entry
+
+- **Status:** open
+- **Added:** 2026-10-24
+- **Trigger:** 60-90 days after the release that patched pwsh's RUNPATH in
+  `nix/flake.nix` (decision 0014)
+- **Scope:** `nix/setup.sh`
+
+### Context
+
+The flake now builds pwsh with its libraries on the RUNPATH, so it no longer
+exports `LD_LIBRARY_PATH`. A user upgrading from an older release still runs
+`nix/setup.sh` from the old, leaking pwsh, and nix inside setup would fail on
+the glibc mismatch before the patched pwsh is installed. The scrub covers that
+one upgrade run.
+
+### What to do
+
+1. Remove the `unset LD_LIBRARY_PATH` and `share/powershell` PATH filter
+   (`# CLEANUP: CQ-006`) from the top of `nix/setup.sh`, with their comment.
+2. Drop the matching sentences from ARCHITECTURE.md section 5 ("Pwsh
+   invocation goes through `_io_pwsh_nop`").
+
+### Verification
+
+```bash
+git grep -n 'CQ-006'                                # only this entry left
+pwsh -nop -c 'bash -c "nix --version"'              # exits 0
+make test-unit
+```
+
+---
+
 ## CQ-005: Drop the deprecated `nix/setup.sh --register-ssh-key` flag
 
 - **Status:** open
