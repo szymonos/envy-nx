@@ -175,6 +175,23 @@ function _nx_render_nix_block() {
     printf '[ -f "$HOME/.config/shell/completions.bash" ] && . "$HOME/.config/shell/completions.bash"\n'
   fi
 
+  # Overlay shell config, copied by nix/configure/profiles.{sh,zsh}: `.sh` for
+  # both shells, `.bash` and `.zsh` for one. Names outside the safe set would
+  # need quoting in the rendered line, so they are skipped.
+  local _ov_file _ov_name _ov_hdr=false
+  while IFS= read -r _ov_file; do
+    _ov_name="${_ov_file##*/}"
+    case "$_ov_name" in
+    *[!A-Za-z0-9_.-]*) continue ;;
+    *.sh) ;;
+    *.bash) [ "$shell" = "bash" ] || continue ;;
+    *.zsh) [ "$shell" = "zsh" ] || continue ;;
+    *) continue ;;
+    esac
+    [ "$_ov_hdr" = false ] && printf '\n# :overlay\n' && _ov_hdr=true
+    printf '[ -f "$HOME/.config/shell/overlay/%s" ] && . "$HOME/.config/shell/overlay/%s"\n' "$_ov_name" "$_ov_name"
+  done < <(find "$HOME/.config/shell/overlay" -maxdepth 1 -type f 2>/dev/null | sort)
+
   if [ "$shell" = "zsh" ]; then
     local _zsh_dir="$HOME/.zsh"
     local _plugin _file _has_plugins=false

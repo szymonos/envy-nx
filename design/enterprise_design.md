@@ -32,8 +32,7 @@ Each section follows the same shape: **Re-review → Design → Acceptance crite
   `import ./scopes/${scope}.nix` picks them up. The flake needed no change.
 - **No `overlay.yaml` metadata schema.** An org overlay dropped into `$OVERLAY_DIR` has no way to declare its name, version, or minimum core version - so the core can't refuse an incompatible overlay.
 - **No verification of overlay integrity.** Dropped-in scopes are trusted without signature checks. `enterprise_notes.md:30-35` pushes this to the fork; that's fine, but the **seam** for verification (a hook point that runs before overlay consumption) doesn't exist yet.
-- **User-tier overlay writable path is implicit** (`$ENV_DIR/local`). Never documented as a public contract.
-- **`docs/customization.md`** exists but doesn't yet describe the overlay contract at the level a fork would need to rely on it.
+- **The overlay contract is documented** in `docs/overlays.md` (decision 0013), including the personal `$ENV_DIR/local` path, but nothing versions it yet.
 
 ### 1.1a Scope of the tier split
 
@@ -48,12 +47,11 @@ different question - how an organization imposes a baseline that a user cannot
 bypass - and only earn their cost when signing and precedence are real
 requirements.
 
-One consequence of the single directory is live today and is documented in
-`docs/customization.md`: `NIX_ENV_OVERLAY_DIR` replaces `$ENV_DIR/local` instead of
-adding to it, so a user who joins a team overlay loses their personal overlay
-scopes from the build. If that becomes a real complaint, the cheap fix is to let
-the variable hold a `PATH`-style list and to loop the copy step over the entries -
-not the full tier contract below.
+`NIX_ENV_OVERLAY_DIR` used to replace `$ENV_DIR/local`. Since decision
+[0013](decisions/0013-overlays-org-extension-point.md) both apply, the org overlay
+first, and the org overlay controls the scopes it provides. That precedence is a
+default, not enforcement: nothing stops a user from unsetting the variable, which
+is what the tier contract below would address.
 
 ### 1.2 Design
 

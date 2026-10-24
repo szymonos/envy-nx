@@ -28,6 +28,29 @@ function _nx_all_scopes() {
   printf '%s\n' "$scopes" | sort
 }
 
+# Prints "<origin> <file>" for the overlay that provides scope $1, as the last
+# setup run recorded it in overlay_scopes (origin is org or local). Fails when
+# no overlay provides it. Org overlay scopes and header-named scopes are not
+# removed or overridden from here (decision 0013).
+function _nx_overlay_owner() {
+  local _o _s _f _state="$_NX_ENV_DIR/overlay_scopes"
+  [ -f "$_state" ] || return 1
+  while read -r _o _s _f; do
+    [ "$_s" = "$1" ] && printf '%s %s\n' "$_o" "$_f" && return 0
+  done <"$_state"
+  return 1
+}
+
+# Prints the org overlay file that provides any of the given scope ids.
+function _nx_org_owner() {
+  local id own
+  for id in "$@"; do
+    own="$(_nx_overlay_owner "$id")" || continue
+    [ "${own%% *}" = org ] && printf '%s\n' "${own#* }" && return 0
+  done
+  return 1
+}
+
 # Rewrite config.nix with the given scope list. Args: scope names to include.
 function _nx_write_config() {
   local config_nix="$_NX_ENV_DIR/config.nix"
@@ -213,11 +236,30 @@ function _nx_scope_dispatch() {
       return 0
     fi
     local ov_dir="$env_dir/local"
-    if [ -n "${NIX_ENV_OVERLAY_DIR:-}" ] && [ -d "$NIX_ENV_OVERLAY_DIR" ]; then
-      ov_dir="$NIX_ENV_OVERLAY_DIR"
-    fi
+    local targets=() own r
+    for r in "$@"; do
+      # names are joined with spaces below, so only scope-file characters pass
+      case "$r" in
+      "" | *[!A-Za-z0-9_-]*)
+        printf "\e[31mInvalid scope name: %s\e[0m\n" "$r" >&2
+        continue
+        ;;
+      esac
+      if [[ "$r" != local_* ]] && own="$(_nx_overlay_owner "$r")"; then
+        if [ "${own%% *}" = org ]; then
+          printf "\e[33m'%s' is controlled by the organization overlay (%s) - not removed.\e[0m\n" "$r" "${own#* }" >&2
+        else
+          printf "\e[33m'%s' is named in the # scopes: header of %s - remove it there.\e[0m\n" "$r" "${own#* }" >&2
+        fi
+      elif own="$(_nx_org_owner "local_$r" "local_${r#local_}")"; then
+        printf "\e[33m'%s' is controlled by the organization overlay (%s) - not removed.\e[0m\n" "${r#local_}" "$own" >&2
+      else
+        targets+=("$r")
+      fi
+    done
+    [ ${#targets[@]} -eq 0 ] && return 1
+    set -- "${targets[@]}"
     local remove_set=" "
-    local r
     for r in "$@"; do
       remove_set+="$r local_$r "
     done
@@ -231,7 +273,7 @@ function _nx_scope_dispatch() {
       fi
     done <<<"$current_scopes"
     for r in "$@"; do
-      rm -f "$ov_dir/scopes/$r.nix" "$scopes_dir/local_$r.nix"
+      rm -f "$ov_dir/scopes/${r#local_}.nix" "$scopes_dir/local_${r#local_}.nix"
       if [ -f "$scopes_dir/$r.nix" ] && [[ "$r" != local_* ]]; then
         printf "\e[33mNote: '%s' is a base-managed scope - it will be removed from config.nix and re-added on next nix/setup.sh run unless you also pass it to setup.sh --remove\e[0m\n" "$r" >&2
       fi
@@ -257,8 +299,23 @@ function _nx_scope_dispatch() {
       echo "Usage: nx scope add <name> [pkg...]" >&2
       return 1
     }
-    local name="${1//-/_}"
+    local raw="$1" name="${1//-/_}"
     shift
+    local own
+    if own="$(_nx_org_owner "$name" "local_$name" "local_$raw")"; then
+      printf "\e[33m'%s' is provided by the organization overlay (%s) - nothing to add.\e[0m\n" "$raw" "$own"
+      return 0
+    fi
+    case "$name" in
+    "" | *[!A-Za-z0-9_]*)
+      printf "\e[31mScope names may use only letters, digits, - and _.\e[0m\n" >&2
+      return 1
+      ;;
+    local_*)
+      printf "\e[31mScope names cannot start with local_ - setup adds that prefix itself.\e[0m\n" >&2
+      return 1
+      ;;
+    esac
     # Reject overlay names that collide with managed scopes (defined in
     # nix/scopes/<name>.nix and listed in scopes.json:valid_scopes).
     # Without this guard, `nx scope add python` silently creates
@@ -275,9 +332,6 @@ function _nx_scope_dispatch() {
       fi
     fi
     local ov_dir="$env_dir/local"
-    if [ -n "${NIX_ENV_OVERLAY_DIR:-}" ] && [ -d "$NIX_ENV_OVERLAY_DIR" ]; then
-      ov_dir="$NIX_ENV_OVERLAY_DIR"
-    fi
     local scope_file="$ov_dir/scopes/$name.nix"
     local created=false
     if [ ! -f "$scope_file" ]; then
@@ -335,11 +389,21 @@ function _nx_scope_dispatch() {
       echo "Usage: nx scope edit <name>" >&2
       return 1
     }
+    case "$1" in
+    */*)
+      printf "\e[31mInvalid scope name: %s\e[0m\n" "$1" >&2
+      return 1
+      ;;
+    esac
     local name="${1//-/_}"
-    local ov_dir="$env_dir/local"
-    if [ -n "${NIX_ENV_OVERLAY_DIR:-}" ] && [ -d "$NIX_ENV_OVERLAY_DIR" ]; then
-      ov_dir="$NIX_ENV_OVERLAY_DIR"
+    local own
+    if own="$(_nx_org_owner "$name" "local_$name" "local_$1")"; then
+      printf "\e[33m'%s' is controlled by the organization overlay (%s) and cannot be edited here.\e[0m\n" "$1" "$own" >&2
+      return 1
     fi
+    local ov_dir="$env_dir/local"
+    # a hand-made personal file may keep the hyphens nx would turn into _
+    [ -f "$ov_dir/scopes/$name.nix" ] || [ ! -f "$ov_dir/scopes/$1.nix" ] || name="$1"
     local scope_file="$ov_dir/scopes/$name.nix"
     if [ ! -f "$scope_file" ]; then
       if [ -f "$scopes_dir/$name.nix" ]; then
@@ -370,77 +434,185 @@ EOF
   esac
 }
 
+# The org overlay path setup will use: NIX_ENV_OVERLAY_DIR, else the path
+# saved in overlay_dir by `nx overlay set` or the last setup run.
+function _nx_org_overlay_dir() {
+  if [ -n "${NIX_ENV_OVERLAY_DIR:-}" ]; then
+    printf '%s\n' "$NIX_ENV_OVERLAY_DIR"
+  elif [ -f "$_NX_ENV_DIR/overlay_dir" ]; then
+    head -n 1 "$_NX_ENV_DIR/overlay_dir"
+  fi
+}
+
+# Prints "<origin> <dir>" for each overlay directory, the org overlay first.
+function _nx_overlay_dirs() {
+  local env_dir="$_NX_ENV_DIR" org
+  org="$(_nx_org_overlay_dir)"
+  [ -n "$org" ] && printf 'org %s\n' "$org"
+  if [ -d "$env_dir/local" ] && [ "$env_dir/local" != "$org" ]; then
+    printf 'local %s\n' "$env_dir/local"
+  fi
+}
+
 function _nx_overlay_dispatch() {
   local env_dir="$_NX_ENV_DIR"
-  local ov_dir=""
-  if [ -n "${NIX_ENV_OVERLAY_DIR:-}" ] && [ -d "$NIX_ENV_OVERLAY_DIR" ]; then
-    ov_dir="$NIX_ENV_OVERLAY_DIR"
-  elif [ -d "$env_dir/local" ]; then
-    ov_dir="$env_dir/local"
-  fi
-  if [ "${1:-}" = "help" ] || [ "${1:-}" = "-h" ]; then
-    printf "Usage: nx overlay\n\nShow overlay directory contents and sync status.\n"
+  case "${1:-}" in
+  help | -h)
+    printf "Usage: nx overlay [set <path> | unset]\n\n"
+    printf "Show overlay directories, their contents and sync status.\n"
+    printf "  set <path>  use <path> as the organization overlay (applied by the next nx setup)\n"
+    printf "  unset       stop using the organization overlay (the next nx setup removes its scopes)\n"
     printf "Overlay scopes are listed in \e[1mnx scope list\e[0m (marked 'local').\n"
     return 0
-  fi
-  if [ -z "$ov_dir" ]; then
+    ;;
+  set)
+    # not `path`: zsh ties that name to PATH, even as a local
+    local ov_path="${2:-}"
+    if [ -z "$ov_path" ] || [ ! -d "$ov_path" ] || [ ! -r "$ov_path" ] || [ ! -x "$ov_path" ]; then
+      printf "\e[31mUsage: nx overlay set <path> - the path must be a readable directory.\e[0m\n" >&2
+      return 1
+    fi
+    ov_path="$(cd "$ov_path" && pwd)" || return 1
+    case "$ov_path" in
+    *:* | *"
+"*)
+      printf "\e[31mThe overlay path cannot contain ':' or a newline.\e[0m\n" >&2
+      return 1
+      ;;
+    esac
+    # the same checks setup applies, so a saved path never makes the next setup stop
+    if [ -d "$env_dir" ] && [ "$(cd "$ov_path" && pwd -P)" = "$(cd "$env_dir" && pwd -P)" ]; then
+      printf "\e[31m%s is the Envy-NX config folder - point to the overlay folder.\e[0m\n" "$ov_path" >&2
+      return 1
+    fi
+    if { [ -e "$ov_path/scopes" ] || [ -L "$ov_path/scopes" ]; } &&
+      { [ ! -d "$ov_path/scopes" ] || [ ! -r "$ov_path/scopes" ] || [ ! -x "$ov_path/scopes" ]; }; then
+      printf "\e[31m%s/scopes is not a readable directory.\e[0m\n" "$ov_path" >&2
+      return 1
+    fi
+    local tmp=""
+    if ! { mkdir -p "$env_dir" && tmp="$(mktemp "$env_dir/overlay_dir.XXXXXX")" &&
+      printf '%s\n' "$ov_path" >"$tmp" && command mv -f "$tmp" "$env_dir/overlay_dir"; }; then
+      [ -n "$tmp" ] && command rm -f "$tmp"
+      printf "\e[31mCould not save %s/overlay_dir.\e[0m\n" "$env_dir" >&2
+      return 1
+    fi
+    printf "\e[32mOrganization overlay set to %s.\e[0m Run \e[1mnx setup\e[0m to apply it.\n" "$ov_path"
+    if [ -n "${NIX_ENV_OVERLAY_DIR:-}" ] && [ "$NIX_ENV_OVERLAY_DIR" != "$ov_path" ]; then
+      printf "\e[33mNIX_ENV_OVERLAY_DIR=%s is set in this shell and takes precedence.\e[0m\n" "$NIX_ENV_OVERLAY_DIR" >&2
+    fi
+    return 0
+    ;;
+  unset)
+    if ! rm -f "$env_dir/overlay_dir"; then
+      printf "\e[31mCould not remove %s/overlay_dir.\e[0m\n" "$env_dir" >&2
+      return 1
+    fi
+    if [ -n "${NIX_ENV_OVERLAY_DIR:-}" ]; then
+      printf "\e[33mNIX_ENV_OVERLAY_DIR=%s is still set and keeps the overlay - remove it from your shell profile too.\e[0m\n" "$NIX_ENV_OVERLAY_DIR" >&2
+      return 0
+    fi
+    printf "Organization overlay forgotten. Run \e[1mnx setup\e[0m to apply - it removes the overlay's scopes.\n"
+    return 0
+    ;;
+  esac
+  local dirs
+  dirs="$(_nx_overlay_dirs)"
+  if [ -z "$dirs" ]; then
     printf "\e[33mNo overlay directory active.\e[0m\n"
-    printf "Create one at %s/local/ or set NIX_ENV_OVERLAY_DIR.\n" "$env_dir"
+    printf "Create one at %s/local/ or point to an organization overlay with \e[1mnx overlay set <path>\e[0m.\n" "$env_dir"
     return 0
   fi
-  printf "\e[96mOverlay directory:\e[0m %s\n" "$ov_dir"
   local scopes_dir="$env_dir/scopes"
-  local f hdr name indicator
-  hdr=false
-  while IFS= read -r f; do
-    [ -n "$f" ] || continue
-    [ "$hdr" = false ] && printf "\e[96mScopes:\e[0m\n" && hdr=true
-    name="$(basename "$f" .nix)"
-    name="${name#local_}"
-    indicator=""
-    if [ -f "$ov_dir/scopes/$name.nix" ]; then
-      if ! cmp -s "$ov_dir/scopes/$name.nix" "$f" 2>/dev/null; then
-        indicator=" \e[33m(modified)\e[0m"
-      fi
-    else
-      indicator=" \e[33m(source missing)\e[0m"
+  local origin ov_dir label f name indicator hdr own hscopes unknown any_scope=false found
+  local scopes_json=""
+  command -v jq >/dev/null 2>&1 && scopes_json="$(_nx_find_lib scopes.json 2>/dev/null)" || scopes_json=""
+  while read -r origin ov_dir; do
+    label="personal"
+    [ "$origin" = org ] && label="organization"
+    printf "\e[96mOverlay directory:\e[0m %s \e[90m(%s)\e[0m\n" "$ov_dir" "$label"
+    if [ ! -d "$ov_dir" ] || [ ! -r "$ov_dir" ]; then
+      printf "  \e[31mnot a readable directory - setup stops until it is back, or run nx overlay unset\e[0m\n"
+      continue
     fi
-    printf "  \e[1m*\e[0m %s%b\n" "$name" "$indicator"
-  done < <(find "$scopes_dir" -maxdepth 1 -type f -name 'local_*.nix' 2>/dev/null)
-  [ "$hdr" = false ] && printf "\e[90mNo overlay scopes.\e[0m\n"
-  if [ -d "$ov_dir/shell_cfg" ]; then
     hdr=false
     while IFS= read -r f; do
       [ -n "$f" ] || continue
-      [ "$hdr" = false ] && printf "\e[96mShell config:\e[0m\n" && hdr=true
-      local bname installed
-      bname="$(basename "$f")"
-      installed="$HOME/.config/shell/$bname"
+      [ "$hdr" = false ] && printf "\e[96mScopes:\e[0m\n" && hdr=true
+      any_scope=true
+      name="$(basename "$f" .nix)"
       indicator=""
-      if [ -f "$installed" ]; then
-        if cmp -s "$f" "$installed" 2>/dev/null; then
-          indicator=" \e[32m(synced)\e[0m"
-        else
-          indicator=" \e[33m(differs)\e[0m"
-        fi
-      else
-        indicator=" \e[33m(not installed)\e[0m"
+      own="$(_nx_overlay_owner "local_$name")" || own=""
+      if [ "$origin" = local ] && [ "${own%% *}" = org ]; then
+        indicator=" \e[33m(ignored - the organization overlay provides it)\e[0m"
+      elif [ ! -f "$scopes_dir/local_$name.nix" ]; then
+        indicator=" \e[33m(not synced)\e[0m"
+      elif ! cmp -s "$f" "$scopes_dir/local_$name.nix" 2>/dev/null; then
+        indicator=" \e[33m(modified)\e[0m"
       fi
-      printf "  \e[1m*\e[0m %s%b\n" "$bname" "$indicator"
-    done < <(find "$ov_dir/shell_cfg" -maxdepth 1 -type f \( -name '*.sh' -o -name '*.bash' -o -name '*.zsh' \) 2>/dev/null)
-  fi
-  # Setup reads hooks only from $env_dir/hooks; overlay hooks are listed so an
-  # author who shipped one learns why it never runs.
+      hscopes="$(sed -En 's/^#[[:space:]]*scopes:[[:space:]]*//p' "$f" | head -n 1)"
+      if [ -n "$hscopes" ] && [[ "$indicator" != *ignored* ]]; then
+        indicator="$indicator \e[90m+ scopes: $hscopes\e[0m"
+        # setup skips names scopes.json does not list
+        if [ -n "$scopes_json" ]; then
+          unknown="$(jq -r --arg h "$hscopes" \
+            '[$h | gsub("-"; "_") | splits("[ \t]+") | select(. != "")] - .valid_scopes | join(" ")' \
+            "$scopes_json" 2>/dev/null)" || unknown=""
+          [ -n "$unknown" ] && indicator="$indicator \e[33m(unknown, ignored: $unknown)\e[0m"
+        fi
+      fi
+      printf "  \e[1m*\e[0m %s%b\n" "$name" "$indicator"
+    done < <(find -L "$ov_dir/scopes" -maxdepth 1 -type f -name '*.nix' 2>/dev/null | sort)
+    if [ -d "$ov_dir/shell_cfg" ]; then
+      hdr=false
+      while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        [ "$hdr" = false ] && printf "\e[96mShell config:\e[0m\n" && hdr=true
+        local bname installed
+        bname="$(basename "$f")"
+        installed="$HOME/.config/shell/overlay/$bname"
+        indicator=""
+        if [ "$origin" = org ] && [ -f "$env_dir/local/shell_cfg/$bname" ]; then
+          indicator=" \e[90m(replaced by the personal overlay's file)\e[0m"
+        elif [ -f "$installed" ]; then
+          if cmp -s "$f" "$installed" 2>/dev/null; then
+            indicator=" \e[32m(synced)\e[0m"
+          else
+            indicator=" \e[33m(differs)\e[0m"
+          fi
+        else
+          indicator=" \e[33m(not installed)\e[0m"
+        fi
+        printf "  \e[1m*\e[0m %s%b\n" "$bname" "$indicator"
+      done < <(find -L "$ov_dir/shell_cfg" -maxdepth 1 -type f \( -name '*.sh' -o -name '*.bash' -o -name '*.zsh' \) 2>/dev/null)
+    fi
+    hdr=false
+    while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      [ "$hdr" = false ] && printf "\e[96mHooks:\e[0m\n" && hdr=true
+      case "${f#"$ov_dir/hooks/"}" in
+      post-setup.d/*/*) indicator=" \e[33m(ignored - only scripts directly in hooks/post-setup.d run)\e[0m" ;;
+      post-setup.d/*) indicator=" \e[32m(runs after setup)\e[0m" ;;
+      *) indicator=" \e[33m(ignored - only hooks/post-setup.d runs)\e[0m" ;;
+      esac
+      printf "  \e[1m*\e[0m %s%b\n" "${f#"$ov_dir/"}" "$indicator"
+    done < <(find -L "$ov_dir/hooks" -type f -name '*.sh' 2>/dev/null | sort)
+  done <<<"$dirs"
   hdr=false
   while IFS= read -r f; do
     [ -n "$f" ] || continue
-    if [ "$hdr" = false ]; then
-      printf "\e[33mIgnored hooks (overlays cannot ship hooks):\e[0m\n"
-      hdr=true
-    fi
-    printf "  \e[1m*\e[0m %s\n" "${f#"$ov_dir/"}"
-  done < <(find "$ov_dir/hooks" -type f -name '*.sh' 2>/dev/null | sort)
-  [ "$hdr" = true ] && printf "Hooks run only from %s/hooks/ on this machine.\n" "$env_dir"
+    name="$(basename "$f" .nix)"
+    name="${name#local_}"
+    found=false
+    while read -r origin ov_dir; do
+      [ -f "$ov_dir/scopes/$name.nix" ] && found=true
+    done <<<"$dirs"
+    [ "$found" = true ] && continue
+    [ "$hdr" = false ] && printf "\e[96mSynced scopes without a source:\e[0m\n" && hdr=true
+    any_scope=true
+    printf "  \e[1m*\e[0m %s \e[33m(source missing)\e[0m\n" "$name"
+  done < <(find "$scopes_dir" -maxdepth 1 -type f -name 'local_*.nix' 2>/dev/null | sort)
+  [ "$any_scope" = false ] && printf "\e[90mNo overlay scopes.\e[0m\n"
   return 0
 }
 

@@ -51,14 +51,27 @@ _install_cfg_file "$SHELL_CFG/completions.zsh"     "$HOME/.config/shell/completi
 _install_cfg_file "$LIB/certs.sh"                  "$HOME/.config/shell/certs.sh"
 
 # ---------------------------------------------------------------------------
-# Copy overlay shell config files (if overlay directory is active)
+# Copy overlay shell config files to ~/.config/shell/overlay/, which the managed
+# block sources. OVERLAY_DIR lists the org overlay first; walking it backwards
+# lets a personal file win over an org file of the same name. Files no overlay
+# provides any more are removed.
 # ---------------------------------------------------------------------------
-if [[ -n "${OVERLAY_DIR:-}" ]] && [[ -d "$OVERLAY_DIR/shell_cfg" ]]; then
-  for _overlay_cfg in "$OVERLAY_DIR/shell_cfg"/*; do
+_overlay_dst="$HOME/.config/shell/overlay"
+_overlay_keep=" "
+for _overlay_dir in ${(Oa)${(s.:.)${OVERLAY_DIR:-}}}; do
+  [[ -d "$_overlay_dir/shell_cfg" ]] || continue
+  for _overlay_cfg in "$_overlay_dir/shell_cfg"/*(N); do
     [[ -f "$_overlay_cfg" ]] || continue
-    _install_cfg_file "$_overlay_cfg" "$HOME/.config/shell/${_overlay_cfg:t}"
+    # the same names the profile renderer sources; the keep list is space-delimited
+    [[ "${_overlay_cfg:t}" == *[^A-Za-z0-9_.-]* ]] && continue
+    [[ "$_overlay_keep" == *" ${_overlay_cfg:t} "* ]] && continue
+    _overlay_keep+="${_overlay_cfg:t} "
+    _install_cfg_file "$_overlay_cfg" "$_overlay_dst/${_overlay_cfg:t}"
   done
-fi
+done
+for _overlay_cfg in "$_overlay_dst"/*(N); do
+  [[ "$_overlay_keep" == *" ${_overlay_cfg:t} "* ]] || rm -f "$_overlay_cfg"
+done
 
 # ---------------------------------------------------------------------------
 # Install zsh plugins (git clone / pull)

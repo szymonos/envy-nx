@@ -135,6 +135,37 @@ EOF
 
 # -- flake_lock check --------------------------------------------------------
 
+@test "overlay_dir passes for a saved org overlay with a scopes folder" {
+  _write_install_json
+  mkdir -p "$TEST_DIR/org/scopes"
+  printf '%s\n' "$TEST_DIR/org" >"$ENV_DIR/overlay_dir"
+  run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"PASS  overlay_dir"* ]]
+}
+
+@test "overlay_dir fails when the org overlay's scopes entry is not a folder" {
+  _write_install_json
+  mkdir -p "$TEST_DIR/org"
+  ln -s "$TEST_DIR/nowhere" "$TEST_DIR/org/scopes"
+  printf '%s\n' "$TEST_DIR/org" >"$ENV_DIR/overlay_dir"
+  run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"FAIL  overlay_dir"* ]]
+}
+
+@test "overlay_dir fails when the org overlay is the config folder" {
+  _write_install_json
+  printf '%s\n' "$ENV_DIR" >"$ENV_DIR/overlay_dir"
+  run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"FAIL  overlay_dir"* ]]
+}
+
+@test "overlay_dir fails when the saved path is empty" {
+  _write_install_json
+  : >"$ENV_DIR/overlay_dir"
+  run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"FAIL  overlay_dir"* ]]
+}
+
 @test "flake_lock passes when flake.lock exists with nixpkgs node" {
   _write_flake_lock
   _write_install_json

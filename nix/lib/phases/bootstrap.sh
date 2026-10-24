@@ -2,11 +2,12 @@
 # Root guard, path resolution, nix/jq detection, ENV_DIR sync, arg parsing.
 # shellcheck disable=SC2034  # variables used by other phases
 #
-# Reads:  BASH_SOURCE (for path resolution)
+# Reads:  BASH_SOURCE (for path resolution), NX_CALLER_PWD
 # Writes: SCRIPT_ROOT, NIX_ENV_VERSION, NIX_SRC, CONFIGURE_DIR, ENV_DIR,
 #         CONFIG_NIX, omp_theme, starship_theme, unattended, update_modules,
 #         upgrade_latest, quiet_summary, allow_unfree,
-#         remove_scopes, any_scope, _scope_set, _ir_skip, _ir_error, NX_REEXECED
+#         remove_scopes, any_scope, _scope_set, _cli_scope_set, overlay_dir_arg, _ir_skip, _ir_error,
+#         NX_REEXECED
 
 # Refresh the repo from upstream when behind. Skips silently when:
 #   - NX_REEXECED is already set (we are the post-exec invocation; refresh
@@ -453,8 +454,8 @@ Scope flags (add new packages - merged with existing config):
   --conda       Miniforge (conda-forge)
   --docker      Docker post-install check (Docker itself installed separately)
   --gcloud      Google Cloud CLI
-  --k8s-base    kubectl, kubelogin, k9s, kubecolor, kubectx/kubens
-  --k8s-dev     argo rollouts, cilium, flux, helm, hubble, kustomize, trivy
+  --k8s-base    kubectl, kubelogin, helm, k9s, kubecolor, kubectx/kubens
+  --k8s-dev     argo rollouts, cilium, flux, hubble, kustomize, trivy
   --k8s-ext     minikube, k3d, kind
   --nodejs      Node.js
   --playwright  Playwright CLI (uv) + Chromium (nix on Linux)
@@ -472,6 +473,7 @@ Options:
   --allow-unfree            Allow unfree (proprietary-licensed) nix packages
   --omp-theme <name>        Install oh-my-posh with theme (base, nerd, powerline, ...)
   --starship-theme <name>   Install starship with theme (base, nerd)
+  --overlay-dir <path>      Use <path> as the organization overlay and remember it
   --unattended              Skip all interactive steps (gh auth, SSH key registration, git config)
   --skip-repo-update        Skip the git fetch + fast-forward of the source repo
   --update-modules          Update installed PowerShell modules
@@ -490,7 +492,7 @@ NX_SETUP_FLAGS=(
   --nodejs --playwright --pwsh --python --rice --shell --terraform --zsh
   --all --omp-theme --starship-theme --remove
   --unattended --register-ssh-key --skip-repo-update --update-modules
-  --allow-unfree --upgrade --latest --quiet-summary --sync-only --skip-configure
+  --allow-unfree --upgrade --latest --quiet-summary --sync-only --skip-configure --overlay-dir
 )
 
 # Map a rejected token onto the flag the user probably meant. Covers the two
@@ -547,6 +549,7 @@ phase_bootstrap_parse_args() {
   remove_scopes=()
   _scope_set=" "
   any_scope=false
+  overlay_dir_arg=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -577,6 +580,15 @@ phase_bootstrap_parse_args() {
       starship_theme="${2:-}"
       scope_add starship
       any_scope=true
+      shift
+      ;;
+    --overlay-dir)
+      overlay_dir_arg="${2:-}"
+      if [[ -z "$overlay_dir_arg" || "$overlay_dir_arg" == --* ]]; then
+        err "--overlay-dir requires a directory"
+        exit 2
+      fi
+      [[ "$overlay_dir_arg" == /* ]] || overlay_dir_arg="${NX_CALLER_PWD:-$PWD}/$overlay_dir_arg"
       shift
       ;;
     --remove)
@@ -630,4 +642,6 @@ phase_bootstrap_parse_args() {
 
   # normalize hyphenated flag names to underscored scope names
   _scope_set="${_scope_set//-/_}"
+  # what the flags asked for, before config.nix and overlays add to the set
+  _cli_scope_set="$_scope_set"
 }

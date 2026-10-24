@@ -288,7 +288,7 @@ Commands:
   rollback                 rollback to previous profile generation
   list                     list installed packages
   scope                    manage scopes (nx scope help)
-  overlay                  manage overlay directory (nx overlay help)
+  overlay                  manage overlay directories (nx overlay help)
   pin                      manage nixpkgs revision pin (nx pin help)
   profile                  manage shell profile blocks (nx profile help)
   setup     [flags...]     add or remove scopes and themes, then upgrade (runs nix/setup.sh)
@@ -461,7 +461,7 @@ NX_VERB_HELP_EOF
       cat <<'NX_VERB_HELP_EOF'
 Usage: nx overlay list
 
-show overlay directory and contents
+show overlay directories and contents
 
 Options:
   -h, --help  show this help
@@ -477,15 +477,37 @@ Options:
   -h, --help  show this help
 NX_VERB_HELP_EOF
       ;;
+    set)
+      cat <<'NX_VERB_HELP_EOF'
+Usage: nx overlay set <path>
+
+use a directory as the organization overlay
+
+Options:
+  -h, --help  show this help
+NX_VERB_HELP_EOF
+      ;;
+    unset)
+      cat <<'NX_VERB_HELP_EOF'
+Usage: nx overlay unset
+
+stop using the organization overlay
+
+Options:
+  -h, --help  show this help
+NX_VERB_HELP_EOF
+      ;;
     *)
       cat <<'NX_VERB_HELP_EOF'
 Usage: nx overlay <command>
 
-manage overlay directory
+manage overlay directories
 
 Commands:
-  list    show overlay directory and contents
-  status  show overlay sync status
+  list        show overlay directories and contents
+  status      show overlay sync status
+  set <path>  use a directory as the organization overlay
+  unset       stop using the organization overlay
 NX_VERB_HELP_EOF
       ;;
     esac

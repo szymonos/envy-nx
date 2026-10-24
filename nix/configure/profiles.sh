@@ -51,14 +51,29 @@ _install_cfg_file "$SHELL_CFG/completions.bash" "$HOME/.config/shell/completions
 _install_cfg_file "$LIB/certs.sh" "$HOME/.config/shell/certs.sh"
 
 # ---------------------------------------------------------------------------
-# Copy overlay shell config files (if overlay directory is active)
+# Copy overlay shell config files to ~/.config/shell/overlay/, which the managed
+# block sources. OVERLAY_DIR lists the org overlay first; walking it backwards
+# lets a personal file win over an org file of the same name. Files no overlay
+# provides any more are removed.
 # ---------------------------------------------------------------------------
-if [ -n "${OVERLAY_DIR:-}" ] && [ -d "$OVERLAY_DIR/shell_cfg" ]; then
-  for _overlay_cfg in "$OVERLAY_DIR/shell_cfg"/*; do
+_overlay_dst="$HOME/.config/shell/overlay"
+_overlay_keep=" "
+while IFS= read -r _overlay_dir; do
+  [ -n "$_overlay_dir" ] && [ -d "$_overlay_dir/shell_cfg" ] || continue
+  for _overlay_cfg in "$_overlay_dir/shell_cfg"/*; do
     [ -f "$_overlay_cfg" ] || continue
-    _install_cfg_file "$_overlay_cfg" "$HOME/.config/shell/$(basename "$_overlay_cfg")"
+    _overlay_name="$(basename "$_overlay_cfg")"
+    # the same names the profile renderer sources; the keep list is space-delimited
+    case "$_overlay_name" in *[!A-Za-z0-9_.-]*) continue ;; esac
+    [[ "$_overlay_keep" == *" $_overlay_name "* ]] && continue
+    _overlay_keep+="$_overlay_name "
+    _install_cfg_file "$_overlay_cfg" "$_overlay_dst/$_overlay_name"
   done
-fi
+done < <(printf '%s\n' "${OVERLAY_DIR:-}" | tr ':' '\n' | awk '{ l[NR] = $0 } END { for (i = NR; i > 0; i--) print l[i] }')
+for _overlay_cfg in "$_overlay_dst"/*; do
+  [ -f "$_overlay_cfg" ] || continue
+  [[ "$_overlay_keep" == *" $(basename "$_overlay_cfg") "* ]] || rm -f "$_overlay_cfg"
+done
 
 # ---------------------------------------------------------------------------
 # Build the CA bundle and configure VS Code Server

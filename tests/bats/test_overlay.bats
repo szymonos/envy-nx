@@ -40,13 +40,13 @@ teardown() {
   [[ "$output" == *"$ENV_DIR/local"* ]]
 }
 
-@test "overlay prefers NIX_ENV_OVERLAY_DIR over local dir" {
+@test "overlay lists the org overlay first, then the personal one" {
   mkdir -p "$ENV_DIR/local"
   local custom_dir="$TEST_DIR/custom-overlay"
   mkdir -p "$custom_dir"
   export NIX_ENV_OVERLAY_DIR="$custom_dir"
   run nx overlay
-  [[ "$output" == *"$custom_dir"* ]]
+  [[ "$output" == *"$custom_dir"*"(organization)"*"$ENV_DIR/local"*"(personal)"* ]]
 }
 
 @test "overlay shows synced scopes from scopes dir" {
@@ -58,6 +58,14 @@ teardown() {
   [[ "$output" == *"my_tools"* ]]
 }
 
+@test "overlay marks header scopes setup does not know as ignored" {
+  mkdir -p "$ENV_DIR/local/scopes"
+  printf '# scopes: python not_a_scope\n{ pkgs }: with pkgs; []\n' >"$ENV_DIR/local/scopes/team.nix"
+  run nx overlay
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"+ scopes: python not_a_scope"*"(unknown, ignored: not_a_scope)"* ]]
+}
+
 @test "overlay shows shell config files" {
   mkdir -p "$ENV_DIR/local/shell_cfg"
   touch "$ENV_DIR/local/shell_cfg/custom.sh"
@@ -66,21 +74,40 @@ teardown() {
   [[ "$output" == *"custom.sh"* ]]
 }
 
-@test "overlay flags hook files as ignored" {
-  mkdir -p "$ENV_DIR/local/hooks/post-setup.d"
-  touch "$ENV_DIR/local/hooks/post-setup.d/10-custom.sh"
+@test "overlay lists post-setup hooks as running and other hooks as ignored" {
+  mkdir -p "$ENV_DIR/local/hooks/post-setup.d" "$ENV_DIR/local/hooks/pre-setup.d"
+  touch "$ENV_DIR/local/hooks/post-setup.d/10-custom.sh" "$ENV_DIR/local/hooks/pre-setup.d/10-early.sh"
   run nx overlay
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Ignored hooks (overlays cannot ship hooks):"* ]]
-  [[ "$output" == *"hooks/post-setup.d/10-custom.sh"* ]]
-  [[ "$output" == *"Hooks run only from $ENV_DIR/hooks/"* ]]
+  [[ "$output" == *"hooks/post-setup.d/10-custom.sh"*"(runs after setup)"* ]]
+  [[ "$output" == *"hooks/pre-setup.d/10-early.sh"*"(ignored - only hooks/post-setup.d runs)"* ]]
+}
+
+@test "overlay reports hooks in post-setup.d subfolders as ignored" {
+  mkdir -p "$ENV_DIR/local/hooks/post-setup.d/sub"
+  touch "$ENV_DIR/local/hooks/post-setup.d/sub/20-nested.sh"
+  run nx overlay
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"hooks/post-setup.d/sub/20-nested.sh"*"(ignored - only scripts directly in hooks/post-setup.d run)"* ]]
+}
+
+@test "overlay lists symlinked scope files and hooks that setup consumes" {
+  mkdir -p "$TEST_DIR/src/hooks" "$ENV_DIR/local/scopes" "$ENV_DIR/local/hooks"
+  printf '# scopes: python\n{ pkgs }: with pkgs; []\n' >"$TEST_DIR/src/team.nix"
+  touch "$TEST_DIR/src/hooks/10-linked.sh"
+  ln -s "$TEST_DIR/src/team.nix" "$ENV_DIR/local/scopes/team.nix"
+  ln -s "$TEST_DIR/src/hooks" "$ENV_DIR/local/hooks/post-setup.d"
+  run nx overlay
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"team"*"+ scopes: python"* ]]
+  [[ "$output" == *"hooks/post-setup.d/10-linked.sh"*"(runs after setup)"* ]]
 }
 
 @test "overlay prints no hook warning when the overlay has no hooks" {
   mkdir -p "$ENV_DIR/local/scopes"
   run nx overlay
   [ "$status" -eq 0 ]
-  [[ "$output" != *"Ignored hooks"* ]]
+  [[ "$output" != *"Hooks:"* ]]
 }
 
 @test "overlay handles empty overlay directory" {
@@ -106,19 +133,76 @@ teardown() {
 }
 
 @test "overlay shows shell config sync status" {
-  mkdir -p "$ENV_DIR/local/shell_cfg" "$HOME/.config/shell"
+  mkdir -p "$ENV_DIR/local/shell_cfg" "$HOME/.config/shell/overlay"
   printf 'echo hello\n' >"$ENV_DIR/local/shell_cfg/custom.sh"
-  cp "$ENV_DIR/local/shell_cfg/custom.sh" "$HOME/.config/shell/custom.sh"
+  cp "$ENV_DIR/local/shell_cfg/custom.sh" "$HOME/.config/shell/overlay/custom.sh"
   run nx overlay
   [[ "$output" == *"synced"* ]]
 }
 
 @test "overlay shows differs indicator for changed shell config" {
-  mkdir -p "$ENV_DIR/local/shell_cfg" "$HOME/.config/shell"
+  mkdir -p "$ENV_DIR/local/shell_cfg" "$HOME/.config/shell/overlay"
   printf 'echo hello\n' >"$ENV_DIR/local/shell_cfg/custom.sh"
-  printf 'echo world\n' >"$HOME/.config/shell/custom.sh"
+  printf 'echo world\n' >"$HOME/.config/shell/overlay/custom.sh"
   run nx overlay
   [[ "$output" == *"differs"* ]]
+}
+
+@test "overlay set remembers the org overlay and overlay shows it" {
+  local org="$TEST_DIR/org-overlay"
+  mkdir -p "$org/scopes"
+  run nx overlay set "$org"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$ENV_DIR/overlay_dir")" = "$org" ]
+  run nx overlay
+  [[ "$output" == *"$org"*"(organization)"* ]]
+}
+
+@test "overlay set rejects a path that is not a directory" {
+  run nx overlay set "$TEST_DIR/nope"
+  [ "$status" -ne 0 ]
+  [ ! -f "$ENV_DIR/overlay_dir" ]
+}
+
+@test "overlay set warns when NIX_ENV_OVERLAY_DIR points elsewhere" {
+  mkdir -p "$TEST_DIR/a" "$TEST_DIR/b"
+  export NIX_ENV_OVERLAY_DIR="$TEST_DIR/b"
+  run nx overlay set "$TEST_DIR/a"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"NIX_ENV_OVERLAY_DIR=$TEST_DIR/b is set in this shell and takes precedence"* ]]
+}
+
+@test "overlay set rejects a path with a colon" {
+  mkdir -p "$TEST_DIR/team:blue"
+  run nx overlay set "$TEST_DIR/team:blue"
+  [ "$status" -ne 0 ]
+  [ ! -f "$ENV_DIR/overlay_dir" ]
+}
+
+@test "overlay shows a saved org overlay that went missing" {
+  printf '%s\n' "$TEST_DIR/gone" >"$ENV_DIR/overlay_dir"
+  run nx overlay
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"$TEST_DIR/gone"*"not a readable directory - setup stops"* ]]
+}
+
+@test "overlay set refuses the config folder and a bad scopes entry" {
+  run nx overlay set "$ENV_DIR"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"is the Envy-NX config folder"* ]]
+  mkdir -p "$TEST_DIR/org" && touch "$TEST_DIR/org/scopes"
+  run nx overlay set "$TEST_DIR/org"
+  [ "$status" -ne 0 ]
+  [ ! -f "$ENV_DIR/overlay_dir" ]
+}
+
+@test "overlay unset forgets the org overlay" {
+  mkdir -p "$TEST_DIR/org"
+  printf '%s\n' "$TEST_DIR/org" >"$ENV_DIR/overlay_dir"
+  run nx overlay unset
+  [ "$status" -eq 0 ]
+  [ ! -f "$ENV_DIR/overlay_dir" ]
+  [[ "$output" == *"removes the overlay's scopes"* ]]
 }
 
 # -- scope add ---------------------------------------------------------------
@@ -211,6 +295,22 @@ EOF
   [ ! -f "$ENV_DIR/local/scopes/k8s_base.nix" ]
 }
 
+@test "scope add rejects names setup would skip" {
+  printf '{\n  isInit = false;\n  scopes = [];\n}\n' >"$ENV_DIR/config.nix"
+  run nx scope add dev.tools
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"letters, digits, - and _"* ]]
+  [ ! -f "$ENV_DIR/local/scopes/dev.tools.nix" ]
+}
+
+@test "scope add rejects names starting with local_" {
+  printf '{\n  isInit = false;\n  scopes = [];\n}\n' >"$ENV_DIR/config.nix"
+  run nx scope add local_extra
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"cannot start with local_"* ]]
+  [ ! -f "$ENV_DIR/local/scopes/local_extra.nix" ]
+}
+
 @test "scope add allows non-managed names (overlay-only)" {
   # Sanity: rejection must be selective. A name that's NOT in valid_scopes
   # (e.g. user-chosen 'my_devtools') should still create the overlay normally.
@@ -226,7 +326,7 @@ EOF
   [ -f "$ENV_DIR/local/scopes/my_devtools.nix" ]
 }
 
-@test "scope add uses NIX_ENV_OVERLAY_DIR when set" {
+@test "scope add writes to the personal overlay even when NIX_ENV_OVERLAY_DIR is set" {
   local custom_dir="$TEST_DIR/custom-overlay"
   mkdir -p "$custom_dir"
   export NIX_ENV_OVERLAY_DIR="$custom_dir"
@@ -238,7 +338,164 @@ EOF
 EOF
   run nx scope add my_tools
   [ "$status" -eq 0 ]
-  [ -f "$custom_dir/scopes/my_tools.nix" ]
+  [ -f "$ENV_DIR/local/scopes/my_tools.nix" ]
+  [ ! -f "$custom_dir/scopes/my_tools.nix" ]
+}
+
+# -- org overlay control (decision 0013) -------------------------------------
+
+# Org overlay at $ORG providing scope `team` whose header names gcloud, as the
+# last setup run recorded it in overlay_scopes.
+_org_overlay() {
+  ORG="$TEST_DIR/org-overlay"
+  mkdir -p "$ORG/scopes"
+  printf '# scopes: gcloud\n{ pkgs }: with pkgs; [ btop ]\n' >"$ORG/scopes/team.nix"
+  cp "$ORG/scopes/team.nix" "$ENV_DIR/scopes/local_team.nix"
+  export NIX_ENV_OVERLAY_DIR="$ORG"
+  printf 'org local_team %s\norg gcloud %s\n' "$ORG/scopes/team.nix" "$ORG/scopes/team.nix" >"$ENV_DIR/overlay_scopes"
+  cat >"$ENV_DIR/config.nix" <<'EOF'
+{
+  isInit = false;
+  scopes = [
+    "gcloud"
+    "local_team"
+  ];
+}
+EOF
+  _nx_apply() { echo APPLY_CALLED; }
+}
+
+@test "scope remove refuses a scope the org overlay provides" {
+  _org_overlay
+  run nx scope remove team
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"'team' is controlled by the organization overlay ($ORG/scopes/team.nix)"* ]]
+  [[ "$output" != *"APPLY_CALLED"* ]]
+  [ -f "$ORG/scopes/team.nix" ]
+  grep -q 'local_team' "$ENV_DIR/config.nix"
+}
+
+@test "scope remove rejects a name with a space instead of splitting it" {
+  _org_overlay
+  run nx scope remove 'gcloud local_team'
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Invalid scope name: gcloud local_team"* ]]
+  [[ "$output" != *"APPLY_CALLED"* ]]
+  grep -q '"gcloud"' "$ENV_DIR/config.nix"
+  grep -q 'local_team' "$ENV_DIR/config.nix"
+}
+
+@test "scope remove refuses a standard scope the org header names" {
+  _org_overlay
+  run nx scope remove gcloud
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"'gcloud' is controlled by the organization overlay"* ]]
+  grep -q '"gcloud"' "$ENV_DIR/config.nix"
+}
+
+@test "scope remove points at the personal file for a scope its header names" {
+  mkdir -p "$ENV_DIR/local/scopes"
+  printf 'local gcloud %s\n' "$ENV_DIR/local/scopes/mine.nix" >"$ENV_DIR/overlay_scopes"
+  printf '{\n  isInit = false;\n  scopes = [\n    "gcloud"\n  ];\n}\n' >"$ENV_DIR/config.nix"
+  run nx scope remove gcloud
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"named in the # scopes: header of $ENV_DIR/local/scopes/mine.nix - remove it there"* ]]
+}
+
+@test "scope remove still removes the other scopes it was given" {
+  _org_overlay
+  mkdir -p "$ENV_DIR/local/scopes"
+  printf '{ pkgs }: with pkgs; []\n' >"$ENV_DIR/local/scopes/mine.nix"
+  printf '{\n  isInit = false;\n  scopes = [\n    "local_mine"\n    "local_team"\n  ];\n}\n' >"$ENV_DIR/config.nix"
+  run nx scope remove team mine
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"removed scope: mine"* ]]
+  [ ! -f "$ENV_DIR/local/scopes/mine.nix" ]
+  grep -q 'local_team' "$ENV_DIR/config.nix"
+  ! grep -q 'local_mine' "$ENV_DIR/config.nix"
+}
+
+@test "scope remove accepts the local_ prefix for a personal scope" {
+  mkdir -p "$ENV_DIR/local/scopes"
+  printf '{ pkgs }: with pkgs; []\n' >"$ENV_DIR/local/scopes/mine.nix"
+  cp "$ENV_DIR/local/scopes/mine.nix" "$ENV_DIR/scopes/local_mine.nix"
+  printf '{\n  isInit = false;\n  scopes = [\n    "local_mine"\n  ];\n}\n' >"$ENV_DIR/config.nix"
+  _nx_apply() { :; }
+  run nx scope remove local_mine
+  [ "$status" -eq 0 ]
+  [ ! -f "$ENV_DIR/local/scopes/mine.nix" ]
+  [ ! -f "$ENV_DIR/scopes/local_mine.nix" ]
+}
+
+@test "scope add is a no-op for a scope the org overlay provides" {
+  _org_overlay
+  run nx scope add team
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"'team' is provided by the organization overlay"* ]]
+  [ ! -f "$ENV_DIR/local/scopes/team.nix" ]
+}
+
+@test "scope add is a no-op for a standard scope the org header names" {
+  _org_overlay
+  run nx scope add gcloud
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"'gcloud' is provided by the organization overlay"* ]]
+  [[ "$output" != *"managed scope"* ]]
+}
+
+@test "scope edit refuses a standard scope the org header names" {
+  _org_overlay
+  EDITOR=false run nx scope edit gcloud
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"'gcloud' is controlled by the organization overlay"* ]]
+}
+
+@test "scope add and edit find an org scope whose file name has a hyphen" {
+  _org_overlay
+  printf 'org local_data-tools %s\n' "$ORG/scopes/data-tools.nix" >>"$ENV_DIR/overlay_scopes"
+  run nx scope add data-tools
+  [[ "$output" == *"provided by the organization overlay ($ORG/scopes/data-tools.nix)"* ]]
+  EDITOR=false run nx scope edit data-tools
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"controlled by the organization overlay"* ]]
+}
+
+@test "scope remove rejects a name with a slash" {
+  _org_overlay
+  touch "$TEST_DIR/victim.nix"
+  run nx scope remove "local_../../../../victim"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Invalid scope name"* ]]
+  [ -f "$TEST_DIR/victim.nix" ]
+}
+
+@test "scope edit rejects a name with a slash" {
+  EDITOR=false run nx scope edit "../../org/scopes/team"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Invalid scope name"* ]]
+}
+
+@test "scope edit refuses a scope the org overlay provides" {
+  _org_overlay
+  EDITOR=false run nx scope edit team
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"controlled by the organization overlay"* ]]
+}
+
+@test "overlay marks a personal scope the org overlay shadows as ignored" {
+  _org_overlay
+  mkdir -p "$ENV_DIR/local/scopes"
+  printf '{ pkgs }: with pkgs; []\n' >"$ENV_DIR/local/scopes/team.nix"
+  run nx overlay
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"team"*"(ignored - the organization overlay provides it)"* ]]
+}
+
+@test "overlay shows the standard scopes a header names" {
+  _org_overlay
+  run nx overlay
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"team"*"+ scopes: gcloud"* ]]
 }
 
 # -- hand-written scope protection -------------------------------------------

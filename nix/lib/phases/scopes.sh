@@ -5,9 +5,10 @@
 #   starship_theme, allow_unfree, platform - set by bootstrap/platform phases
 #
 # Reads:  CONFIG_NIX, any_scope, remove_scopes, omp_theme, starship_theme,
-#         allow_unfree, SCRIPT_ROOT, unattended, platform
+#         allow_unfree, SCRIPT_ROOT, unattended, platform, ENV_DIR,
+#         overlay_entries, _cli_scope_set
 # Writes: _scope_set, _scope_sorted, NIX_ENV_SCOPES, allow_unfree,
-#         is_init, _ir_error
+#         is_init, _ir_error, remove_scopes, $ENV_DIR/overlay_scopes
 
 phase_scopes_load_existing() {
   if [[ -f "$CONFIG_NIX" ]]; then
@@ -44,12 +45,94 @@ phase_scopes_load_existing() {
       ' 2>&1)" || true
       if [[ "$unfree_val" == "true" ]]; then allow_unfree="true"; fi
     fi
-  elif [[ "$any_scope" == "false" && ${#remove_scopes[@]} -eq 0 ]]; then
+  elif [[ "$any_scope" == "false" && ${#remove_scopes[@]} -eq 0 && -z "${OVERLAY_DIR:-}" ]]; then
+    # skipped with an overlay: it describes the environment, and an image's own
+    # docker or conda must not add scopes it did not ask for
     info "no scope flags provided and no config.nix found - detecting from system..."
     command -v oh-my-posh &>/dev/null && scope_add oh_my_posh || true
     command -v docker &>/dev/null && scope_add docker || true
     { [[ -x "$HOME/.local/bin/uv" ]] || [[ -x "$HOME/.nix-profile/bin/uv" ]]; } && scope_add python || true
     command -v conda &>/dev/null && scope_add conda || true
+  fi
+}
+
+# Overlays are the target state for what they provide (decision 0013). Their
+# scopes, and the standard scopes their `# scopes:` headers name, are enabled on
+# every run and cannot be removed around the overlay. A scope an overlay stops
+# providing is dropped; a header scope also gets its remove step, once.
+# $ENV_DIR/overlay_scopes keeps the last run's entries for that comparison and
+# for nx, which reads it to refuse the same removals.
+phase_scopes_apply_overlay() {
+  local _state="$ENV_DIR/overlay_scopes"
+  local _o _s _f _hit _kept=() _r _saved _resolved
+  for _r in "${remove_scopes[@]}"; do
+    # an org scope file is refused by its name with or without the local_
+    # prefix; parse_args has already turned the name's - into _
+    _hit=""
+    while read -r _o _s _f; do
+      [ "$_o" = org ] && [ "${_s//-/_}" = "local_${_r#local_}" ] && _hit="$_o $_f" && break
+    done <<<"${overlay_entries:-}"
+    if [ -n "$_hit" ] || _hit="$(_overlay_lookup "$_r")"; then
+      if [ "${_hit%% *}" = org ]; then
+        warn "$_r is controlled by the organization overlay (${_hit#* }) - not removed"
+      else
+        warn "$_r is named in the # scopes: header of ${_hit#* } - remove it there"
+      fi
+    else
+      _kept+=("$_r")
+    fi
+  done
+  remove_scopes=("${_kept[@]}")
+
+  while read -r _o _s _f; do
+    [ -n "$_s" ] || continue
+    if [ "$_o" = org ] && [[ " ${_cli_scope_set:-} " == *" $_s "* ]]; then
+      info "$_s is provided by the organization overlay ($_f)"
+    fi
+    scope_add "$_s"
+  done <<<"${overlay_entries:-}"
+
+  for _s in $_scope_set; do
+    [[ "$_s" == local_* ]] || continue
+    _overlay_lookup "$_s" >/dev/null || scope_del "$_s"
+  done
+
+  [ -f "$_state" ] || return 0
+  local _dropped=" "
+  while read -r _o _s _f; do
+    [[ -n "$_s" && "$_s" != local_* ]] || continue
+    _overlay_lookup "$_s" >/dev/null && continue
+    [[ " ${_cli_scope_set:-} " == *" $_s "* ]] && continue
+    scope_has "$_s" || continue
+    [[ " ${remove_scopes[*]} " == *" $_s "* || "$_dropped" == *" $_s "* ]] && continue
+    _dropped+="$_s "
+  done <"$_state"
+  # A dropped scope that the scopes staying still depend on comes straight back,
+  # so its remove step would only delete state the scope still uses.
+  _saved="$_scope_set"
+  for _s in $_dropped "${remove_scopes[@]}"; do scope_del "$_s"; done
+  resolve_scope_deps
+  _resolved="$_scope_set"
+  _scope_set="$_saved"
+  for _s in $_dropped; do
+    [[ " $_resolved " == *" $_s "* ]] && continue
+    info "$_s is no longer named by an overlay - removing it"
+    remove_scopes+=("$_s")
+  done
+}
+
+# Saved only once config.nix is written, so a run that exits before then (an
+# invalid --remove name) repeats the once-only header removals next time.
+phase_scopes_save_overlay_state() {
+  local _state="$ENV_DIR/overlay_scopes"
+  [ -n "${overlay_entries:-}" ] || [ -f "$_state" ] || return 0
+  local _tmp
+  _tmp="$(mktemp "$_state.XXXXXX")"
+  printf '%s' "${overlay_entries:-}" >"$_tmp"
+  if [ -f "$_state" ] && cmp -s "$_tmp" "$_state"; then
+    rm -f "$_tmp"
+  else
+    mv -f "$_tmp" "$_state"
   fi
 }
 
@@ -98,9 +181,35 @@ phase_scopes_enforce_prompt_exclusivity() {
     err "$_ir_error"
     exit 2
   fi
+  # The engine an overlay names replaces the user's other one, flag or not.
+  # When both overlays name a different engine, the org overlay's wins.
+  local _omp _star _engine=""
+  _omp="$(_overlay_lookup oh_my_posh)" || _omp=""
+  _star="$(_overlay_lookup starship)" || _star=""
+  if [ -n "$_omp" ] && { [ -z "$_star" ] || { [ "${_omp%% *}" = org ] && [ "${_star%% *}" = local ]; }; }; then
+    _engine=oh_my_posh
+  elif [ -n "$_star" ] && { [ -z "$_omp" ] || { [ "${_star%% *}" = org ] && [ "${_omp%% *}" = local ]; }; }; then
+    _engine=starship
+  elif [ -n "$_omp" ]; then
+    warn "overlays name both prompt engines (${_omp#* }, ${_star#* }) - keeping oh_my_posh"
+    _engine=oh_my_posh
+  fi
+  if [[ -n "$omp_theme" && "$_engine" = starship ]]; then
+    warn "starship is provided by an overlay (${_star#* }) - --omp-theme ignored"
+    omp_theme=""
+  elif [[ -n "$starship_theme" && "$_engine" = oh_my_posh ]]; then
+    warn "oh_my_posh is provided by an overlay (${_omp#* }) - --starship-theme ignored"
+    starship_theme=""
+  fi
   if [[ -n "$omp_theme" ]]; then
     scope_del starship
   elif [[ -n "$starship_theme" ]]; then
+    scope_del oh_my_posh
+  elif [ "$_engine" = oh_my_posh ]; then
+    scope_has starship && info "starship dropped - an overlay provides oh_my_posh (${_omp#* })"
+    scope_del starship
+  elif [ "$_engine" = starship ]; then
+    scope_has oh_my_posh && info "oh_my_posh dropped - an overlay provides starship (${_star#* })"
     scope_del oh_my_posh
   fi
 }
