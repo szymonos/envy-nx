@@ -33,7 +33,7 @@ teardown() {
 
 # Run a python snippet with release.py importable and CWD at the temp repo.
 # release.py targets Python 3.13+ (it uses PurePosixPath.full_match, added in
-# 3.13; the project pins requires-python = "~=3.13.0"). Production always runs
+# 3.13; the project pins requires-python = "~=3.14.0"). Production always runs
 # it under `uv run` via the shebang, so it never sees an older interpreter. The
 # test must honor the same contract - a bare `python3` resolves to the system
 # interpreter (3.12 on stock Ubuntu / macOS runners without the python scope),
@@ -1024,13 +1024,10 @@ print('OK')
   _seed_plan_and_changes
   run _py "
 import release
-# The value the agent has to notice is the false one: it means this push
+# The value the agent has to notice is the empty one: it means this push
 # wipes the run, so a coda has nothing left to drive.
-for skip, expected in ((True, False), (False, True)):
-    assert (not {'skip_review': skip}.get('skip_review')) is expected
-# And the real payload carries it.
 src = open(release.__file__).read()
-assert '\"review_coda\": not state.get(\"skip_review\")' in src, 'gate does not report review_coda'
+assert '\"review_coda\": review_layers(state)' in src, 'gate does not report review_coda'
 print('OK')
 "
   [ "$status" -eq 0 ]
@@ -1103,4 +1100,23 @@ except release.ReleaseError as e:
 "
   [ "$status" -eq 0 ]
   [[ "$output" == *OK* ]]
+}
+
+@test "start --reopen refuses uncommitted changes before touching git" {
+  git switch -qc feat
+  echo fix >>base.txt
+  local before
+  before="$(git rev-parse HEAD)"
+  run _py "
+import release
+release.rebase_onto_trunk = lambda: (_ for _ in ()).throw(AssertionError('rebased'))
+try:
+    release.phase_start('0.1.0', skip_review=False, reopen=True)
+except release.ReleaseError as e:
+    print('REFUSED', e)
+"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"REFUSED"*"commit these first"*"base.txt"* ]]
+  [ "$(git rev-parse HEAD)" = "$before" ]
+  [ ! -d .release ]
 }

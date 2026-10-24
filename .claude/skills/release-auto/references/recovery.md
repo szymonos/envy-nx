@@ -17,7 +17,9 @@ below is one of its subcommands.
   plan is seeded, so this is an edit, not a re-derivation. Skips the version
   bump and `make upgrade`, lints with `lint-diff`, then runs the normal
   phase-1 → recut → push flow; the push is a force-push. Requires `.release/`
-  to be absent.
+  to be absent and a clean tree: commit follow-ups first (`git commit
+  --no-verify` is safe, reopen lints and re-cuts them). An uncommitted fix is
+  refused before the fetch.
 - **Orphaned state from a shipped cycle** - when leftover state's version is
   already tagged, `start` refuses and names `abort`. Run it: it is
   ancestor-guarded, so it will not rewind the shipped release.

@@ -16,7 +16,7 @@ the agent is a **decision oracle** called only at batched gates. Tagging is
 
 - `/release-auto 1.16.0` - cut 1.16.0 from the current branch
 - `/release-auto 1.16.0 skip-review` - skip *both* review layers (urgent hotfix, Copilot offline, already reviewed)
-- `/release-auto 1.16.0 reopen` - re-cut an already-pushed release with no new changes (fold coda follow-ups into clean per-group commits); see `references/recovery.md`
+- `/release-auto 1.16.0 reopen` - re-cut an already-pushed release with no new changes (fold committed coda follow-ups into clean per-group commits; commit them first); see `references/recovery.md`
 - "minor ver" / "patch" - compute the version from `git describe --tags --abbrev=0`
 
 **No version given: choose the bump by what a user of envy-nx gains, not by
@@ -113,13 +113,16 @@ Eyeball `commits` and `pr_body_preview`, then:
 echo '{"approve": true}' | .claude/skills/release-auto/scripts/release.py resume --decision -
 ```
 
-`review_coda: false` means this push finishes the run (and triggers the
+`review_coda: []` means this push finishes the run (and triggers the
 integration tests). If the user wants the review after all, add
 `"review": true` - this gate is the last point it can be turned on.
 
 ### Step 4 - review coda (skipped with --skip-review)
 
-Two layers, in order; `--skip-review` is the only way to skip either. New
+Up to two layers, in order, one per review skill installed in
+`~/.claude/skills/`: `second-opinion` adds 4a, `address-pr-review` adds 4b. With
+neither installed the push wipes the run, as `--skip-review` does; the push
+gate's `review_coda` and `SPINE_COMPLETE` list the layers that will run. New
 features are the *most* important case to review.
 
 **4a - heterogeneous model.** A different model family reviews
@@ -162,7 +165,7 @@ bullet. **Resolve every `fix`/`resolve-only` thread before re-cutting** -
 the force-push makes them outdated, and an outdated thread still blocks merge:
 
 ```bash
-python3 .claude/skills/address-pr-review/scripts/pr_review.py resolve <thread-id> [<thread-id> ...]
+python3 ~/.claude/skills/address-pr-review/scripts/pr_review.py resolve <thread-id> [<thread-id> ...]
 .claude/skills/release-auto/scripts/release.py recut
 .claude/skills/release-auto/scripts/release.py push
 ```
@@ -174,8 +177,8 @@ why. A confirmed `resolve-only` stays silent; its reason lives in
 question, post the approved text, and resolve only once `reply` exits 0:
 
 ```bash
-python3 .claude/skills/address-pr-review/scripts/pr_review.py reply <thread-id> --body '<the approved reason>'
-python3 .claude/skills/address-pr-review/scripts/pr_review.py reply <thread-id> --body - < <file>
+python3 ~/.claude/skills/address-pr-review/scripts/pr_review.py reply <thread-id> --body '<the approved reason>'
+python3 ~/.claude/skills/address-pr-review/scripts/pr_review.py reply <thread-id> --body - < <file>
 ```
 
 The second form is for a reason containing an apostrophe; write that file with
@@ -255,7 +258,7 @@ is **not** "Fixed". This is the most common merge-case error.
 - **Copying a reviewer's fix verbatim** or applying findings unchallenged.
 - **A `Fixed`/`Changed` bullet for something that never shipped.** Fold into `Added`.
 - **Tagging the release** - `make release` does that after merge.
-- **Skipping a review layer by your own judgment.** Only `--skip-review` skips, and it skips both.
+- **Skipping a review layer by your own judgment.** Only `--skip-review` (both layers) or an uninstalled review skill (its layer) skips one.
 
 ## Recovery
 

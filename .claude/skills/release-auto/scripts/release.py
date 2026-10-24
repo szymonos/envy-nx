@@ -87,9 +87,11 @@ SECTION_HEADER_RE = re.compile(r"^## \[([^\]]+)\](?:\s*-\s*(\S+))?\s*$")
 SHARED = Path(".claude/skills/release-auto/scripts")
 # Committed review policy; copilot-review pre-matches every thread against it.
 POLICY = Path(".claude/skills/release-auto/review-policy.json")
-# Sibling skills driven by the review coda.
-PR_REVIEW_SCRIPT = Path(".claude/skills/address-pr-review/scripts/pr_review.py")
-BRIEF_SCRIPT = Path(".claude/skills/second-opinion/scripts/review_brief.py")
+# Review skills are installed per user, not vendored here. Each one present adds
+# its layer to the review coda; with neither, a release ends at the spine.
+SKILLS_DIR = Path.home() / ".claude" / "skills"
+PR_REVIEW_SCRIPT = SKILLS_DIR / "address-pr-review" / "scripts" / "pr_review.py"
+BRIEF_SCRIPT = SKILLS_DIR / "second-opinion" / "scripts" / "review_brief.py"
 
 # Workflows gated on this PR label run the integration suite. The label also
 # re-runs them on every push, so it is applied once, when nothing is left to push.
@@ -307,7 +309,7 @@ def match_group(path: str, plan: dict) -> int | None:
     Returns ``None`` when no group claims the path (an orphan).
 
     Uses ``PurePosixPath.full_match`` (added in Python 3.13; the project pins
-    ``requires-python = "~=3.13.0"``). full_match anchors the whole path, so a
+    ``requires-python = "~=3.14.0"``). full_match anchors the whole path, so a
     bare ``CHANGELOG.md`` glob matches only the root file, never a nested
     ``sub/CHANGELOG.md``.
     """
@@ -830,6 +832,19 @@ def phase_start(version: str, skip_review: bool, reopen: bool = False) -> int:
             "`start --reopen`."
         )
 
+    # A reopen re-cuts committed follow-ups only. An uncommitted fix fails lint
+    # before it gets that far: check-changelog reads git's staged set, not the
+    # diff it is passed, and the CHANGELOG entry already sits under `## [X.Y.Z]`
+    # with `[Unreleased]` empty. Refuse before the fetch and rebase.
+    if reopen:
+        dirty = working_tree_dirty_paths()
+        if dirty:
+            raise ReleaseError(
+                "`start --reopen` re-cuts committed follow-ups - commit these "
+                "first (`git commit --no-verify` is safe: reopen lints and re-cuts "
+                "the commit):\n  " + "\n  ".join(dirty)
+            )
+
     # Before lint and the bump, so the release is linted and cut on the trunk the
     # PR merges into. After it the last tag may be newer (a hotfix on main).
     trunk = rebase_onto_trunk()
@@ -841,13 +856,11 @@ def phase_start(version: str, skip_review: bool, reopen: bool = False) -> int:
             f"v{version} is already tagged (shipped) - pick the next version."
         )
 
-    # `lint-diff` on a reopen, not bare `lint`. The CHANGELOG entry is already
-    # cut into `## [X.Y.Z]` by then, so `[Unreleased]` is empty and any
-    # uncommitted runtime fix trips check-changelog - the same false positive
-    # SKILL.md tells the agent never to validate a coda fix with bare `make
-    # lint`. `lint-diff` (--from-ref main) runs the same hooks diff-scoped and
-    # sees CHANGELOG.md in the diff. A first cut still uses bare `lint`: there
-    # is no version block yet, so the hook reads `[Unreleased]` and is right to.
+    # `lint-diff` on a reopen, not bare `lint`: bare `lint` checks the working
+    # tree against an empty `[Unreleased]`, while `lint-diff` (--from-ref main)
+    # lints the committed follow-ups the reopen folds in. A first cut still uses
+    # bare `lint`: there is no version block yet, so the hook reads
+    # `[Unreleased]` and is right to.
     run_make("lint-diff" if reopen else "lint")
     if not reopen:
         # --reopen freezes the release payload: skip the version bump and dependency
@@ -1046,13 +1059,14 @@ def resume_phase1(state: dict, decision: dict) -> int:
         "version": final,
         "commits": subjects,
         "pr_body_preview": changelog_section(final),
-        "review_coda": not state.get("skip_review"),
+        "review_coda": review_layers(state),
         "instructions": (
             "Review the commit sequence and PR body. Resume with "
             '{"approve": true} to push + open/update the PR, or {"abort": true}. '
-            "review_coda reports whether the review coda will run; when it is false "
-            'this push wipes the run. If the user asked for the review, add {"review": '
-            "true} here - this gate is the last point at which it can be turned on."
+            "review_coda lists the review layers that will run - one per review "
+            "skill installed in ~/.claude/skills; when it is empty this push wipes "
+            'the run. If the user asked for the review, add {"review": true} here - '
+            "this gate is the last point at which it can be turned on."
         ),
     }
     return emit_gate("push", context, ["approve", "abort"])
@@ -1164,20 +1178,26 @@ def resume_push(state: dict, decision: dict) -> int:
     state["head_sha"] = head_sha()
     save_state(state)
 
-    if state.get("skip_review"):
-        return _finish(state, "spine complete (--skip-review); no review coda.")
+    layers = review_layers(state)
+    if not layers:
+        return _finish(
+            state,
+            "spine complete; no review coda (--skip-review, or no review skill "
+            "installed in ~/.claude/skills).",
+        )
 
     print("SPINE_COMPLETE")
     print(
         json.dumps(
             {
                 "version": state["version"],
+                "review_coda": layers,
                 "fix_cycles_left": CODA_PUSH_CAP - state.get("coda_pushes", 0),
                 "next": (
-                    f"Run the review coda: `{CLI} second-opinion`, then "
-                    f"`{CLI} copilot-review`. Fold fixes with `{CLI} recut` + "
-                    f"`{CLI} push`. Finish with `{CLI} push --done`, which "
-                    "triggers the integration tests."
+                    "Run the review coda: "
+                    + ", then ".join(f"`{CLI} {layer}`" for layer in layers)
+                    + f". Fold fixes with `{CLI} recut` + `{CLI} push`. Finish "
+                    f"with `{CLI} push --done`, which triggers the integration tests."
                 ),
             },
             indent=2,
@@ -1383,7 +1403,7 @@ def open_threads() -> list[dict] | None:
     an earlier force-push hid from ``pr_review.py state``, so it is *more* likely
     to have been missed than a fresh one, not less.
 
-    Returns None when the question could not be answered - no vendored copy, no
+    Returns None when the question could not be answered - no installed skill, no
     ``gh``, an auth failure, no PR on the branch. None means "unknown" and ``[]``
     means "nothing is open"; collapsing the two would report a failed lookup as
     a clean PR, which is the exact defect this check exists to remove.
@@ -1392,9 +1412,9 @@ def open_threads() -> list[dict] | None:
     if pr_review is None:
         return None
     try:
-        owner, repo = pr_review._repo_info()
-        return pr_review.unresolved_threads(owner, repo, pr_review._auto_pr())
-    except SystemExit:
+        return pr_review.unresolved_for_current_pr()
+    # AttributeError: an installed copy older than the helper.
+    except (SystemExit, AttributeError):
         return None
 
 
@@ -1409,7 +1429,8 @@ def _finish(state: dict, message: str, *, check_threads: bool = True) -> int:
     before the wipe so a failed one raises with the run intact, and
     ``push --done`` can simply be retried.
     """
-    still_open = open_threads() if check_threads else []
+    # No address-pr-review skill means no way to ask, and nothing to warn about.
+    still_open = open_threads() if check_threads and PR_REVIEW_SCRIPT.is_file() else []
     integration = trigger_integration()
     delete_backup(state["version"])
     _wipe_state_dir()
@@ -1584,6 +1605,22 @@ def cmd_integration(args: argparse.Namespace) -> int:
 # -- review coda --------------------------------------------------------------
 
 
+def review_layers(state: dict) -> list[str]:
+    """Coda layers this run gets: none on --skip-review, else each installed one."""
+    if state.get("skip_review"):
+        return []
+    layers = (("second-opinion", BRIEF_SCRIPT), ("copilot-review", PR_REVIEW_SCRIPT))
+    return [name for name, script in layers if script.is_file()]
+
+
+def _skip_missing(script: Path) -> int | None:
+    """Report a review layer whose skill is not installed as skipped."""
+    if script.is_file():
+        return None
+    print(json.dumps({"skipped": "skill not installed", "detail": str(script)}))
+    return EXIT_OK
+
+
 def cmd_second_opinion(args: argparse.Namespace) -> int:
     """
     Handle ``release.py second-opinion`` - coda 4a, a different model family.
@@ -1594,6 +1631,8 @@ def cmd_second_opinion(args: argparse.Namespace) -> int:
     release's CHANGELOG section goes in as the author's stated intent. A missing
     Copilot CLI (its exit 4) skips the layer rather than blocking the release.
     """
+    if (skipped := _skip_missing(BRIEF_SCRIPT)) is not None:
+        return skipped
     state = load_state()
     runs = state.get("second_opinion_runs", 0)
     if runs >= SECOND_OPINION_CAP:
@@ -1694,6 +1733,8 @@ def cmd_copilot_review(args: argparse.Namespace) -> int:
     proposal attached to each. Exits 0 when clean, ``EXIT_PENDING`` when the
     wait timed out, ``EXIT_GATE`` with threads to triage.
     """
+    if (skipped := _skip_missing(PR_REVIEW_SCRIPT)) is not None:
+        return skipped
     state = load_state()
     review = _pr_review(["state"])
     if review["state"] == "A":
@@ -1880,7 +1921,7 @@ def cmd_push(args: argparse.Namespace) -> int:
                 "pushed": state["version"] if pushed else None,
                 "pr": "updated",
                 "fix_cycles_left": left,
-                "next": _coda_next(left),
+                "next": _coda_next(left, review_layers(state)),
             },
             indent=2,
         )
@@ -1888,13 +1929,24 @@ def cmd_push(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
-def _coda_next(left: int) -> str:
-    """What the coda does after a push, given the fix cycles it has left."""
+def _coda_next(left: int, layers: list[str]) -> str:
+    """What the coda does after a push, given its fix cycles and review layers."""
+    if "copilot-review" not in layers:
+        if left and layers:
+            return (
+                f"Run `{CLI} second-opinion` if it has not run. Fold fixes with "
+                f"`{CLI} recut` + `{CLI} push`; finish with `{CLI} push --done`."
+            )
+        return f"Finish with `{CLI} push --done`."
     if left:
+        after = (
+            f" (after `{CLI} second-opinion` if it has not run)"
+            if "second-opinion" in layers
+            else ""
+        )
         return (
-            f"Run `{CLI} copilot-review` (after `{CLI} second-opinion` if it has not "
-            f"run). Fold fixes with `{CLI} recut` + `{CLI} push`; finish with "
-            f"`{CLI} push --done`."
+            f"Run `{CLI} copilot-review`{after}. Fold fixes with `{CLI} recut` + "
+            f"`{CLI} push`; finish with `{CLI} push --done`."
         )
     # Said here, not only at triage: by then the agent has already decided
     # whether the review's fixes go into another cycle.
@@ -1922,7 +1974,8 @@ def _done(state: dict, *, force: bool) -> int:
             f"HEAD is not pushed - run `{CLI} push` and re-run the review before "
             "finishing"
         )
-    threads = open_threads()
+    # Without the Copilot review layer there are no threads this run asked for.
+    threads = open_threads() if "copilot-review" in review_layers(state) else []
     if threads != [] and not force:
         return emit_gate(
             "unresolved_threads",
