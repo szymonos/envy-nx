@@ -5,6 +5,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.32.0] - 2026-10-23
+
+Overlays become an extension point an organization can build on: one overlay folder, for example one baked into a container image, now describes the whole environment, and a personal overlay still applies on top.
+
+### Added
+
+- Overlays work without manual wiring: every scope file in an overlay is installed on each setup run, and removing the file removes the scope.
+- An overlay scope file can name the standard scopes it needs in a `# scopes:` header. Setup enables them like flags; a name dropped from the header is removed once, with its remove step.
+- Overlay `hooks/post-setup.d/*.sh` scripts run after setup as separate processes, with fnm's Node (from `FNM_DIR` or `XDG_DATA_HOME`), gcloud, the nix profile and `~/.local/bin` on PATH. A failing hook only warns.
+- `NIX_ENV_OVERLAY_DIR` and `~/.config/nix-env/local/` apply together. On a scope name clash the org overlay wins; a personal `shell_cfg/` file still replaces an org one.
+- The organization overlay path is remembered: set it with `nx overlay set <path>` or `setup.sh --overlay-dir <path>`, drop it with `nx overlay unset`. `NIX_ENV_OVERLAY_DIR` still takes precedence.
+- Scopes the org overlay provides can't be removed or edited around it: `nx scope remove`, `nx scope edit` and `setup.sh --remove` refuse them, nothing swaps its prompt engine, and adding one changes nothing.
+
+### Changed
+
+- `nx scope add` and `nx scope edit` now always use `~/.config/nix-env/local/`, even when `NIX_ENV_OVERLAY_DIR` is set.
+- Setup now stops with an error when the organization overlay folder is missing or unreadable, instead of carrying on without the overlay.
+- `nx overlay` shows both overlay directories, the standard scopes each header names, and post-setup hooks as active.
+- helm moved from the `k8s_dev` scope to `k8s_base`. `k8s_dev` requires `k8s_base`, so `k8s_dev` users keep it.
+
+### Fixed
+
+- Overlay `shell_cfg/` files are now sourced at login. Setup copies them to `~/.config/shell/overlay/`, and the managed bash and zsh block loads them after the standard aliases.
+
 ## [1.31.4] - 2026-10-23
 
 ### Fixed
