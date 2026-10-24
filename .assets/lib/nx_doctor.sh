@@ -602,12 +602,35 @@ _check_nix_profile_link() {
 }
 
 _check_overlay_dir() {
-  # Only audited when the user has opted into an overlay directory.
-  [ -n "${NIX_ENV_OVERLAY_DIR:-}" ] || return
-  if [ -d "$NIX_ENV_OVERLAY_DIR" ] && [ -r "$NIX_ENV_OVERLAY_DIR" ]; then
+  # Only audited when an organization overlay is in use: NIX_ENV_OVERLAY_DIR,
+  # else the path `nx overlay set` or the last setup run saved.
+  local _dir="${NIX_ENV_OVERLAY_DIR:-}"
+  if [ -z "$_dir" ] && [ -f "$ENV_DIR/overlay_dir" ]; then
+    _dir="$(head -n 1 "$ENV_DIR/overlay_dir")"
+    if [ -z "$_dir" ]; then
+      printf 'fail\t%s/overlay_dir is empty\trun nx overlay set <path>, or nx overlay unset\n' "$ENV_DIR"
+      return
+    fi
+  fi
+  [ -n "$_dir" ] || return
+  # the same tests setup applies before it reads the overlay
+  case "$_dir" in
+  *:* | *"
+"*)
+    printf 'fail\torganization overlay path %s contains a colon or a newline\tmove the overlay to a path without them\n' "$_dir"
+    return
+    ;;
+  esac
+  if [ -d "$_dir" ] && [ -d "$ENV_DIR" ] && [ "$(cd "$_dir" && pwd -P)" = "$(cd "$ENV_DIR" && pwd -P)" ]; then
+    printf 'fail\torganization overlay %s is the Envy-NX config folder\tpoint it at the overlay folder with nx overlay set <path>\n' "$_dir"
+    return
+  fi
+  if [ -d "$_dir" ] && [ -r "$_dir" ] && [ -x "$_dir" ] &&
+    { { [ ! -e "$_dir/scopes" ] && [ ! -L "$_dir/scopes" ]; } ||
+      { [ -d "$_dir/scopes" ] && [ -r "$_dir/scopes" ] && [ -x "$_dir/scopes" ]; }; }; then
     echo "pass"
   else
-    printf 'fail\tNIX_ENV_OVERLAY_DIR=%s is not a readable directory\tverify NIX_ENV_OVERLAY_DIR points at an existing readable directory or unset it\n' "$NIX_ENV_OVERLAY_DIR"
+    printf 'fail\torganization overlay %s is not a readable directory\tfix the path, or run nx overlay unset (and drop NIX_ENV_OVERLAY_DIR) to stop using it; setup refuses to run until then\n' "$_dir"
   fi
 }
 

@@ -72,7 +72,7 @@ The scope file is standard Nix:
 ]
 ```
 
-Scopes created via `nx scope add` live in the overlay directory and are copied into `~/.config/nix-env/scopes/` with a `local_` prefix - preventing name collisions with base repo scopes.
+Scopes created via `nx scope add` live in your personal overlay directory (`~/.config/nix-env/local/`) and are copied into `~/.config/nix-env/scopes/` with a `local_` prefix - preventing name collisions with base repo scopes.
 
 ### Packages that are not in nixpkgs
 
@@ -125,36 +125,68 @@ Things worth knowing:
 
 ## Overlay directory
 
-The overlay directory is where custom scopes and shell configs live. It supports three usage patterns:
+An overlay directory holds scopes, shell config and post-setup hooks that sit on top of the standard scopes.
+To write an overlay for a team or build an image on one, see [Overlays](overlays.md).
+Two overlays can be active at once, and setup applies both:
 
-| Pattern        | Overlay location                           | Use case                        |
-| -------------- | ------------------------------------------ | ------------------------------- |
-| Solo developer | `~/.config/nix-env/local/` (default)       | Personal tools and aliases      |
-| Team           | Shared git repo via `NIX_ENV_OVERLAY_DIR`  | Team-specific scopes and config |
-| Organization   | Org-managed repo via `NIX_ENV_OVERLAY_DIR` | Org-wide scopes and config      |
+| Overlay      | Location                         | Owned by                    |
+| ------------ | -------------------------------- | --------------------------- |
+| Organization | set with `nx overlay set <path>` | a team or org, or an image  |
+| Personal     | `~/.config/nix-env/local/`       | you, through `nx scope add` |
 
-Only one overlay directory is active at a time. `NIX_ENV_OVERLAY_DIR` **replaces**
-`~/.config/nix-env/local/`, it does not add to it. If the new overlay has a
-`scopes/` directory, the next `nix/setup.sh` run removes every synced `local_*.nix`
-copy it does not contain, which drops your personal overlay scopes from the build.
-An overlay without `scopes/` removes nothing, so the old copies keep building. The sources under
-`~/.config/nix-env/local/scopes/` are left untouched - unset the variable to get
-them back. Personal *packages* are unaffected either way: `nx install` writes to
-`packages.nix`, which the overlay sync never touches.
+Setup reads the org overlay first, then the personal one. Setup creates neither directory; `nx scope add`
+creates the personal one.
 
 ### Structure
 
 ```text
 overlay-dir/
-├── scopes/                       # custom scope files (copied as local_*.nix)
+├── scopes/                       # scope files, copied in as local_<name>.nix
 │   └── devtools.nix
-└── shell_cfg/                    # extra shell config (sourced on login)
-    └── aliases_custom.sh
+├── shell_cfg/                    # extra shell config, sourced at login
+│   └── aliases_custom.sh
+└── hooks/
+    └── post-setup.d/             # scripts run after setup
+        └── npm-globals.sh
 ```
 
-- **Scopes** are copied with `local_` prefix during `nix/setup.sh` or `nx scope add`
-- **Shell configs** in `shell_cfg/` are sourced alongside standard configs at login
-- **Hooks** cannot be shipped in an overlay - a `hooks/` folder there is ignored. See [Hooks](#hooks).
+A scope file is installed because it is there. Every setup run copies it in as `local_<name>.nix` and
+enables it, and deleting it from the overlay removes the scope on the next run.
+
+A scope file can also name the standard scopes it needs, in a `# scopes:` header:
+
+```nix
+# scopes: python nodejs gcloud k8s_base
+# bins: btop psql
+{ pkgs }: with pkgs; [
+  btop
+  postgresql
+]
+```
+
+Setup enables those scopes as if they were passed as flags, with their dependencies and install steps.
+An unknown name prints a warning and is skipped. When a name drops out of the header, setup removes that
+scope once, with its remove step, and prints it. On an unattended run that step deletes the scope's
+home folder too, for example `~/google-cloud-sdk` for `gcloud`. A user who adds the scope back keeps it.
+
+### What the organization overlay controls
+
+The org overlay is the target state for what it provides, so the people who own it decide what is
+installed, and every machine picks up their change on its next setup run:
+
+- `nx scope remove` and `nix/setup.sh --remove` refuse a scope the org overlay provides, including the
+  standard scopes its headers name, and say which file provides it.
+- `nx scope add`, `nx scope edit` and scope flags for a scope it already provides change nothing and say so.
+- A personal scope file with the same name as an org one is ignored with a warning.
+- Shell config is the exception: a personal `shell_cfg/` file replaces an org file of the same name.
+
+For a scope in your personal overlay, `nx scope remove` deletes the file, and a scope named in your own
+header is removed by editing that header.
+
+### Building an image on an overlay
+
+A container image can bake an overlay in and run setup with no scope flags, at build time and on every
+start. [Overlays](overlays.md#building-an-image-on-an-overlay) has the recipe.
 
 ### Sharing with a team
 
@@ -162,47 +194,51 @@ Keep the overlay in a shared git repo. Each team member then runs these steps on
 
 ```bash
 git clone https://github.com/<org>/team-nix-overlay ~/src/team-nix-overlay
-
-# In ~/.bashrc or ~/.zshenv, before the managed block
-export NIX_ENV_OVERLAY_DIR="$HOME/src/team-nix-overlay"
-
-nx setup    # copies the overlay's scopes in as local_<name>.nix
+nx overlay set ~/src/team-nix-overlay   # remembered in ~/.config/nix-env/overlay_dir
+nx setup                                # installs the overlay's scopes
 ```
 
-Setup copies the scopes but does not enable them - `nx scope add` only registers a
-scope it creates itself. Enable each one by adding `"local_<name>"` to the `scopes`
-list in `~/.config/nix-env/config.nix`, then build:
+`NIX_ENV_OVERLAY_DIR`, when set, takes precedence over the saved path. To stop using the overlay, run
+`nx overlay unset` and drop the variable if you set it; the next `nx setup` removes its scopes.
 
-```bash
-nx upgrade
-```
-
-To pick up changes later, `git pull` in the overlay and run `nx upgrade`, which
-re-copies the overlay before it builds (without the source repo on disk it rebuilds
-from the existing copies). This manual flow
-is a known gap - [`design/overlay_catalog.md`](https://github.com/szymonos/envy-nx/blob/main/design/overlay_catalog.md)
+To pick up changes later, `git pull` in the overlay and run `nx setup`. It also runs the install steps of a
+scope a header adds, such as the gcloud CLI, which `nx upgrade` skips. The clone is a known gap - [`design/overlay_catalog.md`](https://github.com/szymonos/envy-nx/blob/main/design/overlay_catalog.md)
 proposes a one-command `nx overlay add` that replaces it.
-
-The shared repo can contain team-specific scopes and shell aliases. Individual users can still use `nx install` for personal additions on top.
 
 ### Managing overlays
 
 ```bash
-nx overlay list      # show overlay directory contents
-nx overlay status    # show sync status (synced / modified / source missing)
+nx overlay              # both directories: scopes, header scopes, shell config, hooks and sync status
+nx overlay set <path>   # use <path> as the organization overlay
+nx overlay unset        # stop using it
 ```
 
 ## Hooks
 
-Hook scripts (`*.sh`) run at defined phases during `nix/setup.sh`, with access to environment variables.
-Hooks are local to one machine: setup reads hooks only from `~/.config/nix-env/hooks/`. An overlay cannot ship
-them - a `hooks/` folder in an overlay directory is ignored. Running a team's scripts inside every setup
-is the riskiest thing an overlay could do, so it stays out until a concrete need for it appears.
+Hook scripts (`*.sh`) run at defined phases during `nix/setup.sh`.
+
+Per-machine hooks live in `~/.config/nix-env/hooks/`. They are sourced into setup, so they can read and
+change its variables:
 
 | Phase      | Directory                               | Variables available                              |
 | ---------- | --------------------------------------- | ------------------------------------------------ |
 | Pre-setup  | `~/.config/nix-env/hooks/pre-setup.d/`  | `NIX_ENV_VERSION`, `NIX_ENV_PLATFORM`, `ENV_DIR` |
 | Post-setup | `~/.config/nix-env/hooks/post-setup.d/` | All above + `NIX_ENV_SCOPES`                     |
+
+Overlay hooks in `<overlay>/hooks/post-setup.d/` run after the per-machine post-setup hooks, org overlay
+first. Each runs as its own `bash` process with `ENV_DIR`, `NIX_ENV_PLATFORM` and `NIX_ENV_SCOPES` set,
+and with PATH covering the nix profile, `~/.local/bin`, fnm's default Node and `~/google-cloud-sdk/bin`, so it can call `npm`,
+`uv` or `gcloud`. A hook that fails prints a warning and setup finishes. Overlays have no pre-setup hooks.
+
+Hooks run on every setup run, so make them safe to repeat:
+
+```bash
+# <overlay>/hooks/post-setup.d/npm-globals.sh
+v=5.6.3
+npm ls -g "typescript@$v" >/dev/null 2>&1 || npm install -g "typescript@$v"
+```
+
+Deleting a hook stops it running; what it installed stays.
 
 Example use cases:
 
@@ -255,8 +291,7 @@ Upgrades are atomic - all packages upgrade together through a single `buildEnv`.
 | Create a scope with packages | `nx scope add <name> <pkg> [pkg...]` |
 | Edit a scope file            | `nx scope edit <name>`               |
 | Show scope tree              | `nx scope tree`                      |
-| List overlay contents        | `nx overlay list`                    |
-| Check overlay sync status    | `nx overlay status`                  |
+| Show overlays and sync state | `nx overlay`                         |
 | Upgrade packages             | `nx upgrade`                         |
 | Pin current revision         | `nx pin set`                         |
 | Show / remove pin            | `nx pin show` / `nx pin remove`      |

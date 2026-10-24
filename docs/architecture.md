@@ -446,7 +446,7 @@ graph TD
 | Team         | Shared overlay via `NIX_ENV_OVERLAY_DIR` | Team-specific scopes and aliases |
 | Organization | Org-managed overlay repo                 | Org-wide scopes and shell config |
 
-Overlay scopes are copied with a `local_` prefix to avoid collisions with base scope names. Hooks (`pre-setup.d/` and `post-setup.d/`) are not part of the overlay: they are read only from `~/.config/nix-env/hooks/` on each machine, and run during `nix/setup.sh` with documented environment variables (`NIX_ENV_VERSION`, `NIX_ENV_PLATFORM`, `NIX_ENV_SCOPES`, `NIX_ENV_PHASE`). A typical organization use case: a `pre-setup.d/pin_nixpkgs.sh` hook writes the org-approved `pinned_rev` so every developer resolves the same `nixpkgs` revision.
+Overlay scopes are copied with a `local_` prefix to avoid collisions with base scope names, and enabled on every run. The org overlay (`NIX_ENV_OVERLAY_DIR`) and the personal one (`~/.config/nix-env/local/`) apply together, and the org overlay controls the scopes it provides. Per-machine hooks (`pre-setup.d/` and `post-setup.d/`) are read from `~/.config/nix-env/hooks/` and run during `nix/setup.sh` with documented environment variables (`NIX_ENV_VERSION`, `NIX_ENV_PLATFORM`, `NIX_ENV_SCOPES`, `NIX_ENV_PHASE`). An overlay can also ship `post-setup.d/` hooks, which run afterwards as separate processes. A typical organization use case: a `pre-setup.d/pin_nixpkgs.sh` hook writes the org-approved `pinned_rev` so every developer resolves the same `nixpkgs` revision.
 
 See [Customization](customization.md) for the full guide and worked examples.
 

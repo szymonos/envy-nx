@@ -234,3 +234,12 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"$ENV_DIR/marker.sh"* ]]
 }
+
+# -- overlay ------------------------------------------------------------------
+
+@test "nx overlay set saves the path under zsh without breaking PATH" {
+  mkdir -p "$TEST_DIR/org"
+  run _zsh "source $NX_LIB_DIR/nx.sh && nx_main overlay set $TEST_DIR/org && command -v mkdir"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$ENV_DIR/overlay_dir")" = "$TEST_DIR/org" ]
+}

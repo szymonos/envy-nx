@@ -68,12 +68,13 @@ envy-nx/
 phase_bootstrap_*       repo refresh, root guard, paths, nix detect/install,
                         jq bootstrap, arg parsing
 phase_platform_*        OS detect, overlay discovery, pre-setup hooks
-phase_scopes_*          load existing config.nix, apply --remove,
-                        resolve deps, write config.nix
+phase_scopes_*          load existing config.nix, apply overlay scopes,
+                        apply --remove, resolve deps, write config.nix
 phase_nix_profile_*     flake lock to the resolved rev, nix profile add/upgrade,
                         MITM probe + CA bundle build
 phase_configure_*       gh auth, git config, dispatch nix/configure/*.sh
-phase_profiles_*        bash/zsh/PowerShell profile setup
+phase_profiles_*        bash/zsh/PowerShell profile setup, post-setup hooks
+                        (per-machine, then overlay)
 phase_post_install_*    setup_common.sh + nix garbage collection
 phase_summary_*         mode detect + final output
 EXIT trap               install_record.sh writes install.json
@@ -99,8 +100,8 @@ Implications for any change you make:
 | -------------------------------- | -------------------------------------------------------------------------------------------- |
 | `nix/lib/io.sh`                  | Output helpers + side-effect wrappers (`_io_nix`, `_io_curl_probe`, `_io_run`)               |
 | `nix/lib/phases/bootstrap.sh`    | Repo auto-refresh, root guard, paths, nix detect/install, jq bootstrap, args                 |
-| `nix/lib/phases/platform.sh`     | OS detection, overlay discovery, pre/post-setup hook runners                                 |
-| `nix/lib/phases/scopes.sh`       | Load/merge scopes, resolve deps, write `config.nix`, apply removes                           |
+| `nix/lib/phases/platform.sh`     | OS detection, overlay discovery, pre/post-setup and overlay hook runners                     |
+| `nix/lib/phases/scopes.sh`       | Load/merge scopes, apply overlay scopes, resolve deps, write `config.nix`, apply removes     |
 | `nix/lib/phases/nix_profile.sh`  | Flake update, `nix profile add/upgrade`, MITM probe                                          |
 | `nix/lib/phases/configure.sh`    | gh/git/per-scope `configure/*.sh` dispatch (via `_io_run`)                                   |
 | `nix/lib/phases/profiles.sh`     | bash/zsh/pwsh profile setup (delegates block rendering to `nx.sh`)                           |
@@ -169,8 +170,8 @@ A scope is a name (e.g. `python`, `k8s_dev`) declared in `.assets/lib/scopes.jso
 | `bun`        | bun                                                                       | -               | Alternative JS runtime                                                                                                                                                           |
 | `az`         | azure-storage-azcopy                                                      | `az.sh`         | azure-cli installed via uv (calls `install_azurecli_uv.sh`)                                                                                                                      |
 | `gcloud`     | google-cloud-sdk                                                          | -               | -                                                                                                                                                                                |
-| `k8s_base`   | kubectl, kubelogin, k9s, kubecolor, kubectx                               | -               | -                                                                                                                                                                                |
-| `k8s_dev`    | helm, flux, argo-rollouts, kustomize, trivy, kyverno, ...                 | -               | -                                                                                                                                                                                |
+| `k8s_base`   | kubectl, kubelogin, helm, k9s, kubecolor, kubectx                         | -               | -                                                                                                                                                                                |
+| `k8s_dev`    | flux, argo-rollouts, kustomize, trivy, kyverno, ...                       | -               | -                                                                                                                                                                                |
 | `k8s_ext`    | minikube, k3d, kind                                                       | -               | Local cluster tools                                                                                                                                                              |
 | `playwright` | Linux: playwright-driver.browsers (Chromium); macOS: empty                | `playwright.sh` | uv tool `playwright` pinned to the nix browsers' version; profile exports `PLAYWRIGHT_BROWSERS_PATH`. macOS: latest CLI + `playwright install chromium`                          |
 | `terraform`  | tfswitch, tflint                                                          | `terraform.sh`  | terraform binary installed via tfswitch to `~/.local/bin`                                                                                                                        |
@@ -272,7 +273,7 @@ Implemented in `resolve_scope_deps` (`.assets/lib/scopes.sh`). `--omp-theme <the
 | `vscode_server_env`     | `~/.vscode-server/server-env-setup` includes nix PATH (if `~/.nix-profile/bin` exists)                                                   | WARN: nix PATH missing                                                           |
 | `nix_profile`           | `nix-env` in `nix profile list`                                                                                                          | FAIL: not found                                                                  |
 | `nix_profile_link`      | `~/.nix-profile` is a symlink resolving to a live target                                                                                 | FAIL: missing or dangling                                                        |
-| `overlay_dir`           | `NIX_ENV_OVERLAY_DIR` readable (if set)                                                                                                  | FAIL: not a readable directory                                                   |
+| `overlay_dir`           | Org overlay (`NIX_ENV_OVERLAY_DIR` or `overlay_dir`) readable (if set)                                                                   | FAIL: not a readable directory                                                   |
 | `version_skew`          | Installed version matches latest GitHub release (if `gh` available)                                                                      | WARN: installed version is older                                                 |
 
 **PowerShell `nx` wrapper.** `.assets/config/pwsh_cfg/_aliases_nix.ps1` defines a PS `nx` function that proxies almost every verb to `bash $ENV_DIR/nx.sh "$@"`. The single exception is `nx profile *`, handled natively because **the bash and PS profile dispatchers operate on structurally different files** (`~/.bashrc`/`~/.zshrc` with `# >>> nix:managed >>>` blocks vs `$PROFILE.CurrentUserAllHosts` with `#region nix:* ... #endregion` regions). The `$PROFILE` path is resolved by the .NET runtime per host and cannot be derived from bash; the region syntax is PowerShell-specific. This is **symmetric implementation, not duplicated logic** - both the bash dispatcher and the PS `switch ($subCmd)` arms are generated from the same manifest (see §3d), so the user-facing subverb surface stays in sync by construction.
@@ -909,7 +910,7 @@ This project follows [Keep a Changelog](https://keepachangelog.com) format and [
 | `nix/setup.sh`                                                                               | Main entry point (slim orchestrator, sources phase libraries)                                               |
 | `nix/lib/io.sh`                                                                              | Structured logging + side-effect wrappers (tests override)                                                  |
 | `nix/lib/phases/bootstrap.sh`                                                                | Repo auto-refresh, root guard, paths, nix detect/install, jq, args                                          |
-| `nix/lib/phases/platform.sh`                                                                 | OS detection, overlay discovery, hook runner                                                                |
+| `nix/lib/phases/platform.sh`                                                                 | OS detection, overlay discovery, hook runners                                                               |
 | `nix/lib/phases/scopes.sh`                                                                   | Load/merge scopes, resolve deps, write config.nix                                                           |
 | `nix/lib/phases/nix_profile.sh`                                                              | Flake update, nix profile upgrade, MITM probe                                                               |
 | `nix/lib/phases/configure.sh`                                                                | gh/git/per-scope configure dispatch                                                                         |
@@ -1008,6 +1009,8 @@ Persists after the repo is removed.
 | `nx_doctor.sh`       | `.assets/lib/nx_doctor.sh`                | `nix/setup.sh` (`install_atomic`) |
 | `profile_block.sh`   | `.assets/lib/profile_block.sh`            | `nix/setup.sh` (`install_atomic`) |
 | `pinned_rev`         | optional                                  | `nx pin set <rev>`                |
+| `overlay_scopes`     | generated (last run's overlay entries)    | `nix/setup.sh`                    |
+| `overlay_dir`        | org overlay path                          | `nix/setup.sh` / `nx overlay set` |
 
 ### 13.2. Hook directories (`~/.config/nix-env/hooks/`)
 
@@ -1018,17 +1021,30 @@ Not created automatically. `*.sh` files sourced in lexical order.
 | `pre-setup.d/`  | Before scope resolution | `NIX_ENV_VERSION`, `NIX_ENV_PLATFORM`, `ENV_DIR`, `NIX_ENV_PHASE=pre-setup` |
 | `post-setup.d/` | After profile config    | All above + `NIX_ENV_SCOPES`, `NIX_ENV_PHASE=post-setup`                    |
 
-### 13.3. Overlay directory (`~/.config/nix-env/local/` or `$NIX_ENV_OVERLAY_DIR`)
+### 13.3. Overlay directories (org overlay and `~/.config/nix-env/local/`)
 
-Discovery order: `$NIX_ENV_OVERLAY_DIR` (if set and exists), then `~/.config/nix-env/local/`. Not created automatically.
+Both apply, the org overlay first, then the personal one
+(`~/.config/nix-env/local/`). Setup exports them as a colon-separated `OVERLAY_DIR`. Setup creates
+neither; `nx scope add` creates the personal one. Decision [0013](design/decisions/0013-overlays-org-extension-point.md) has the rules.
 
-| Path           | Purpose                                           |
-| -------------- | ------------------------------------------------- |
-| `scopes/*.nix` | Extra nix packages (copied as `local_*.nix`)      |
-| `shell_cfg/*`  | Extra shell config (copied to `~/.config/shell/`) |
+The org overlay path comes from `--overlay-dir`, then `$NIX_ENV_OVERLAY_DIR`, then
+`~/.config/nix-env/overlay_dir`; setup saves the one it used there, and stops if it is not a readable
+directory. `nx overlay set <path>` / `nx overlay unset` edit the saved path.
 
-An overlay's `hooks/` folder is ignored: setup runs hooks only from `~/.config/nix-env/hooks/`
-(13.2), and `nx overlay` reports overlay hook scripts as ignored. See `design/overlay_catalog.md` 3.7.
+| Path                      | Purpose                                                                                |
+| ------------------------- | -------------------------------------------------------------------------------------- |
+| `scopes/*.nix`            | Extra nix packages, copied as `local_*.nix` and enabled on every run                   |
+| `# scopes:` header        | Standard scopes a scope file needs, merged into the requested scopes before resolution |
+| `shell_cfg/*`             | Copied to `~/.config/shell/overlay/` and sourced by the nix block (personal file wins) |
+| `hooks/post-setup.d/*.sh` | Run as child processes after the per-machine post-setup hooks; a failure only warns    |
+
+`phase_platform_discover_overlay` records each scope file and header scope as an
+`<origin> <scope> <file>` line in `overlay_entries` (origin `org` or `local`); on a scope name clash
+the org file wins. `phase_scopes_apply_overlay` enables every entry, refuses `--remove` for header
+scopes, drops `local_*` scopes no overlay provides, and removes once a header scope that left the header.
+Once `config.nix` is written, `phase_scopes_save_overlay_state` saves the entries to
+`~/.config/nix-env/overlay_scopes`. `nx scope` reads that file to refuse
+removing, adding or editing what the org overlay provides.
 
 ### 13.4. Shell config (`~/.config/shell/`)
 
@@ -1044,6 +1060,9 @@ Sourced by `~/.bashrc` and `~/.zshrc` on all platforms including macOS.
 | `completions.zsh`    | `.assets/config/shell_cfg/completions.zsh`    |
 
 Extension convention: `.sh` (shared), `.bash` (bash-only), `.zsh` (zsh-only).
+
+`overlay/` holds the overlays' `shell_cfg/` files (13.3). `_nx_render_nix_block` emits one guarded
+source line per file present when the block is rendered, by the same extension convention.
 
 ### 13.5. PowerShell config (`~/.config/powershell/`)
 
@@ -1094,7 +1113,7 @@ These are read, not set, by `nx*.sh`. Useful for tests, dev iteration, and overr
 | ------------------------ | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `NX_LIB_DIR`             | `_nx_find_lib`         | Override library lookup path (highest priority); used by `test_nx_zsh.bats` to point at the source repo without copying files                                                                                                                                                                                                                                             |
 | `NX_INVOKING_SHELL`      | `nx_doctor.sh`         | Shell name (`bash`/`zsh`) the `nx` wrapper detected from `$BASH_VERSION`/`$ZSH_VERSION`; routes the `shell_profile` check to the right rc file. Falls back to `$ZSH_VERSION` then `basename $SHELL` when unset (direct invocations)                                                                                                                                       |
-| `NIX_ENV_OVERLAY_DIR`    | `nx_scope.sh`, `nx.sh` | Overlay directory location override (default: `~/.config/nix-env/local/`)                                                                                                                                                                                                                                                                                                 |
+| `NIX_ENV_OVERLAY_DIR`    | `nx_scope.sh`, `nx.sh` | Organization overlay path; takes precedence over `~/.config/nix-env/overlay_dir` (set by `nx overlay set`)                                                                                                                                                                                                                                                                |
 | `NX_DOCTOR_SKIP_NETWORK` | `nx_doctor.sh`         | When set to `1`, skips `_check_version_skew` (which calls `gh api`). Used by `tests/bats/test_nx_doctor.bats` to keep the bats hook deterministic + fast - parallel test runs would otherwise rate-limit GitHub or hang on `gh`'s tty auth prompt when the sandbox HOME has no gh credentials. Production runs always do the network check (with a 5s timeout for safety) |
 
 ## 14. Cross-links

@@ -1261,6 +1261,480 @@ NIX
 }
 
 # =============================================================================
+# Overlays as the org extension point (decision 0013)
+# =============================================================================
+
+# Org overlay at $ORG with scope `team` whose header names $1 (may be empty).
+_org_overlay() {
+  ORG="$TEST_HOME/org-overlay"
+  mkdir -p "$ORG/scopes"
+  {
+    [ -n "${1:-}" ] && printf '# scopes: %s\n' "$1"
+    printf '{ pkgs }: with pkgs; [ btop ]\n'
+  } >"$ORG/scopes/team.nix"
+  export NIX_ENV_OVERLAY_DIR="$ORG"
+}
+
+# One setup pass over the scope phases, flags in $@ as parse_args leaves them.
+_overlay_setup_pass() {
+  _scope_set=" "
+  local s
+  for s in "$@"; do scope_add "$s"; done
+  _cli_scope_set="$_scope_set"
+  any_scope=false
+  [ $# -gt 0 ] && any_scope=true
+  remove_scopes=("${OVERLAY_REMOVE[@]}")
+  phase_platform_discover_overlay
+  phase_scopes_load_existing
+  phase_scopes_apply_overlay
+  phase_scopes_apply_removes
+  phase_scopes_resolve_and_sort
+  is_init=false
+  phase_scopes_write_config
+  phase_scopes_save_overlay_state
+}
+
+@test "overlay: org and personal overlays both sync, org listed first" {
+  _org_overlay
+  mkdir -p "$ENV_DIR/local/scopes"
+  printf '{ pkgs }: with pkgs; [ hello ]\n' >"$ENV_DIR/local/scopes/mine.nix"
+  phase_platform_discover_overlay
+  [ "$OVERLAY_DIR" = "$ORG:$ENV_DIR/local" ]
+  [ -f "$ENV_DIR/scopes/local_team.nix" ]
+  [ -f "$ENV_DIR/scopes/local_mine.nix" ]
+  [[ "$overlay_entries" == *"org local_team $ORG/scopes/team.nix"* ]]
+  [[ "$overlay_entries" == *"local local_mine $ENV_DIR/local/scopes/mine.nix"* ]]
+}
+
+@test "overlay: on a name clash the org file wins with a warning" {
+  _org_overlay
+  mkdir -p "$ENV_DIR/local/scopes"
+  printf '{ pkgs }: with pkgs; []\n' >"$ENV_DIR/local/scopes/team.nix"
+  run phase_platform_discover_overlay
+  [[ "$output" == *"$ENV_DIR/local/scopes/team.nix ignored - the organization overlay provides team"* ]]
+  phase_platform_discover_overlay 2>/dev/null
+  cmp -s "$ORG/scopes/team.nix" "$ENV_DIR/scopes/local_team.nix"
+}
+
+@test "overlay: header scopes are recorded and unknown names warn" {
+  _org_overlay "gcloud k8s-base nosuchscope"
+  run phase_platform_discover_overlay
+  [[ "$output" == *"unknown scope 'nosuchscope'"* ]]
+  phase_platform_discover_overlay 2>/dev/null
+  [[ "$overlay_entries" == *"org gcloud $ORG/scopes/team.nix"* ]]
+  [[ "$overlay_entries" == *"org k8s_base $ORG/scopes/team.nix"* ]]
+  [[ "$overlay_entries" != *"nosuchscope"* ]]
+}
+
+@test "overlay: a flagless run enables overlay scopes and header scopes" {
+  _org_overlay "gcloud k8s_base"
+  _overlay_setup_pass
+  local scopes
+  scopes="$(read_config_scopes)"
+  echo "$scopes" | grep -qx "local_team"
+  echo "$scopes" | grep -qx "gcloud"
+  echo "$scopes" | grep -qx "k8s_base"
+}
+
+@test "overlay: deleting the overlay file drops its scope from config.nix" {
+  _org_overlay
+  _overlay_setup_pass
+  read_config_scopes | grep -qx "local_team"
+  rm "$ORG/scopes/team.nix"
+  _overlay_setup_pass
+  [ "$(read_config_scopes | grep -cx local_team)" -eq 0 ]
+  [ ! -f "$ENV_DIR/scopes/local_team.nix" ]
+}
+
+@test "overlay: --remove of an org scope file by its plain name is refused, other removals go on" {
+  _org_overlay
+  _overlay_setup_pass python
+  OVERLAY_REMOVE=(team python)
+  run _overlay_setup_pass
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"team is controlled by the organization overlay ($ORG/scopes/team.nix) - not removed"* ]]
+  read_config_scopes | grep -qx local_team
+  run read_config_scopes
+  [[ "$output" != *python* ]]
+}
+
+@test "overlay: --remove of a hyphenated org scope file is refused" {
+  _org_overlay
+  mv "$ORG/scopes/team.nix" "$ORG/scopes/data-tools.nix"
+  _overlay_setup_pass
+  OVERLAY_REMOVE=(data_tools)
+  run _overlay_setup_pass
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"data_tools is controlled by the organization overlay ($ORG/scopes/data-tools.nix) - not removed"* ]]
+}
+
+@test "overlay: --remove of a header scope is refused" {
+  _org_overlay "gcloud"
+  _overlay_setup_pass
+  OVERLAY_REMOVE=(gcloud)
+  run _overlay_setup_pass
+  [[ "$output" == *"gcloud is controlled by the organization overlay ($ORG/scopes/team.nix) - not removed"* ]]
+  OVERLAY_REMOVE=(gcloud)
+  _overlay_setup_pass 2>/dev/null
+  read_config_scopes | grep -qx "gcloud"
+  [ ! -s "$BATS_TEST_TMPDIR/run.log" ] || ! grep -q gcloud_remove "$BATS_TEST_TMPDIR/run.log"
+}
+
+@test "overlay: a scope dropped from the header is removed once" {
+  _org_overlay "gcloud"
+  _overlay_setup_pass
+  printf '{ pkgs }: with pkgs; [ btop ]\n' >"$ORG/scopes/team.nix"
+  _overlay_setup_pass
+  [ "$(read_config_scopes | grep -cx gcloud)" -eq 0 ]
+  grep -q "gcloud_remove.sh" "$BATS_TEST_TMPDIR/run.log"
+  # the user adds it back; later runs keep it
+  _overlay_setup_pass gcloud
+  _overlay_setup_pass
+  read_config_scopes | grep -qx "gcloud"
+  [ "$(grep -c gcloud_remove.sh "$BATS_TEST_TMPDIR/run.log")" -eq 1 ]
+}
+
+@test "overlay: an invalid --remove name does not lose a once-only header removal" {
+  _org_overlay "gcloud"
+  _overlay_setup_pass
+  printf '{ pkgs }: with pkgs; [ btop ]\n' >"$ORG/scopes/team.nix"
+  OVERLAY_REMOVE=(nosuchscope)
+  run _overlay_setup_pass
+  [ "$status" -eq 2 ]
+  OVERLAY_REMOVE=()
+  _overlay_setup_pass
+  [ "$(read_config_scopes | grep -cx gcloud)" -eq 0 ]
+}
+
+@test "overlay: a scope file name with unsafe characters is skipped with a warning" {
+  _org_overlay
+  printf '{ pkgs }: with pkgs; [ hello ]\n' >"$ORG/scopes/team tools.nix"
+  printf '{ pkgs }: with pkgs; [ hello ]\n' >"$ORG/scopes/team\".nix"
+  run phase_platform_discover_overlay
+  [[ "$output" == *"team tools.nix ignored - scope file names may use only letters, digits, - and _"* ]]
+  [[ "$output" == *"team\".nix ignored"* ]]
+  [ ! -f "$ENV_DIR/scopes/local_team tools.nix" ]
+  [ ! -f "$ENV_DIR/scopes/local_team\".nix" ]
+}
+
+@test "overlay: a dropped header scope another scope depends on is not removed" {
+  _org_overlay "az python"
+  _overlay_setup_pass
+  printf '# scopes: az\n{ pkgs }: with pkgs; [ btop ]\n' >"$ORG/scopes/team.nix"
+  _overlay_setup_pass
+  read_config_scopes | grep -qx "python"
+  [ ! -f "$BATS_TEST_TMPDIR/run.log" ] || [ "$(grep -c python_remove.sh "$BATS_TEST_TMPDIR/run.log")" -eq 0 ]
+}
+
+@test "overlay: dropping a scope and its dependent together removes both" {
+  _org_overlay "az python"
+  _overlay_setup_pass
+  printf '{ pkgs }: with pkgs; [ btop ]\n' >"$ORG/scopes/team.nix"
+  _overlay_setup_pass
+  [ "$(read_config_scopes | grep -cxE 'az|python')" -eq 0 ]
+  grep -q python_remove.sh "$BATS_TEST_TMPDIR/run.log"
+}
+
+@test "overlay: a dropped dependency goes when --remove takes its dependent" {
+  _org_overlay "az python"
+  _overlay_setup_pass
+  printf '{ pkgs }: with pkgs; [ btop ]\n' >"$ORG/scopes/team.nix"
+  OVERLAY_REMOVE=(az)
+  _overlay_setup_pass
+  [ "$(read_config_scopes | grep -cxE 'az|python')" -eq 0 ]
+  grep -q python_remove.sh "$BATS_TEST_TMPDIR/run.log"
+}
+
+@test "overlay: hooks also find fnm's Node in ~/.fnm and on macOS" {
+  _org_overlay
+  mkdir -p "$ORG/hooks/post-setup.d"
+  printf 'printf "%%s\\n" "$PATH"\n' >"$ORG/hooks/post-setup.d/10-path.sh"
+  phase_platform_discover_overlay >/dev/null 2>&1
+  unset FNM_DIR
+  HOME="$TEST_HOME" run phase_platform_run_overlay_hooks
+  [[ "$output" == *"$TEST_HOME/.fnm/aliases/default/bin:"* ]]
+  [[ "$output" == *"$TEST_HOME/Library/Application Support/fnm/aliases/default/bin:"* ]]
+}
+
+@test "overlay: hooks find fnm's Node under XDG_DATA_HOME" {
+  _org_overlay
+  mkdir -p "$ORG/hooks/post-setup.d"
+  printf 'printf "%%s\\n" "$PATH"\n' >"$ORG/hooks/post-setup.d/10-path.sh"
+  phase_platform_discover_overlay >/dev/null 2>&1
+  unset FNM_DIR
+  XDG_DATA_HOME="$TEST_HOME/xdg" run phase_platform_run_overlay_hooks
+  [[ "$output" == *"$TEST_HOME/xdg/fnm/aliases/default/bin:"* ]]
+}
+
+@test "overlay: a glob in the header is an unknown name, not a file match" {
+  _org_overlay "*"
+  mkdir -p "$TEST_HOME/cwd" && touch "$TEST_HOME/cwd/gcloud"
+  cd "$TEST_HOME/cwd"
+  run phase_platform_discover_overlay
+  [[ "$output" == *"unknown scope '*'"* ]]
+  phase_platform_discover_overlay 2>/dev/null
+  [[ "$overlay_entries" != *" gcloud "* ]]
+}
+
+@test "overlay: a missing org overlay folder stops setup and deletes nothing" {
+  _org_overlay "gcloud"
+  _overlay_setup_pass
+  mv "$ORG" "$ORG.away"
+  run phase_platform_discover_overlay
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"organization overlay $ORG (from NIX_ENV_OVERLAY_DIR) is not a readable directory"* ]]
+  [ -f "$ENV_DIR/scopes/local_team.nix" ]
+  grep -q "org gcloud" "$ENV_DIR/overlay_scopes"
+}
+
+@test "overlay: an unreadable org scopes folder stops setup and deletes nothing" {
+  [ "$(id -u)" -eq 0 ] && skip "root reads a mode-000 folder"
+  _org_overlay "gcloud"
+  _overlay_setup_pass
+  chmod 000 "$ORG/scopes"
+  run phase_platform_discover_overlay
+  chmod 755 "$ORG/scopes"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"is not a readable directory"* ]]
+  [ -f "$ENV_DIR/scopes/local_team.nix" ]
+}
+
+@test "overlay: a scope file name starting with local_ is skipped" {
+  _org_overlay
+  printf '{ pkgs }: with pkgs; [ hello ]\n' >"$ORG/scopes/local_extra.nix"
+  run phase_platform_discover_overlay
+  [[ "$output" == *"local_extra.nix ignored - scope file names cannot start with local_"* ]]
+  [ ! -f "$ENV_DIR/scopes/local_local_extra.nix" ]
+}
+
+@test "overlay: the org overlay is remembered for shells without the variable" {
+  _org_overlay "gcloud"
+  _overlay_setup_pass
+  [ "$(cat "$ENV_DIR/overlay_dir")" = "$ORG" ]
+  unset NIX_ENV_OVERLAY_DIR
+  _overlay_setup_pass
+  [ "$OVERLAY_DIR" = "$ORG" ]
+  read_config_scopes | grep -qx "local_team"
+  read_config_scopes | grep -qx "gcloud"
+}
+
+@test "overlay: --overlay-dir sets and remembers the org overlay" {
+  _org_overlay
+  unset NIX_ENV_OVERLAY_DIR
+  cd "$TEST_HOME"
+  overlay_dir_arg="org-overlay"
+  phase_platform_discover_overlay >/dev/null 2>&1
+  [ "$OVERLAY_DIR" = "$ORG" ]
+  [ "$(cat "$ENV_DIR/overlay_dir")" = "$ORG" ]
+}
+
+@test "overlay: a remembered org overlay that went missing stops setup" {
+  _org_overlay
+  _overlay_setup_pass
+  unset NIX_ENV_OVERLAY_DIR
+  mv "$ORG" "$ORG.away"
+  run phase_platform_discover_overlay
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"(from $ENV_DIR/overlay_dir) is not a readable directory"*"nx overlay unset"* ]]
+}
+
+@test "overlay: an org overlay path with a colon stops setup" {
+  mkdir -p "$TEST_HOME/team:blue/scopes"
+  export NIX_ENV_OVERLAY_DIR="$TEST_HOME/team:blue"
+  run phase_platform_discover_overlay
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"cannot contain ':'"* ]]
+}
+
+@test "overlay: hooks do not run from / when no overlay is active" {
+  OVERLAY_DIR=""
+  run phase_platform_run_overlay_hooks
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"running overlay hook"* ]]
+}
+
+@test "overlay: a relative --overlay-dir resolves against where setup started" {
+  NX_CALLER_PWD="$TEST_HOME/caller"
+  phase_bootstrap_parse_args --overlay-dir team-overlay
+  [ "$overlay_dir_arg" = "$TEST_HOME/caller/team-overlay" ]
+  phase_bootstrap_parse_args --overlay-dir /abs/overlay
+  [ "$overlay_dir_arg" = "/abs/overlay" ]
+}
+
+@test "overlay: --remove of a header scope's dependency is refused" {
+  _org_overlay "az"
+  _overlay_setup_pass
+  read_config_scopes | grep -qx "python"
+  OVERLAY_REMOVE=(python)
+  run _overlay_setup_pass
+  [[ "$output" == *"python is controlled by the organization overlay"* ]]
+  [ ! -f "$BATS_TEST_TMPDIR/run.log" ] || [ "$(grep -c python_remove.sh "$BATS_TEST_TMPDIR/run.log")" -eq 0 ]
+}
+
+@test "overlay: a first flagless run with an overlay skips system detection" {
+  _org_overlay "shell"
+  mkdir -p "$TEST_HOME/bin"
+  printf '#!/bin/sh\nexit 0\n' >"$TEST_HOME/bin/docker"
+  chmod +x "$TEST_HOME/bin/docker"
+  PATH="$TEST_HOME/bin:$PATH" _overlay_setup_pass
+  [ "$(read_config_scopes | grep -cx docker)" -eq 0 ]
+  read_config_scopes | grep -qx "shell"
+}
+
+@test "overlay: an org overlay whose scopes entry is a file stops setup" {
+  ORG="$TEST_HOME/org-overlay"
+  mkdir -p "$ORG" && touch "$ORG/scopes"
+  export NIX_ENV_OVERLAY_DIR="$ORG"
+  run phase_platform_discover_overlay
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"is not a readable directory"* ]]
+}
+
+@test "overlay: a dangling scopes symlink in the org overlay stops setup" {
+  _org_overlay
+  _overlay_setup_pass
+  rm -r "$ORG/scopes"
+  ln -s "$TEST_HOME/nowhere" "$ORG/scopes"
+  run phase_platform_discover_overlay
+  [ "$status" -eq 1 ]
+  [ -f "$ENV_DIR/scopes/local_team.nix" ]
+}
+
+@test "overlay: a symlink to the config folder is refused as the org overlay" {
+  ln -s "$ENV_DIR" "$TEST_HOME/alias"
+  export NIX_ENV_OVERLAY_DIR="$TEST_HOME/alias"
+  run phase_platform_discover_overlay
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"is the Envy-NX config folder itself"* ]]
+}
+
+@test "overlay: an overlay prompt engine replaces the user's other engine without a flag" {
+  _org_overlay "oh_my_posh"
+  phase_platform_discover_overlay >/dev/null 2>&1
+  _scope_set=" starship oh_my_posh "
+  omp_theme="" starship_theme=""
+  phase_scopes_enforce_prompt_exclusivity >/dev/null 2>&1
+  scope_has oh_my_posh
+  run scope_has starship
+  [ "$status" -ne 0 ]
+}
+
+@test "overlay: the org prompt engine wins over a personal header's engine" {
+  _org_overlay "oh_my_posh"
+  mkdir -p "$ENV_DIR/local/scopes"
+  printf '# scopes: starship\n{ pkgs }: with pkgs; []\n' >"$ENV_DIR/local/scopes/mine.nix"
+  phase_platform_discover_overlay >/dev/null 2>&1
+  _scope_set=" starship oh_my_posh local_team local_mine "
+  omp_theme="" starship_theme=""
+  phase_scopes_enforce_prompt_exclusivity >/dev/null 2>&1
+  scope_has oh_my_posh
+  run scope_has starship
+  [ "$status" -ne 0 ]
+}
+
+@test "overlay: a theme flag for the org overlay's engine survives a personal header's other engine" {
+  _org_overlay "oh_my_posh"
+  mkdir -p "$ENV_DIR/local/scopes"
+  printf '# scopes: starship\n{ pkgs }: with pkgs; []\n' >"$ENV_DIR/local/scopes/mine.nix"
+  phase_platform_discover_overlay >/dev/null 2>&1
+  _scope_set=" starship oh_my_posh local_team local_mine "
+  omp_theme="nerd" starship_theme=""
+  phase_scopes_enforce_prompt_exclusivity >/dev/null 2>&1
+  [ "$omp_theme" = nerd ]
+  scope_has oh_my_posh
+  run scope_has starship
+  [ "$status" -ne 0 ]
+}
+
+@test "overlay: two org headers naming both prompt engines keep one, with a warning" {
+  _org_overlay "oh_my_posh"
+  printf '# scopes: starship\n{ pkgs }: with pkgs; []\n' >"$ORG/scopes/prompt.nix"
+  phase_platform_discover_overlay >/dev/null 2>&1
+  _scope_set=" starship oh_my_posh "
+  omp_theme="" starship_theme=""
+  run phase_scopes_enforce_prompt_exclusivity
+  [[ "$output" == *"overlays name both prompt engines"* ]]
+  phase_scopes_enforce_prompt_exclusivity >/dev/null 2>&1
+  scope_has oh_my_posh
+  run scope_has starship
+  [ "$status" -ne 0 ]
+}
+
+@test "overlay: the config folder itself is refused as the org overlay" {
+  export NIX_ENV_OVERLAY_DIR="$ENV_DIR"
+  run phase_platform_discover_overlay
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"is the Envy-NX config folder itself"* ]]
+  [ ! -f "$ENV_DIR/scopes/local_base.nix" ]
+}
+
+@test "overlay: a theme flag cannot displace an overlay's prompt engine" {
+  _org_overlay "oh_my_posh"
+  _overlay_setup_pass
+  omp_theme="" starship_theme="base"
+  _scope_set=" starship "
+  _cli_scope_set="$_scope_set"
+  any_scope=true
+  remove_scopes=()
+  phase_platform_discover_overlay >/dev/null 2>&1
+  phase_scopes_load_existing >/dev/null 2>&1
+  phase_scopes_apply_overlay
+  run phase_scopes_enforce_prompt_exclusivity
+  [[ "$output" == *"oh_my_posh is provided by an overlay"*"--starship-theme ignored"* ]]
+  phase_scopes_enforce_prompt_exclusivity 2>/dev/null
+  scope_has oh_my_posh
+  [ -z "$starship_theme" ]
+  run scope_has starship
+  [ "$status" -ne 0 ]
+}
+
+@test "overlay: an empty saved org overlay path stops setup" {
+  : >"$ENV_DIR/overlay_dir"
+  run phase_platform_discover_overlay
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"overlay_dir is empty"* ]]
+}
+
+@test "overlay: an org overlay with no scope files still skips system detection" {
+  ORG="$TEST_HOME/org-overlay"
+  mkdir -p "$ORG/shell_cfg" "$TEST_HOME/bin"
+  export NIX_ENV_OVERLAY_DIR="$ORG"
+  printf '#!/bin/sh\nexit 0\n' >"$TEST_HOME/bin/docker"
+  chmod +x "$TEST_HOME/bin/docker"
+  PATH="$TEST_HOME/bin:$PATH" _overlay_setup_pass
+  [ "$(read_config_scopes | grep -cx docker)" -eq 0 ]
+}
+
+@test "overlay: a flag for an org-provided scope says so" {
+  _org_overlay "gcloud"
+  run _overlay_setup_pass gcloud
+  [[ "$output" == *"gcloud is provided by the organization overlay"* ]]
+}
+
+@test "overlay: post-setup hooks run as child processes, failures only warn" {
+  _org_overlay
+  mkdir -p "$ORG/hooks/post-setup.d" "$ENV_DIR/local/hooks/post-setup.d"
+  printf 'echo "org hook ENV_DIR=$ENV_DIR"\nexit 3\n' >"$ORG/hooks/post-setup.d/10-org.sh"
+  printf 'echo "personal hook"; hook_var=set\n' >"$ENV_DIR/local/hooks/post-setup.d/10-mine.sh"
+  phase_platform_discover_overlay >/dev/null 2>&1
+  run phase_platform_run_overlay_hooks
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"org hook ENV_DIR=$ENV_DIR"*"overlay hook failed: $ORG/hooks/post-setup.d/10-org.sh"*"personal hook"* ]]
+  phase_platform_run_overlay_hooks >/dev/null 2>&1
+  [ -z "${hook_var:-}" ]
+}
+
+@test "overlay: a hook reading stdin does not skip the next overlay's hooks" {
+  _org_overlay
+  mkdir -p "$ORG/hooks/post-setup.d" "$ENV_DIR/local/hooks/post-setup.d"
+  printf 'cat >/dev/null\n' >"$ORG/hooks/post-setup.d/10-org.sh"
+  printf 'echo "personal hook"\n' >"$ENV_DIR/local/hooks/post-setup.d/10-mine.sh"
+  phase_platform_discover_overlay >/dev/null 2>&1
+  run phase_platform_run_overlay_hooks </dev/null
+  [[ "$output" == *"personal hook"* ]]
+}
+
+# =============================================================================
 # phase_bootstrap_print_banner
 # =============================================================================
 

@@ -12,8 +12,8 @@ version gates, an org baseline users cannot bypass) stays there, unchanged and d
 
 ## 1. Where the overlay system is today
 
-Verified against the code on 2026-09-24. Items 1-3 mean the team pattern that
-`docs/customization.md` describes does not work end to end for a consumer.
+As verified against the code on 2026-09-24, before decision 0013. Items 1-3 meant the
+team pattern that `docs/customization.md` described did not work end to end for a consumer.
 
 1. **A cloned overlay's scopes are never enabled.** `phase_platform_discover_overlay`
    copies each scope file to `local_<name>.nix`, but a scope is built only when
@@ -40,6 +40,12 @@ Verified against the code on 2026-09-24. Items 1-3 mean the team pattern that
 6. **`nx overlay list` and `nx overlay status` are the same command.** Both are
    declared in `.assets/lib/nx_surface.json`; `_nx_overlay_dispatch` ignores its
    argument apart from `help`.
+
+Decision [0013](decisions/0013-overlays-org-extension-point.md) (overlays as the org
+extension point) resolves findings 1, 2 and 5 for the legacy directory: its scopes
+are enabled automatically, its `post-setup.d` hooks run, and `NIX_ENV_OVERLAY_DIR`
+adds to `$ENV_DIR/local`. Subscriptions still need their own answer to each, given
+below. Findings 4 and 6 are resolved only here.
 
 What does work: `shell_cfg/` files are installed by `nix/configure/profiles.sh`,
 and a scope file may build its own derivation (documented, with the
@@ -157,18 +163,28 @@ docs, not enforced by nx).
 
 ### 3.7 Overlay hooks
 
-**Decided: overlays do not ship hooks.** Hooks stay per-machine, read only from
-`$ENV_DIR/hooks/`, and a `hooks/` folder in an overlay is ignored. They have
+**Decided: subscribed overlays do not ship hooks.** For subscriptions, hooks stay
+per-machine, read only from `$ENV_DIR/hooks/`, and a `hooks/` folder in a subscribed
+overlay is ignored. They have
 never run from an overlay (finding 2), so nothing depends on them, and they are
 the part of an overlay with the widest blast radius: subscribing would mean
 running another team's scripts inside every setup. The user docs state this.
 Revisit only when a team brings a concrete hook it needs.
 
+Decision 0013 is that case for the legacy directory: it runs `post-setup.d` hooks
+from `NIX_ENV_OVERLAY_DIR` and `$ENV_DIR/local`. The machine's owner places those
+directories on disk (an image build or the user), so they are trusted like
+`$ENV_DIR/hooks/`. The blast-radius argument above is about subscribing to another
+team's repository, so it stands: subscriptions do not run hooks.
+
 ### 3.8 Legacy overlay directory
 
-`NIX_ENV_OVERLAY_DIR` and `$ENV_DIR/local` keep working exactly as today, with
-the `local_` prefix, alongside subscriptions. This is the escape hatch for orgs
-that distribute through MDM or a mounted share. Converging it into a subscription
+`NIX_ENV_OVERLAY_DIR` and `$ENV_DIR/local` keep working, with the `local_` prefix,
+alongside subscriptions. This is the escape hatch for orgs that distribute through
+MDM or a mounted share, and for container images: an image bakes the overlay in at
+build time, with no network credentials for a private repository and no clone
+inside a home directory that the workspace volume later hides. Decision 0013
+changed how it behaves; see the note under section 1. Converging it into a subscription
 named `local` is phase 3, tracked with a `CLEANUP:` entry in
 [`cleanup_queue.md`](cleanup_queue.md).
 
@@ -235,16 +251,16 @@ scope before merge), the template repository.
 - `nx scope remove <overlay>/<scope>` survives the next update.
 - A subscription to an unreachable repo fails that subscription only; the rest of
   the upgrade proceeds.
-- `NIX_ENV_OVERLAY_DIR` behaviour is unchanged.
+- `NIX_ENV_OVERLAY_DIR` keeps its decision 0013 behaviour.
 - bats coverage for address parsing, list parsing, namespacing, the copy, and the
   trust rules, using a local bare repo as the remote.
 
 ## 7. Fixed in the docs, independent of this proposal
 
-The user docs no longer claim overlays ship hooks (finding 2), and
-`docs/customization.md` now spells out the real consumer steps for a team overlay
-(clone, set the variable, `nx setup`, enable each scope in `config.nix`,
-`nx upgrade`) and marks them as the gap phase 1 removes (findings 1 and 3).
+Decision 0013 later made overlay scopes enable themselves and overlay
+`post-setup.d` hooks run. `docs/customization.md` and `docs/overlays.md` describe
+that; the remaining consumer steps for a team overlay (clone, set the variable,
+`nx setup`) are the gap phase 1 removes (finding 3).
 
 ## 8. Review questions
 

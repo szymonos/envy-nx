@@ -99,7 +99,7 @@ Nix is the foundational dependency. Before organizational adoption, InfoSec and 
 - **Network requirements:** Nix downloads from `cache.nixos.org` (binary cache). Air-gapped environments need a local cache or binary mirror.
 - **MDM compatibility:** [Determinate Systems](https://determinate.systems/nix/macos/mdm/) provides a commercially supported installer with Jamf/Intune integration - the tool already uses their installer as the recommended method.
 
-**Mitigation:** `nx pin set <rev>` locks all packages to a specific nixpkgs commit SHA. Set on every machine by a pre-setup hook (placed by device management - overlays cannot ship hooks), this ensures every developer runs identical, audited package versions. The pin mechanism is already implemented and CI-tested.
+**Mitigation:** `nx pin set <rev>` locks all packages to a specific nixpkgs commit SHA. Set on every machine by a pre-setup hook (placed by device management - overlays cannot ship pre-setup hooks), this ensures every developer runs identical, audited package versions. The pin mechanism is already implemented and CI-tested.
 
 ### Fleet telemetry
 
@@ -112,7 +112,7 @@ The hook system (`post-setup.d/`) provides the injection point. The telemetry en
 
 ### Policy enforcement
 
-The hook system provides the mechanism (code runs at defined phases with access to environment variables). Hooks are per-machine files under `~/.config/nix-env/hooks/`; overlays cannot ship them, so an organization places them through its own device management. Example policies an organization might enforce:
+The hook system provides the mechanism (code runs at defined phases with access to environment variables). Pre-setup hooks are per-machine files under `~/.config/nix-env/hooks/`, which an organization places through its own device management. An overlay can ship `post-setup.d/` hooks, which run after setup as separate processes. Example policies an organization might enforce:
 
 - Minimum tool versions
 - Required scopes for specific teams

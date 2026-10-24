@@ -45,6 +45,8 @@ export PATH
 # ---- resolve paths -----------------------------------------------------------
 SCRIPT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB_DIR="$SCRIPT_ROOT/nix/lib"
+# phase_bootstrap_parse_args resolves a relative --overlay-dir against it; kept across the post-refresh re-exec
+[ -n "${NX_REEXECED:-}" ] || export NX_CALLER_PWD="$PWD"
 pushd "$SCRIPT_ROOT" >/dev/null
 
 # ---- source libraries --------------------------------------------------------
@@ -172,12 +174,14 @@ _ir_phase="scope-resolve"
 _ir_flush "in_progress"
 
 phase_scopes_load_existing
+phase_scopes_apply_overlay
 phase_scopes_apply_removes
 phase_scopes_enforce_prompt_exclusivity
 phase_scopes_resolve_and_sort
 phase_scopes_skip_system_prefer
 phase_scopes_detect_init
 phase_scopes_write_config
+phase_scopes_save_overlay_state
 
 _ir_phase="nix-profile"
 _ir_flush "in_progress"
@@ -206,6 +210,7 @@ phase_profiles_zsh
 phase_profiles_pwsh
 export NIX_ENV_PHASE="post-setup"
 phase_platform_run_hooks "$ENV_DIR/hooks/post-setup.d"
+phase_platform_run_overlay_hooks
 
 if [[ "$_skip_configure" != "true" ]]; then
   _ir_phase="post-install"

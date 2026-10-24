@@ -240,6 +240,28 @@ RC
 # nx profile uninstall
 # ---------------------------------------------------------------------------
 
+@test "nix block sources overlay shell config for the shell it suits" {
+  mkdir -p "$HOME/.config/shell/overlay"
+  touch "$HOME/.config/shell/overlay/team.sh" "$HOME/.config/shell/overlay/team.bash" \
+    "$HOME/.config/shell/overlay/team.zsh" "$HOME/.config/shell/overlay/bad name.sh" \
+    "$HOME/.config/shell/overlay/notes.txt"
+  run _nx_render_nix_block bash
+  [[ "$output" == *'# :overlay'* ]]
+  [[ "$output" == *'. "$HOME/.config/shell/overlay/team.sh"'* ]]
+  [[ "$output" == *'. "$HOME/.config/shell/overlay/team.bash"'* ]]
+  [[ "$output" != *'team.zsh'* ]]
+  [[ "$output" != *'bad name'* ]]
+  [[ "$output" != *'notes.txt'* ]]
+  run _nx_render_nix_block zsh
+  [[ "$output" == *'. "$HOME/.config/shell/overlay/team.zsh"'* ]]
+  [[ "$output" != *'team.bash'* ]]
+}
+
+@test "nix block has no overlay section without overlay shell config" {
+  run _nx_render_nix_block bash
+  [[ "$output" != *'# :overlay'* ]]
+}
+
 @test "profile uninstall removes managed blocks from bashrc" {
   _write_clean_bashrc_with_block
   run nx profile uninstall
