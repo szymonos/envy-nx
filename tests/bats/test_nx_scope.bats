@@ -624,7 +624,7 @@ EOF
 
 @test "scope edit: repo-managed scope is read-only and returns non-zero" {
   cat >"$_NX_ENV_DIR/scopes/k8s_dev.nix" <<'EOF'
-{ pkgs }: with pkgs; [ helm ]
+{ pkgs }: with pkgs; [ kustomize ]
 EOF
   EDITOR=true run _nx_scope_dispatch edit k8s_dev
   [ "$status" -eq 1 ]

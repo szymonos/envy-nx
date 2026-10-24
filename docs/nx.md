@@ -133,7 +133,7 @@ Thin wrapper over `nix search nixpkgs --json` with the output reformatted into a
 
 ## Scopes - the curated bundles
 
-A **scope** is a named set of packages that belongs together: `python` ships `uv` + `prek` + `python3`; `k8s_dev` ships `helm`, `flux`, `kustomize`, `trivy`, `kyverno`, and friends. Scopes are how teams agree on a tooling baseline without writing a wiki page nobody reads.
+A **scope** is a named set of packages that belongs together: `python` ships `uv` + `prek` + `python3`; `k8s_dev` ships `flux`, `kustomize`, `trivy`, `kyverno`, and friends. Scopes are how teams agree on a tooling baseline without writing a wiki page nobody reads.
 
 See [Customization](customization.md) for the full layering model. The day-to-day commands:
 
@@ -156,7 +156,7 @@ nx scope remove devtools                # drop the scope
 nx overlay
 ```
 
-Shows the active overlay directory (defaults to `~/.config/nix-env/local/`, override with `$NIX_ENV_OVERLAY_DIR`) and the sync state of every overlay file: `(synced)`, `(differs)`, `(modified)`, `(source missing)`. Use it to spot drift between the source-of-truth overlay and what's actually installed.
+Shows both overlay directories - the org overlay first (set with `nx overlay set <path>` or `$NIX_ENV_OVERLAY_DIR`), then the personal `~/.config/nix-env/local/` - with their scopes, the standard scopes each `# scopes:` header names, shell config and hooks. Scopes are marked `(modified)`, `(not synced)` or `(ignored - the organization overlay provides it)`, shell config `(synced)`, `(differs)` or `(not installed)`, and hooks show whether they run. Synced copies with no source left are listed as `(source missing)`.
 
 ## Lifecycle - the unique entry point
 
@@ -231,7 +231,7 @@ Read-only health checks that don't touch state. Failing or warning checks print 
 | `vscode_server_env`     | `~/.vscode-server/server-env-setup` includes nix PATH                                                                                |
 | `nix_profile`           | `nix-env` entry exists in `nix profile list`                                                                                         |
 | `nix_profile_link`      | `~/.nix-profile` is a live symlink (not missing or dangling)                                                                         |
-| `overlay_dir`           | Overlay directory is readable (when `NIX_ENV_OVERLAY_DIR` is set)                                                                    |
+| `overlay_dir`           | Organization overlay is readable (when one is set)                                                                                   |
 | `version_skew`          | Installed version matches the latest GitHub release (when `gh` is available)                                                         |
 
 The `nx doctor --strict` form is what CI runs after every smoke test. Locally, run it whenever something feels off - it usually points at the broken edge in one line.

@@ -132,8 +132,8 @@ jobs:
           [[ "$scopes" == *"--python"* ]] && bins="$bins uv"
           [[ "$scopes" == *"--pwsh"* ]] && bins="$bins pwsh"
           [[ "$scopes" == *"--nodejs"* ]] && bins="$bins node"
-          [[ "$scopes" == *"--k8s-base"* ]] && bins="$bins kubectl k9s"
-          [[ "$scopes" == *"--k8s-dev"* ]] && bins="$bins helm kustomize trivy"
+          [[ "$scopes" == *"--k8s-base"* || "$scopes" == *"--k8s-dev"* ]] && bins="$bins kubectl helm k9s"
+          [[ "$scopes" == *"--k8s-dev"* ]] && bins="$bins kustomize trivy"
           [[ "$scopes" == *"--terraform"* ]] && bins="$bins terraform"
           [[ "$scopes" == *"--bun"* ]] && bins="$bins bun"
           for cmd in $bins; do
