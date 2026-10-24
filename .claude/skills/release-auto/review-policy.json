@@ -25,7 +25,7 @@
     {
       "match_path": "modules/aliases-git/**",
       "disposition": "resolve-only",
-      "reason": "aliases-git is managed in the upstream linux-setup-scripts repo; changes land there"
+      "reason": "aliases-git is vendored from szymonos/ps-modules by modules_update.ps1; changes land there"
     },
     {
       "match_path": ".assets/config/bin/wslview",

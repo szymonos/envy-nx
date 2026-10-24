@@ -36,6 +36,17 @@ def _gate_in_tmp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep ``emit_gate`` from writing into the real repo's ``.release/``."""
     monkeypatch.setattr(release, "STATE_DIR", tmp_path / ".release")
     monkeypatch.setattr(release, "GATE_FILE", tmp_path / ".release" / "gate.json")
+    # No review skill installed unless a test installs one with _install_skills.
+    skills = tmp_path / "skills"
+    monkeypatch.setattr(release, "BRIEF_SCRIPT", skills / "second-opinion.py")
+    monkeypatch.setattr(release, "PR_REVIEW_SCRIPT", skills / "address-pr-review.py")
+
+
+def _install_skills(*scripts: Path) -> None:
+    """Create the review skills' scripts, as if installed in ~/.claude/skills."""
+    for script in scripts:
+        script.parent.mkdir(parents=True, exist_ok=True)
+        script.touch()
 
 
 PLAN = {
@@ -437,17 +448,9 @@ def _fake_pr_review(
 
     class Stub:
         @staticmethod
-        def _repo_info() -> tuple[str, str]:
+        def unresolved_for_current_pr() -> list[dict]:
             if boom:
                 raise SystemExit(1)
-            return ("szymonos", "envy-nx")
-
-        @staticmethod
-        def _auto_pr() -> int:
-            return 74
-
-        @staticmethod
-        def unresolved_threads(_o: str, _r: str, _p: int) -> list[dict]:
             return threads or []
 
     monkeypatch.setattr(release, "_load_pr_review", lambda: Stub)
@@ -482,6 +485,19 @@ def test_open_threads_distinguishes_empty_from_unknown(
     assert release.open_threads() is None
 
 
+def test_open_threads_with_a_skill_older_than_the_helper_is_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An installed copy without unresolved_for_current_pr degrades too."""
+
+    class Older:
+        pass
+
+    monkeypatch.setattr(release, "_load_pr_review", lambda: Older)
+
+    assert release.open_threads() is None
+
+
 def test_open_threads_without_the_sibling_skill_is_unknown(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -491,12 +507,50 @@ def test_open_threads_without_the_sibling_skill_is_unknown(
     assert release.open_threads() is None
 
 
-def test_load_pr_review_finds_the_real_sibling_script() -> None:
-    """The hard-coded path must still resolve, or the backstop never fires."""
-    module = release._load_pr_review()
+BOTH = ["second-opinion", "copilot-review"]
 
-    assert module is not None
-    assert callable(module.unresolved_threads)
+
+def test_review_scripts_live_in_the_user_skills_dir() -> None:
+    """The review skills are installed per user, never vendored in the repo."""
+    skills = Path.home() / ".claude" / "skills"
+    assert release.SKILLS_DIR == skills
+
+
+@pytest.mark.parametrize(
+    ("installed", "skip", "layers"),
+    [
+        ((), False, []),
+        (("BRIEF_SCRIPT",), False, ["second-opinion"]),
+        (("PR_REVIEW_SCRIPT",), False, ["copilot-review"]),
+        (
+            ("BRIEF_SCRIPT", "PR_REVIEW_SCRIPT"),
+            False,
+            ["second-opinion", "copilot-review"],
+        ),
+        (("BRIEF_SCRIPT", "PR_REVIEW_SCRIPT"), True, []),
+    ],
+)
+def test_review_layers_follow_the_installed_skills(
+    installed: tuple[str, ...], skip: bool, layers: list[str]
+) -> None:
+    """Each installed skill adds its layer; --skip-review still turns all off."""
+    _install_skills(*(getattr(release, name) for name in installed))
+
+    assert release.review_layers({"skip_review": skip}) == layers
+
+
+@pytest.mark.parametrize("verb", ["second-opinion", "copilot-review"])
+def test_a_layer_without_its_skill_is_skipped(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], verb: str
+) -> None:
+    """Running a layer whose skill is missing skips it rather than failing."""
+    import json
+
+    monkeypatch.setattr(release, "load_state", lambda: pytest.fail("ran"))
+    func = release.build_parser().parse_args([verb])
+
+    assert func.func(func) == 0
+    assert json.loads(capsys.readouterr().out)["skipped"] == "skill not installed"
 
 
 # -- changelog_problems: the pre-recut changelog gate ---------------------------
@@ -643,6 +697,7 @@ def test_done_gates_before_wiping_on_open_or_unknown_threads(
     monkeypatch: pytest.MonkeyPatch, threads: list | None
 ) -> None:
     """An unknown lookup gates like an open thread - state survives either way."""
+    _install_skills(release.PR_REVIEW_SCRIPT)
     monkeypatch.setattr(release, "head_is_published", lambda: True)
     monkeypatch.setattr(release, "open_threads", lambda: threads)
     monkeypatch.setattr(release, "_finish", lambda *_a, **_k: pytest.fail("wiped"))
@@ -657,6 +712,7 @@ def test_done_finishes_when_clean_or_forced(
     monkeypatch: pytest.MonkeyPatch, threads: list | None, force: bool, check: bool
 ) -> None:
     """Clean finishes silently; --force finishes and keeps the warning."""
+    _install_skills(release.PR_REVIEW_SCRIPT)
     seen: dict = {}
     monkeypatch.setattr(release, "head_is_published", lambda: True)
     monkeypatch.setattr(release, "open_threads", lambda: threads)
@@ -668,6 +724,23 @@ def test_done_finishes_when_clean_or_forced(
 
     assert release._done({"version": "1.2.3"}, force=force) == 0
     assert seen["c"] is check  # a forced finish still prints the warning
+
+
+def test_done_without_the_copilot_layer_asks_about_no_threads(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No address-pr-review skill means no review threads to gate on."""
+    seen: dict = {}
+    monkeypatch.setattr(release, "head_is_published", lambda: True)
+    monkeypatch.setattr(release, "open_threads", lambda: pytest.fail("asked"))
+    monkeypatch.setattr(
+        release,
+        "_finish",
+        lambda _s, _m, *, check_threads: seen.update(c=check_threads) or 0,
+    )
+
+    assert release._done({"version": "1.2.3"}, force=False) == 0
+    assert seen["c"] is False
 
 
 # -- integration ----------------------------------------------------------------
@@ -1009,8 +1082,31 @@ def test_push_counts_the_cycle_before_the_pr_update_can_fail(
 
 def test_coda_next_says_when_the_last_fix_cycle_ran() -> None:
     """At zero the final review's threads go to the user, not into a new cycle."""
-    assert "last fix cycle" in release._coda_next(0)
-    assert "last fix cycle" not in release._coda_next(1)
+    both = ["second-opinion", "copilot-review"]
+    assert "last fix cycle" in release._coda_next(0, both)
+    assert "last fix cycle" not in release._coda_next(1, both)
+
+
+@pytest.mark.parametrize(
+    ("layers", "named", "absent"),
+    [
+        (
+            ["second-opinion", "copilot-review"],
+            ["copilot-review", "second-opinion"],
+            [],
+        ),
+        (["copilot-review"], ["copilot-review"], ["second-opinion"]),
+        (["second-opinion"], ["second-opinion"], ["copilot-review"]),
+        ([], ["push --done"], ["second-opinion", "copilot-review"]),
+    ],
+)
+def test_coda_next_names_only_the_installed_layers(
+    layers: list[str], named: list[str], absent: list[str]
+) -> None:
+    """The next step never points at a review layer whose skill is missing."""
+    text = release._coda_next(1, layers)
+    assert all(n in text for n in named)
+    assert not any(a in text for a in absent)
 
 
 # -- second-opinion: a thin wrapper over review_brief.py run --------------------
@@ -1020,6 +1116,7 @@ def test_coda_next_says_when_the_last_fix_cycle_ran() -> None:
 def opinion_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict:
     """A release state in a scratch dir; ``seen`` collects the run command."""
     monkeypatch.chdir(tmp_path)
+    _install_skills(release.BRIEF_SCRIPT)
     state = {"version": "1.2.3", "last_tag": "v1.2.2", "second_opinion_runs": 0}
     seen: dict = {"state": state}
     monkeypatch.setattr(release, "load_state", lambda: state)
@@ -1103,3 +1200,24 @@ def test_second_opinion_failure_is_a_release_error(
             release.build_parser().parse_args(["second-opinion"])
         )
     assert "saved" not in opinion_run
+
+
+@pytest.mark.parametrize(
+    ("installed", "finished"), [((), True), (("PR_REVIEW_SCRIPT",), False)]
+)
+def test_push_runs_the_coda_only_with_a_review_skill(
+    monkeypatch: pytest.MonkeyPatch, installed: tuple[str, ...], finished: bool
+) -> None:
+    """With no review skill the spine's push ends the run; any skill adds the coda."""
+    _install_skills(*(getattr(release, name) for name in installed))
+    seen: dict = {}
+    for name in ("_do_push", "_upsert_pr", "save_state"):
+        monkeypatch.setattr(release, name, lambda *_a: None)
+    monkeypatch.setattr(release, "head_sha", lambda: "abc")
+    monkeypatch.setattr(
+        release, "_finish", lambda _s, msg, **_k: seen.update(msg=msg) or 0
+    )
+
+    state = {"version": "1.2.3", "skip_review": False}
+    assert release.resume_push(state, {"approve": True}) == 0
+    assert ("msg" in seen) is finished

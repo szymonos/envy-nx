@@ -1,11 +1,6 @@
----
-repo: szymonos/envy-nx
----
+# Review brief
 
-# Review brief - envy-nx
-
-Curated context for a heterogeneous-model reviewer (`/second-opinion`).
-You are reviewing a code diff. Read this brief first, then the diff, then any files needed for context.
+Project context for `/second-opinion`. The skill supplies the output format and bias-control rules.
 
 ## Project
 
@@ -54,33 +49,3 @@ These are deliberate. Flagging them is noise - they're documented project decisi
 - **Managed shell-rc blocks** with marker comments (`# >>> nx-managed >>>` / `# <<< nx-managed <<<`) are by design; do not suggest idempotency checks inside them - the markers ARE the idempotency mechanism.
 - **`# no-learning` token** in commit messages is a deliberate opt-out for the `check-learning-trailer` hook on trivial refactors.
 - **OTBS brace style in PowerShell** (opening `{` on same line as statement, even for `if`/`foreach`) is the project convention.
-
-## Output format
-
-Produce a single markdown response with this structure:
-
-```text
-## Findings
-
-### F-001 - <severity> - <file>:<line>
-<one-paragraph description; reference the constraint being violated; be specific>
-
-**Suggestion:** <concrete fix direction, NOT a patch>
-
-### F-002 - <severity> - <file>:<line>
-...
-```
-
-Severities:
-
-- **`bug`** - correctness or security defect; the code is wrong.
-- **`warning`** - likely issue, needs judgment; the code might be wrong under conditions you can't fully verify.
-- **`nit`** - style or clarity; the code works but could be clearer.
-
-If zero findings, output exactly: `No findings.`
-
-## Bias-control rules
-
-- Speculate carefully. If you suspect a bug but can't verify the call site, mark `warning` not `bug`.
-- Don't pad with `nit` findings to look productive. Five `nit` items on a 200-line diff is fine; thirty is noise.
-- If several findings share the same root cause, consolidate into one finding with multiple `<file>:<line>` references.
