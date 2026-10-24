@@ -42,8 +42,12 @@ DETACHED = {"start_new_session": True, "stdin": subprocess.DEVNULL}
 
 # A new session also means terminal Ctrl-C reaches only this runner, so it
 # tracks each child's process group and kills them on interrupt.
+# Once _kill_live() has run, _CANCELLED stops any worker that is between
+# taking its next file and starting it; checking it and registering the child
+# under one lock leaves no window for a child to start after cleanup.
 _LIVE: set[subprocess.Popen] = set()
 _LIVE_LOCK = threading.Lock()
+_CANCELLED = False
 
 
 def _run(
@@ -55,8 +59,10 @@ def _run(
         if capture
         else {}
     )
-    proc = subprocess.Popen(cmd, env=env, **DETACHED, **pipes)
     with _LIVE_LOCK:
+        if _CANCELLED:
+            return subprocess.CompletedProcess(cmd, 130, "", "")
+        proc = subprocess.Popen(cmd, env=env, **DETACHED, **pipes)
         _LIVE.add(proc)
     try:
         out, err = proc.communicate()
@@ -79,7 +85,9 @@ def _killpg(proc: subprocess.Popen) -> None:
 
 def _kill_live() -> None:
     """Kill every running child's group; worker threads never see Ctrl-C."""
+    global _CANCELLED
     with _LIVE_LOCK:
+        _CANCELLED = True
         for proc in _LIVE:
             _killpg(proc)
 
