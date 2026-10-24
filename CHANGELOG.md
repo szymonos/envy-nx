@@ -5,6 +5,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.32.1] - 2026-10-24
+
+### Changed
+
+- PowerShell `grunrefresh` (aliases-git 1.25.0) fetches repositories in parallel and removes the worktree of a branch whose upstream is gone. It keeps worktrees with uncommitted changes, never-pushed branches and the worktree it runs from.
+- `Get-AksCredential` (do-az 1.22.6) names the missing Azure Kubernetes Service Cluster User Role when access to the cluster is forbidden.
+- The repository's Python tooling now targets Python 3.14.
+- `/release-auto` runs its review steps only for the review skills installed in `~/.claude/skills/`: `second-opinion` adds the second-model review, `address-pr-review` the Copilot PR review. With neither installed, a release ends once it is pushed.
+
+### Fixed
+
+- Commands started from PowerShell on Linux no longer inherit pwsh's `LD_LIBRARY_PATH`, which made nix, `make lint` and tests run from `pwsh -nop` fail with ``version `GLIBC_2.43' not found``.
+- Pressing Ctrl-C during `make lint` or `make test-unit` no longer leaves a bats file running, which kept the runner waiting for it to finish.
+- `/release-auto <version> reopen` refuses uncommitted changes up front with an instruction to commit them, instead of failing later with a misleading CHANGELOG error.
+
+### Removed
+
+- The `second-opinion` and `address-pr-review` skills are no longer bundled; install them in `~/.claude/skills/`. The project's review brief moved to `.claude/REVIEW-BRIEF.md`.
+
 ## [1.32.0] - 2026-10-23
 
 Overlays become an extension point an organization can build on: one overlay folder, for example one baked into a container image, now describes the whole environment, and a personal overlay still applies on top.

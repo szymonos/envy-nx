@@ -39,9 +39,12 @@ direnv
 diskpart
 distrobox
 distros
+dlopen
+dlopens
 dotdir
 dpkg
 dumpfile
+dyld
 eacces
 egsave
 eledath
@@ -92,11 +95,13 @@ kustomize
 kyverno
 lastexitcode
 libicu
+libunwind
 linuxbrew
 lockfiles
 locpath
 logind
 lstrip
+lttng
 lxss
 makefiles
 mandoc
@@ -161,6 +166,8 @@ remediations
 removeprefix
 rerunnable
 rollouts
+runpath
+runpaths
 runspace
 runspaces
 scaffolder
@@ -172,6 +179,7 @@ shellenv
 shfmt
 sigstore
 sofka
+soname
 sonoma
 soupsieve
 sourceable
