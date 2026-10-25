@@ -113,10 +113,10 @@ TRIAGE_SUMMARY = (
     "fix breaks a project rule); decline everything else - style, 'consider X', "
     "hardening for a case that cannot happen, however well argued - with a "
     "one-sentence reason, and record a decline that will hold on the next change "
-    "as a rule in REVIEW.md; resolve-only what is already addressed; escalate only "
-    "what changes what the user sees or the release is for, shifts architecture or "
-    "is hard to reverse, touches security, or you are unsure of - held for one "
-    "question at the end"
+    "as a rule in .github/copilot-instructions.md (REVIEW.md links to it); "
+    "resolve-only what is already addressed; escalate only what changes what the "
+    "user sees or the release is for, shifts architecture or is hard to reverse, "
+    "touches security, or you are unsure of - held for one question at the end"
 )
 # Escalations wait through the reviews and possibly a compaction, so
 # the decision log holds them rather than the agent's memory.
@@ -970,7 +970,9 @@ def phase_start(
             else ""
         )
         + (
-            f"audit_rules is true: run `{RULES_AUDIT_SCRIPT} audit` before the plan, "
+            "audit_rules is true: edit the review rules in "
+            ".github/copilot-instructions.md, never through the REVIEW.md link. "
+            f"Run `{RULES_AUDIT_SCRIPT} audit` before the plan, "
             "fix each stale-path or stale-symbol finding as an uncommitted edit and "
             "rerun until none remains; for any other finding kind, name it in one "
             "line, suggest /bootstrap-review and carry on. "

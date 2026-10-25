@@ -672,6 +672,48 @@ def test_copilot_triage_turns_fixes_into_escalations_at_the_cap(
     assert "Show the user" not in ctx["instructions"]
 
 
+# -- phase_start: the phase-1 gate's instructions --------------------------------
+
+
+def test_audit_rules_sends_edits_to_the_link_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Write tools refuse the REVIEW.md symlink, so name the file it points at."""
+    import json
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "REVIEW.md").touch()
+    audit = tmp_path / "review_md.py"
+    audit.touch()
+    monkeypatch.setattr(release, "RULES_AUDIT_SCRIPT", audit)
+    stubs = {
+        "refuse_shared_branch": None,
+        "last_tag": "v1.0.0",
+        "version_exists": False,
+        "tag_exists": False,
+        "rebase_onto_trunk": {"behind": 0},
+        "run_make": None,
+        "_bump_pyproject": None,
+        "save_state": None,
+        "head_sha": "abc",
+        "run_extract": {},
+        "_cspell_scan": [],
+        "git": "",
+        "seed_plan": {},
+    }
+    for name, value in stubs.items():
+        monkeypatch.setattr(release, name, lambda *_a, _v=value, **_k: _v)
+
+    assert release.phase_start("1.0.1", skip_review=True) == release.EXIT_GATE
+    ctx = json.loads(release.GATE_FILE.read_text())["context"]
+    assert ctx["audit_rules"] is True
+    assert (
+        "edit the review rules in .github/copilot-instructions.md"
+        in (ctx["instructions"])
+    )
+    assert ".github/copilot-instructions.md" in release.TRIAGE_SUMMARY
+
+
 # -- post_decision_log: the run's only record once threads are resolved ---------
 
 
