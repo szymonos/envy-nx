@@ -118,3 +118,5 @@ cross-version upgrade walk.
 - **`release-auto` state and inputs are the agent's own** - `.release/` is driver-owned, git-ignored scratch state,
   and `release.py` file arguments come from the agent running it. Symlink or alias planting under `.release/`
   and empty, directory or non-UTF-8 file arguments are not findings. (release/1.32.2)
+- **"a REVIEW.md rule" in `release-auto`** names the rule, not a write target. Only an instruction to edit the rules
+  must name `.github/copilot-instructions.md`. (#121)

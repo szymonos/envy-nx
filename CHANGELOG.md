@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.32.6] - 2026-10-25
+
+### Fixed
+
+- `/release-auto` now points review-rule edits at `.github/copilot-instructions.md` instead of the `REVIEW.md` symlink, which Claude Code's write tools refuse to write through.
+
 ## [1.32.5] - 2026-10-25
 
 ### Changed
