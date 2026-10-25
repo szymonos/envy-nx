@@ -17,9 +17,9 @@
     "                       HEAD moved underneath the orchestrator (staleness guard).",
     "  confirmed_covered_set  paths the last recut committed; reconcile reports",
     "                       the delta against it as advisory context.",
-    "  second_opinion_runs  coda 4a runs so far; second-opinion refuses past 2.",
-    "  coda_pushes          coda re-pushes so far; copilot-review hands remaining",
-    "                       threads to the user from 2 on."
+    "  second_opinion       reviews run so far (release, fixes); each runs once.",
+    "  coda_pushes          coda pushes Copilot had engaged with; at 1 the round is",
+    "                       spent and a thread it would fix becomes an escalation."
   ],
   "version": "1.16.0",
   "skip_review": false,
@@ -36,6 +36,6 @@
     "pyproject.toml",
     "uv.lock"
   ],
-  "second_opinion_runs": 1,
+  "second_opinion": ["release"],
   "coda_pushes": 0
 }
