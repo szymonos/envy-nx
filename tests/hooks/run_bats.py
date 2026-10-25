@@ -199,6 +199,14 @@ def main(argv: list[str] | None = None) -> int:
     env["NX_DOCTOR_SKIP_NETWORK"] = "1"
     # Tell git to never prompt (returns non-zero immediately on missing creds).
     env["GIT_TERMINAL_PROMPT"] = "0"
+    # A global core.hooksPath (e.g. a corporate one whose pre-rebase always
+    # exits 1) replaces each temp repo's own hooks. Point git back at the
+    # per-repo hooks dir; only this key is overridden, since code under test
+    # writes to the global config.
+    n = int(env.get("GIT_CONFIG_COUNT") or 0)
+    env[f"GIT_CONFIG_KEY_{n}"] = "core.hooksPath"
+    env[f"GIT_CONFIG_VALUE_{n}"] = ".git/hooks"
+    env["GIT_CONFIG_COUNT"] = str(n + 1)
 
     # Best-effort wall-clock timeout per bats invocation. timeout(1) ships
     # with GNU coreutils (Linux/WSL); macOS userland lacks it but brewed
