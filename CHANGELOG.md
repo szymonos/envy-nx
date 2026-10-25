@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.32.5] - 2026-10-25
+
+### Changed
+
+- `/release-auto` now audits `REVIEW.md` at the first gate and fixes stale rules before the release commits are cut; the gate payload's `audit_rules` flag is false, and the step skipped, when `REVIEW.md` or the `bootstrap-review` skill is absent.
+
 ## [1.32.4] - 2026-10-25
 
 ### Changed
