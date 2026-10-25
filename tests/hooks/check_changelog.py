@@ -5,8 +5,8 @@ Pre-commit hook: validate CHANGELOG.md structure and require updates.
 2. Tagged headings must use pure semver: ## [<major>.<minor>.<patch>] - YYYY-MM-DD
    (no "v" prefix - the release pipeline breaks on it).
 3. Dates must be valid calendar dates in reverse chronological order.
-4. If any staged file matches a runtime path pattern, CHANGELOG.md must have
-   content under ## [Unreleased].
+4. If any staged file matches a runtime path pattern (nix/nixpkgs_rev.json
+   excepted), CHANGELOG.md must have content under ## [Unreleased].
 
 `### Section` mis-ordering inside a release is auto-fixed in place: the hook
 reorders to the canonical SECTION_ORDER (Added -> Changed -> Fixed -> Removed
@@ -37,6 +37,9 @@ RUNTIME_PATTERNS = (
     ".assets/provision/",
     "wsl/",
 )
+
+# Rewritten wholesale by the weekly bump workflow, which adds no CHANGELOG entry.
+EXEMPT_FILES = ("nix/nixpkgs_rev.json",)
 
 SEMVER_HEADING = re.compile(r"^## \[(\d+\.\d+\.\d+)\] - (\d{4}-\d{2}-\d{2})\s*$")
 
@@ -308,7 +311,11 @@ def main(argv: list[str]) -> int:
         rc = 1
 
     # check unreleased content when runtime files are staged
-    runtime_files = [f for f in argv if any(f.startswith(p) for p in RUNTIME_PATTERNS)]
+    runtime_files = [
+        f
+        for f in argv
+        if f not in EXEMPT_FILES and any(f.startswith(p) for p in RUNTIME_PATTERNS)
+    ]
     if runtime_files:
         staged = _staged_files()
         if any(f in staged for f in runtime_files):

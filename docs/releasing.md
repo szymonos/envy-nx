@@ -32,7 +32,7 @@ flowchart LR
 
 ### 1. Update the changelog
 
-Every PR that changes runtime files (`nix/`, `.assets/`, `wsl/`) must have an entry under `## [Unreleased]` in `CHANGELOG.md`. The `check-changelog` pre-commit hook enforces this - commits that touch runtime files without a changelog entry are rejected.
+Every PR that changes runtime files (`nix/`, `.assets/`, `wsl/`) must have an entry under `## [Unreleased]` in `CHANGELOG.md`. The `check-changelog` pre-commit hook enforces this - commits that touch runtime files without a changelog entry are rejected. `nix/nixpkgs_rev.json` is exempt: the weekly bump rewrites it and adds no entry.
 
 Before tagging, review the `[Unreleased]` section and rename it to the version being released:
 
