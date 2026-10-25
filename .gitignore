@@ -240,3 +240,6 @@ __marimo__/
 .release/
 .specstory*
 .vscode/
+
+# /review skill working state (wiped by finish)
+.review/
