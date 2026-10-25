@@ -103,8 +103,10 @@ pre-rebase HEAD.
 
    **With `audit_rules` true in the payload, keep the review rules current**,
    independent of `review`. The driver sets it only when `REVIEW.md` exists and
-   `/bootstrap-review` is installed. Run the `review_md.py audit` command the
-   payload gives before the commit plan and fix every finding as an uncommitted
+   `/bootstrap-review` is installed. Make every edit below in
+   `.github/copilot-instructions.md`, the file `REVIEW.md` links to: write
+   tools refuse to write through the link. Run the `review_md.py audit` command
+   the payload gives before the commit plan and fix every finding as an uncommitted
    edit: update a rule whose file or function moved, delete one whose target is
    gone. Rerun until no `stale-path` or `stale-symbol` finding remains. Any
    other kind (`section`, `link`, `legacy`) means onboarding is unfinished: name
