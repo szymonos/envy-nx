@@ -109,14 +109,20 @@ cross-version upgrade walk.
   pwsh profile is never in their shell snapshot. (`ARCHITECTURE.md` §7.10)
 - **`# no-learning`** in a commit body is a deliberate opt-out of `check-learning-trailer`.
 - **A PowerShell `clean {}` block is enough to remove temp files** - it runs on Ctrl-C and on uncaught
-  exceptions. (`design/reviews/accepted.md` A-003)
+  exceptions. (certs standing review, 2026-05-13)
 - **`.assets/fix/*.sh` are execution-only** - source-safety is not part of their contract.
-  (`design/reviews/accepted.md` A-004)
+  (certs standing review, 2026-05-13)
 - **`runs-on: ubuntu-slim`** is a valid GitHub-hosted runner, used deliberately for light jobs.
 - **PowerShell `-in` with a scalar right-hand side** is a one-element collection, not a substring test:
   `'set' -in 'setup'` is `$false`. The single-name verb completers rely on it.
-- **`release-auto` state and inputs are the agent's own** - `.release/` is driver-owned, git-ignored scratch state,
-  and `release.py` file arguments come from the agent running it. Symlink or alias planting under `.release/`
-  and empty, directory or non-UTF-8 file arguments are not findings. (release/1.32.2)
+- **`release-auto` and `/review` state and inputs are the agent's own** - `.release/` and the review skill's
+  scratch directory are script-owned, git-ignored state, and `release.py` / `review.py` file arguments come from
+  the agent running it. Symlink or alias planting under either directory and empty, directory or non-UTF-8 file
+  arguments are not findings. (#117, #122)
+- **A symlink, hard link or directory planted at a path a repo script owns** - `design/reviews/history.tmp`,
+  `design/reviews/shards.json`, the findings JSON the review agents write - is not a finding; nothing but the
+  scripts and their agents writes there. (#122)
+- **Commands in a SKILL.md written `scripts/<name>`** resolve against the skill's own directory, where the agent
+  runs them - not a missing repo-root path. (#122)
 - **"a REVIEW.md rule" in `release-auto`** names the rule, not a write target. Only an instruction to edit the rules
   must name `.github/copilot-instructions.md`. (#121)
