@@ -19,6 +19,9 @@ The certificate and proxy path. A regression breaks every HTTPS tool - git, curl
 - **`NIX_SSL_CERT_FILE` set early** - it must be exported before any nix subprocess.
 - **The bundle path `~/.config/certs/ca-bundle.crt`** - a public contract other tools read.
 - **A PowerShell `clean {}` block as temp-file cleanup**, and **`.assets/fix/*.sh` as execution-only** - `REVIEW.md` Author decisions.
+- **Directories, symlinks or hand-edited content planted in `~/.config/certs/`** - the tool writes every file there itself (newline-terminated PEM, `ca-custom.crt` never aliasing `ca-bundle.crt`).
+- **The Linux `ca-bundle.crt` symlink leaving out `ca-custom.crt`** - WSL users have root and install the proxy CA into the system store, Coder runs without a proxy; a rootless container behind a proxy handles its system certs itself.
+- **No hostname check in `_cert_probe_pinned`** - the probe only asks whether the chain verifies against the Mozilla roots; a MITM proxy fails that whatever name it presents.
 
 ## References
 

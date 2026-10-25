@@ -132,12 +132,12 @@ Implications for any change you make:
 
 **Post-install dispatch** (in `post_install.sh`):
 
-| Script                                 | Condition       | Purpose                              |
-| -------------------------------------- | --------------- | ------------------------------------ |
-| `.assets/setup/setup_common.sh`        | always          | Copilot, zsh plugins, PS modules     |
-| `.assets/provision/install_copilot.sh` | called by above | GitHub Copilot CLI                   |
-| `.assets/setup/setup_profile_user.zsh` | scope: zsh      | Zsh profile setup                    |
-| `.assets/setup/setup_profile_user.ps1` | pwsh available  | certs, local PATH, MSAL browser auth |
+| Script                                 | Condition       | Purpose                          |
+| -------------------------------------- | --------------- | -------------------------------- |
+| `.assets/setup/setup_common.sh`        | always          | Copilot, zsh plugins, PS modules |
+| `.assets/provision/install_copilot.sh` | called by above | GitHub Copilot CLI               |
+| `.assets/setup/setup_profile_user.zsh` | scope: zsh      | Zsh profile setup                |
+| `.assets/setup/setup_profile_user.ps1` | pwsh available  | local PATH, MSAL browser auth    |
 
 **Variable naming convention** (cross-phase globals):
 
@@ -372,7 +372,7 @@ fi
 # <<< nix:managed <<<
 ```
 
-**PowerShell** - `_aliases_nix.ps1` provides `_NxProfileRegenerate` + region helpers. Nix-managed regions use the `nix:` prefix (`#region nix:base`, `#region nix:path`, `#region nix:certs`). Generic regions (certs, conda, make completer, MSAL browser auth) use unprefixed names and are written by `setup_profile_user.ps1`. The uninstaller only removes `nix:`-prefixed regions. On headless Linux, setup also merges `Az.EnableLoginByWam=false` into `~/.Azure/PSConfig.json` without requiring Az.Accounts to be installed, and adds a guarded `DISPLAY=:0` profile region when a genuine or managed `wslview` is the only viable MSAL opener.
+**PowerShell** - `_aliases_nix.ps1` provides `_NxProfileRegenerate` + region helpers. Nix-managed regions use the `nix:` prefix (`#region nix:base`, `#region nix:path`, `#region nix:certs`). Generic regions (conda, make completer, MSAL browser auth) use unprefixed names and are written by `setup_profile_user.ps1`. The uninstaller only removes `nix:`-prefixed regions. On headless Linux, setup also merges `Az.EnableLoginByWam=false` into `~/.Azure/PSConfig.json` without requiring Az.Accounts to be installed, and adds a guarded `DISPLAY=:0` profile region when a genuine or managed `wslview` is the only viable MSAL opener.
 
 Properties:
 
@@ -624,6 +624,7 @@ Files in scope: `.assets/config/shell_cfg/*.sh`, `.assets/lib/nx.sh`, the four `
 - **Bare function defs** (`name() {`) - use `function name() {`. Zsh expands aliases at parse time, so a function whose name matches an alias breaks under zsh.
 - **Numeric array subscripts** (`${arr[0]}`) - zsh arrays are 1-based. Avoid indexed arrays or guard with `[ -n "$BASH_VERSION" ]`.
 - **For-loops over unquoted globs** (`for f in "$dir"/*.ext`) - zsh's `nomatch` aborts the command on no-match. Use `find ... | while IFS= read -r f` instead.
+- **Bare `local` inside a loop** (`for ...; do local x; ...`) - zsh prints `x=<value>` when a bare `local` re-declares a variable already local to the function, i.e. on every pass after the first. Declare loop variables once at the top of the function (bit `cert_intercept` in `.assets/lib/certs.sh`, also user-sourced).
 - **Bash-only builtins/vars** (`BASH_SOURCE`, `BASH_REMATCH`, `compgen`, `complete -F`/`-W`, `COMP_WORDS`, `COMP_CWORD`, `COMPREPLY`) - guard with `[ -n "$BASH_VERSION" ]` or fall back when in zsh.
 
 **Auto-detected safe forms** (no `# zsh-ok` marker needed):
@@ -940,7 +941,7 @@ This project follows [Keep a Changelog](https://keepachangelog.com) format and [
 | `.assets/config/shell_cfg/functions.sh`                                                      | Shared shell functions (fixcertpy, sysinfo); sources certs.sh for cert_intercept                            |
 | `.assets/config/shell_cfg/completions.{bash,zsh}`                                            | Tab completions for nx (**generated** from `nx_surface.json`)                                               |
 | `.assets/setup/setup_common.sh`                                                              | Post-install setup (called via `nix/setup.sh`)                                                              |
-| `.assets/setup/setup_profile_user.ps1`                                                       | PowerShell user profile (certs, local-path, etc.)                                                           |
+| `.assets/setup/setup_profile_user.ps1`                                                       | PowerShell user profile (local-path, etc.)                                                                  |
 | `.assets/provision/install_copilot.sh`                                                       | Post-install: GitHub Copilot CLI                                                                            |
 
 ### 12.2. linux-only (bash 4+ OK)

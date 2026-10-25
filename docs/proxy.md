@@ -66,10 +66,10 @@ All exports are guarded at runtime - variables are only set if the cert file sti
 
 ### Certificate storage
 
-| Location                        | Purpose                                    | Created by        | When                              |
-| ------------------------------- | ------------------------------------------ | ----------------- | --------------------------------- |
-| `~/.config/certs/ca-bundle.crt` | Full CA bundle (system CAs + custom certs) | `build_ca_bundle` | Every `nix/setup.sh` run          |
-| `~/.config/certs/ca-custom.crt` | Intercepted proxy certs only               | `cert_intercept`  | When MITM detected (probe failed) |
+| Location                        | Purpose                                                                         | Created by        | When                              |
+| ------------------------------- | ------------------------------------------------------------------------------- | ----------------- | --------------------------------- |
+| `~/.config/certs/ca-bundle.crt` | Full CA bundle (system CAs + custom certs; on Linux, those in the system store) | `build_ca_bundle` | Every `nix/setup.sh` run          |
+| `~/.config/certs/ca-custom.crt` | Intercepted proxy certs only                                                    | `cert_intercept`  | When MITM detected (probe failed) |
 
 On Linux, `ca-bundle.crt` symlinks to the system bundle (which includes any custom certs added via `update-ca-certificates`). On macOS, it is a merged file combining the Keychain dump with `ca-custom.crt` when the latter exists.
 

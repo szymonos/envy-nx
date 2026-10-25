@@ -17,17 +17,17 @@
 #      inherited env vars (set by the managed env block, pointing at a
 #      system-store-symlinked bundle that already trusts MITM) silently
 #      re-add the proxy cert and defeat the probe.
-# `openssl s_client -CAfile` is the same code path on every platform: it
-# uses ONLY the file specified and ignores SSL_CERT_FILE / SSL_CERT_DIR.
+# `openssl s_client -CAfile` is the same code path on every platform: the
+# file replaces SSL_CERT_FILE, though the default CA directory (SSL_CERT_DIR)
+# still loads.
 
 # _cert_probe_pinned <url> <mozilla_bundle>
 # Returns 0 if TLS connection to <url> verifies against <mozilla_bundle>
-# alone (no MITM); returns non-zero on cert verification failure or any
+# and the default CA directory (no MITM); returns non-zero on cert verification failure or any
 # other openssl-side error.
 #
-# `</dev/null` (not the previous `echo | ... </dev/null`) feeds empty stdin -
-# the redundant pipe-then-redirect produced a "write error: Broken pipe"
-# line in CI logs from the orphan echo.
+# Empty stdin comes from `</dev/null` alone: an `echo |` in front of it
+# leaves an orphan writer that logs "write error: Broken pipe".
 _cert_probe_pinned() {
   local _url="$1" _bundle="$2"
   local _host="${_url#https://}"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Unit tests for merge_local_certs (in .assets/lib/certs.sh).
+# Unit tests for merge_local_certs and build_ca_bundle (in .assets/lib/certs.sh).
 # Verifies append-on-new + serial-based dedup against ca-custom.crt.
 # shellcheck disable=SC2034
 bats_require_minimum_version 1.5.0
@@ -37,11 +37,6 @@ _gen_cert() {
   openssl ecparam -name prime256v1 -genkey -noout -out "$key" 2>/dev/null
   openssl req -x509 -new -key "$key" -days 1 -subj "/CN=$cn" -out "$path" 2>/dev/null
   rm -f "$key"
-}
-
-# Print the SHA1 fingerprint of a single-cert PEM file (for assertions).
-_fp_of() {
-  openssl x509 -in "$1" -noout -serial 2>/dev/null | cut -d= -f2
 }
 
 # =============================================================================
@@ -124,11 +119,8 @@ _fp_of() {
   local count
   count=$(grep -c -- '-----BEGIN CERTIFICATE-----' "$bundle")
   [[ "$count" -eq 2 ]]
-  # And cert1 wasn't duplicated. The subject CN appears once per cert in
-  # the `# subject=` header line that openssl prepends to each PEM block;
-  # extra occurrences in the PEM body itself are openssl-version-dependent,
-  # so the strict floor is "at least one" (which proves cert1 is present
-  # and the dedupe path didn't drop it).
+  # And cert1 is still there. Extra `CN=` hits inside the PEM body depend on
+  # the openssl version, so only "at least one" is portable.
   local cn1
   cn1=$(grep -c 'CN=test-cert-1' "$bundle")
   [[ "$cn1" -ge 1 ]]
@@ -152,4 +144,95 @@ _fp_of() {
   count=$(grep -c -- '-----BEGIN CERTIFICATE-----' "$bundle")
   [[ "$count" -eq 1 ]]
   grep -q 'CN=good-cert' "$bundle"
+}
+
+@test "merge_local_certs: imports every cert of a chain file, CRLF included" {
+  _gen_cert "$BATS_TEST_TMPDIR/a.crt" "chain-a"
+  _gen_cert "$BATS_TEST_TMPDIR/b.crt" "chain-b"
+  cat "$BATS_TEST_TMPDIR/a.crt" "$BATS_TEST_TMPDIR/b.crt" | sed 's/$/\r/' >"$CERT_SRC/chain.crt"
+
+  merge_local_certs "$CERT_SRC" 2>/dev/null
+  local bundle="$TEST_HOME/.config/certs/ca-custom.crt"
+  [[ "$(grep -c -- '-----BEGIN CERTIFICATE-----' "$bundle")" -eq 2 ]]
+  grep -q 'CN=chain-b' "$bundle"
+}
+
+@test "merge_local_certs: imports a DER-encoded cert" {
+  _gen_cert "$BATS_TEST_TMPDIR/der.pem" "der-cert"
+  openssl x509 -in "$BATS_TEST_TMPDIR/der.pem" -outform DER -out "$CERT_SRC/der.crt"
+
+  merge_local_certs "$CERT_SRC" 2>/dev/null
+  grep -q 'CN=der-cert' "$TEST_HOME/.config/certs/ca-custom.crt"
+}
+
+@test "merge_local_certs: unreadable cert and an apostrophe in a DN survive set -eo pipefail" {
+  printf 'not a cert\n' >"$CERT_SRC/junk.crt"
+  _gen_cert "$CERT_SRC/quote.crt" "O'Reilly CA"
+
+  run bash -c 'set -eo pipefail; HOME="$1"; source "$2/.assets/lib/certs.sh"; merge_local_certs "$3"' \
+    _ "$TEST_HOME" "$REPO_ROOT" "$CERT_SRC"
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == *"skipping unreadable cert"* ]]
+  grep -q "# subject=CN=O'Reilly CA" "$TEST_HOME/.config/certs/ca-custom.crt"
+}
+
+# =============================================================================
+# build_ca_bundle (Darwin branch; the Linux branch probes fixed /etc paths)
+# =============================================================================
+
+@test "build_ca_bundle: Darwin bundle is Keychain + ca-custom.crt, same bytes on rerun" {
+  _gen_cert "$BATS_TEST_TMPDIR/sys.crt" "sys-root"
+  _gen_cert "$CERT_SRC/custom.crt" "custom-cert"
+  merge_local_certs "$CERT_SRC" 2>/dev/null
+  uname() { echo Darwin; }
+  security() {
+    [[ "$4" == *SystemRoot* ]] && cat "$BATS_TEST_TMPDIR/sys.crt"
+    return 0
+  }
+
+  build_ca_bundle
+  local bundle="$TEST_HOME/.config/certs/ca-bundle.crt"
+  [[ ! -L "$bundle" ]]
+  grep -q 'CN=custom-cert' "$bundle"
+  [[ "$(grep -c -- '-----BEGIN CERTIFICATE-----' "$bundle")" -eq 2 ]]
+  local first
+  first="$(cat "$bundle")"
+  build_ca_bundle
+  [[ "$(cat "$bundle")" == "$first" ]]
+}
+
+@test "build_ca_bundle: empty Keychain export keeps the prior bundle and reports why" {
+  mkdir -p "$TEST_HOME/.config/certs"
+  printf 'prior\n' >"$TEST_HOME/.config/certs/ca-bundle.crt"
+  uname() { echo Darwin; }
+  security() {
+    echo "keychain locked" >&2
+    return 1
+  }
+
+  run build_ca_bundle
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == *"previous bundle kept"* ]]
+  [[ "$output" == *"keychain locked"* ]]
+  [[ "$(cat "$TEST_HOME/.config/certs/ca-bundle.crt")" == "prior" ]]
+}
+
+@test "build_ca_bundle: one failed Keychain export keeps the prior bundle" {
+  _gen_cert "$BATS_TEST_TMPDIR/sys.crt" "sys-root"
+  mkdir -p "$TEST_HOME/.config/certs"
+  printf 'prior\n' >"$TEST_HOME/.config/certs/ca-bundle.crt"
+  uname() { echo Darwin; }
+  security() {
+    [[ "$4" == *SystemRoot* ]] && {
+      cat "$BATS_TEST_TMPDIR/sys.crt"
+      return 0
+    }
+    echo "System.keychain unreadable" >&2
+    return 1
+  }
+
+  run build_ca_bundle
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == *"System.keychain unreadable"* ]]
+  [[ "$(cat "$TEST_HOME/.config/certs/ca-bundle.crt")" == "prior" ]]
 }

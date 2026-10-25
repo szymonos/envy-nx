@@ -23,24 +23,15 @@ type warn >/dev/null 2>&1 || warn() { printf '\e[33m%s\e[0m\n' "$*" >&2; }
 # Default TLS probe URL for MITM detection and cert interception.
 : "${NIX_ENV_TLS_PROBE_URL:=https://www.google.com}"
 
-# Emit the standard `# Issuer:`/`# Subject:`/`# Serial:`/`# Fingerprint:`
-# header block for a single PEM cert read from stdin. Single source of truth
-# for the bundle marker format - previously inlined byte-for-byte at three
-# call sites (merge_local_certs here, cert_intercept here, fixcertpy in
-# functions.sh). A regression in only one would silently produce inconsistent
-# bundle markers; centralizing makes the format self-documenting and a future
-# format change a one-line edit.
+# Emit the standard `# issuer=`/`# subject=`/`# serial=`/`# SHA1 Fingerprint=`
+# header block for a single PEM cert read from stdin - the one bundle marker
+# format for merge_local_certs, cert_intercept and fixcertpy (functions.sh).
 #
 # RFC2253 nameopt + sed strip backslash escapes so DN strings render
-# readably; xargs prepends `# ` to each output line. The wsl_certs_add.ps1
-# fork uses a slightly different format (`# Issuer:` capitalized,
-# colon-separated; vs `# issuer=` lowercase, equals-separated here) - both
-# are human-readable headers and the format isn't consumed programmatically,
-# so the cross-fork drift is informational only. If the format ever becomes
-# load-bearing, normalize here and there together.
+# readably.
 _emit_cert_header() {
   openssl x509 -noout -issuer -subject -serial -fingerprint -nameopt RFC2253 2>/dev/null |
-    sed 's/\\//g' | xargs -I {} echo "# {}"
+    sed -e 's/\\//g' -e 's/^/# /'
 }
 
 # build_ca_bundle
@@ -73,42 +64,38 @@ build_ca_bundle() {
     # precedence is a tie-break, not a correctness choice.
     for sys_bundle in \
       /etc/ssl/certs/ca-certificates.crt \
-      /etc/pki/tls/certs/ca-bundle.crt; do
-      if [ -f "$sys_bundle" ]; then
+      /etc/pki/tls/certs/ca-bundle.crt \
+      /etc/ssl/ca-bundle.pem; do
+      if [ -s "$sys_bundle" ]; then
         ln -sf "$sys_bundle" "$bundle_link"
         ok "  ca-bundle.crt -> $sys_bundle"
         return 0
       fi
     done
+    warn "  no system CA bundle found - ca-bundle.crt not created"
     ;;
   Darwin)
-    local bundle_tmp bundle_err _src_msg
+    local bundle_tmp bundle_err _src_msg _kc_rc=0
     bundle_tmp="$(mktemp)"
     bundle_err="$(mktemp)"
-    # Capture stderr from both Keychain queries: a locked, corrupt, or
-    # sandbox-restricted Keychain produces an empty bundle silently. The
-    # `[ -s "$bundle_tmp" ]` guard below would then keep the prior bundle
-    # in place with no signal that the rebuild actually failed.
-    security find-certificate -a -p /System/Library/Keychains/SystemRootCertificates.keychain >"$bundle_tmp" 2>>"$bundle_err"
-    security find-certificate -a -p /Library/Keychains/System.keychain >>"$bundle_tmp" 2>>"$bundle_err"
+    # A locked, corrupt, or sandbox-restricted Keychain fails the export; one
+    # failed export of two must not replace a complete bundle with a partial
+    # one. An empty keychain exits 0.
+    security find-certificate -a -p /System/Library/Keychains/SystemRootCertificates.keychain >"$bundle_tmp" 2>>"$bundle_err" || _kc_rc=1
+    security find-certificate -a -p /Library/Keychains/System.keychain >>"$bundle_tmp" 2>>"$bundle_err" || _kc_rc=1
     _src_msg="macOS Keychain"
     if [ -f "$custom_certs" ]; then
       cat "$custom_certs" >>"$bundle_tmp"
       _src_msg="$_src_msg + ca-custom.crt"
     fi
-    if [ -s "$bundle_tmp" ]; then
+    if [ $_kc_rc -eq 0 ] && [ -s "$bundle_tmp" ]; then
       # Replace any prior file or stale symlink atomically.
       [ -L "$bundle_link" ] && rm -f "$bundle_link"
       command mv -f "$bundle_tmp" "$bundle_link"
       ok "  ca-bundle.crt rebuilt from $_src_msg"
     else
-      # Differentiate "rebuild succeeded with same content" (fine, silent)
-      # from "rebuild silently failed" (loud). Empty tmp + non-empty stderr
-      # = the security command produced errors and yielded nothing.
-      if [ -s "$bundle_err" ]; then
-        printf '\e[31;1mca-bundle.crt rebuild from Keychain produced no certs:\e[0m\n' >&2
-        sed 's/^/  /' "$bundle_err" >&2
-      fi
+      printf '\e[31;1mca-bundle.crt rebuild from Keychain failed, previous bundle kept:\e[0m\n' >&2
+      sed 's/^/  /' "$bundle_err" >&2
       rm -f "$bundle_tmp"
     fi
     rm -f "$bundle_err"
@@ -117,11 +104,9 @@ build_ca_bundle() {
 }
 
 # Append every cert under <src_dir>/*.crt to ~/.config/certs/ca-custom.crt,
-# skipping any cert whose serial already appears in the bundle. Why serial-
-# based dedup: cert_intercept and the WSL pre-step (wsl_certs_add.ps1) write
-# entries with the same `# serial=` header format and same uppercase-hex
-# serials, so a cert added by either path is recognized as already-present
-# by every other path on subsequent runs.
+# skipping any cert whose serial is already in the bundle. cert_intercept and
+# the WSL pre-step (wsl_certs_add.ps1, via this function) dedup the same way,
+# so a cert added by any path is recognized by every other path.
 #
 # No-op when <src_dir> is empty/missing or openssl is unavailable.
 # Idempotent: re-running once everything is merged is silent.
@@ -178,25 +163,44 @@ merge_local_certs() {
   local _existing_serials
   _existing_serials="$(_cert_bundle_serials "$cert_bundle")"
 
-  local added=0 skipped=0 src_cert serial header pem
+  local added=0 skipped=0 src_cert serial header pem line certs
   # find instead of glob: empty dir doesn't error, and zsh nomatch can't bite.
   while IFS= read -r src_cert; do
     [ -n "$src_cert" ] || continue
-    serial=$(openssl x509 -in "$src_cert" -noout -serial -nameopt RFC2253 2>/dev/null | cut -d= -f2)
-    if [ -z "$serial" ]; then
+    # a .crt can hold a whole chain, and `openssl x509` reads only the first
+    # cert; the pkcs7 round-trip emits every cert as LF-terminated PEM
+    certs=$(openssl crl2pkcs7 -nocrl -certfile "$src_cert" 2>/dev/null |
+      openssl pkcs7 -print_certs 2>/dev/null) || certs=""
+    # crl2pkcs7 reads PEM only; `openssl x509` still takes a DER cert
+    [[ "$certs" == *"-----BEGIN CERTIFICATE-----"* ]] ||
+      certs=$(openssl x509 -in "$src_cert" 2>/dev/null) || certs=""
+    if [[ "$certs" != *"-----BEGIN CERTIFICATE-----"* ]]; then
       printf '\e[33mskipping unreadable cert: %s\e[0m\n' "$src_cert" >&2
       continue
     fi
-    if [[ " $_existing_serials " == *" $serial "* ]]; then
-      skipped=$((skipped + 1))
-      continue
-    fi
-    header=$(_emit_cert_header <"$src_cert")
-    pem=$(openssl x509 -in "$src_cert" -outform PEM 2>/dev/null)
-    printf '%s\n%s\n' "$header" "$pem" >>"$cert_bundle"
-    _existing_serials+="$serial "
-    added=$((added + 1))
-    printf ' \e[32m+ %s\e[0m\n' "$(openssl x509 -in "$src_cert" -noout -subject -nameopt RFC2253 2>/dev/null | sed 's/\\//g')" >&2
+    pem=""
+    while IFS= read -r line; do
+      case "$line" in
+      "-----BEGIN CERTIFICATE-----") pem="$line" ;;
+      "-----END CERTIFICATE-----")
+        pem+=$'\n'"$line"
+        serial=$(openssl x509 -noout -serial <<<"$pem" 2>/dev/null | cut -d= -f2) || serial=""
+        if [ -z "$serial" ]; then
+          printf '\e[33mskipping unreadable cert in %s\e[0m\n' "$src_cert" >&2
+        elif [[ " $_existing_serials " == *" $serial "* ]]; then
+          skipped=$((skipped + 1))
+        else
+          header=$(_emit_cert_header <<<"$pem")
+          printf '%s\n%s\n' "$header" "$pem" >>"$cert_bundle"
+          _existing_serials+="$serial "
+          added=$((added + 1))
+          printf ' \e[32m+ %s\e[0m\n' "$(openssl x509 -noout -subject -nameopt RFC2253 <<<"$pem" 2>/dev/null | sed 's/\\//g')" >&2
+        fi
+        pem=""
+        ;;
+      *) [ -z "$pem" ] || pem+=$'\n'"$line" ;;
+      esac
+    done <<<"$certs"
   done < <(find "$src_dir" -maxdepth 1 -type f -name '*.crt' 2>/dev/null | sort)
 
   if [ $added -gt 0 ]; then
@@ -211,12 +215,7 @@ merge_local_certs() {
 # Intercept MITM proxy certificates from the TLS chain of one or more URIs
 # and append them to ~/.config/certs/ca-custom.crt with serial-aware dedup.
 # The intermediate + root certs (NOT the leaf server cert) are captured.
-#
-# Moved here from .assets/config/shell_cfg/functions.sh: nix/lib/phases/
-# nix_profile.sh used to source ALL of functions.sh (sysinfo + aliases +
-# helpers) just to get this one function. Living here, certs.sh is the
-# single sourcing-point for setup-phase MITM handling and the user-shell
-# alias re-exports it from functions.sh after sourcing certs.sh.
+# functions.sh re-exports it for the user-shell alias.
 cert_intercept() {
   # check if openssl is available
   if ! type openssl &>/dev/null; then
@@ -224,13 +223,13 @@ cert_intercept() {
     return 1
   fi
 
-  local _default_host="${NIX_ENV_TLS_PROBE_URL:-https://www.google.com}"
-  _default_host="${_default_host#https://}"
-  _default_host="${_default_host#http://}"
-  local uris=("${@:-$_default_host}")
+  local uris=("${@:-${NIX_ENV_TLS_PROBE_URL:-https://www.google.com}}")
   local cert_bundle="$HOME/.config/certs/ca-custom.crt"
   local cert_count=0
   local skip_count=0
+  # declared once up front: zsh prints a variable re-declared by a bare `local`
+  # on the second loop pass
+  local uri line pem chain_pem serial header cert_pem
 
   # ensure cert directory exists
   mkdir -p "$HOME/.config/certs"
@@ -240,10 +239,12 @@ cert_intercept() {
   _existing_serials="$(_cert_bundle_serials "$cert_bundle")"
 
   for uri in "${uris[@]}"; do
+    # accept a URL as well as a bare host, like _cert_probe_pinned does
+    uri="${uri#*://}"
+    uri="${uri%%/*}"
     printf '\e[36mintercepting certificates from %s...\e[0m\n' "$uri" >&2
 
     # get full TLS chain
-    local chain_pem
     chain_pem=$(openssl s_client -showcerts -connect "${uri}:443" </dev/null 2>/dev/null) || {
       printf '\e[33mfailed to connect to %s\e[0m\n' "$uri" >&2
       continue
@@ -271,7 +272,6 @@ cert_intercept() {
 
     # process each intermediate/root cert
     for pem in "${pem_blocks[@]}"; do
-      local serial
       serial=$(openssl x509 -noout -serial -nameopt RFC2253 <<<"$pem" 2>/dev/null | cut -d= -f2)
       [ -n "$serial" ] || continue
 
@@ -282,9 +282,7 @@ cert_intercept() {
       fi
 
       # format cert with header comments and append to bundle
-      local header
       header=$(_emit_cert_header <<<"$pem")
-      local cert_pem
       cert_pem=$(openssl x509 -outform PEM <<<"$pem" 2>/dev/null)
 
       printf '%s\n%s\n' "$header" "$cert_pem" >>"$cert_bundle"
@@ -294,9 +292,10 @@ cert_intercept() {
     done
   done
 
-  # print summary
+  # print summary; on macOS ca-bundle.crt embeds ca-custom.crt, so rebuild it
   if [ $cert_count -gt 0 ]; then
     printf '\e[34madded %d certificate(s) to %s\e[0m\n' "$cert_count" "${cert_bundle/$HOME/~}" >&2
+    build_ca_bundle
   else
     printf '\e[34mno new certificates to add\e[0m\n' >&2
   fi

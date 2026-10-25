@@ -7,7 +7,11 @@ set -euo pipefail
 
 # resolve repo root dir
 SCRIPT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# fixcertpy needs _emit_cert_header; functions.sh loads only the deployed
+# ~/.config/shell/certs.sh, which is missing on a fresh home and stale until
+# setup redeploys it, so the repo copy is sourced after it
 . "$SCRIPT_ROOT/.assets/config/shell_cfg/functions.sh"
+. "$SCRIPT_ROOT/.assets/lib/certs.sh"
 
 # *discover gcloud certifi cacert.pem
 # User-scope tarball install ($HOME/google-cloud-sdk) is checked first; the

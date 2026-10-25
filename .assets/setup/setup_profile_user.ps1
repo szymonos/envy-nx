@@ -310,53 +310,6 @@ if ($brewPrefix -and -not ($profileContent | Select-String '#region brew' -Simpl
     $isProfileModified = $true
 }
 
-# set up custom CA certs environment variables for MITM proxy certificates
-$certCustom = [IO.Path]::Combine($HOME, '.config', 'certs', 'ca-custom.crt')
-$certBundle = [IO.Path]::Combine($HOME, '.config', 'certs', 'ca-bundle.crt')
-if (Test-Path $certCustom -PathType Leaf) {
-    if (-not ($profileContent | Select-String 'NODE_EXTRA_CA_CERTS' -SimpleMatch -Quiet)) {
-        Write-Verbose 'adding NODE_EXTRA_CA_CERTS env var...'
-        $profileContent.AddRange([string[]]@(
-                "`n#region certs"
-                "if (Test-Path `"$certCustom`" -PathType Leaf) {"
-                "    [Environment]::SetEnvironmentVariable('NODE_EXTRA_CA_CERTS', `"$certCustom`")"
-                '}'
-                '#endregion'
-            )
-        )
-        $isProfileModified = $true
-    }
-}
-if (Test-Path $certBundle -PathType Leaf) {
-    if (-not ($profileContent | Select-String 'REQUESTS_CA_BUNDLE' -SimpleMatch -Quiet)) {
-        Write-Verbose 'adding REQUESTS_CA_BUNDLE and SSL_CERT_FILE env vars...'
-        $profileContent.AddRange([string[]]@(
-                "`n#region ca-bundle"
-                "if (Test-Path `"$certBundle`" -PathType Leaf) {"
-                "    [Environment]::SetEnvironmentVariable('REQUESTS_CA_BUNDLE', `"$certBundle`")"
-                "    [Environment]::SetEnvironmentVariable('SSL_CERT_FILE', `"$certBundle`")"
-                '}'
-                '#endregion'
-            )
-        )
-        $isProfileModified = $true
-    }
-    if (-not ($profileContent | Select-String 'CLOUDSDK_CORE_CUSTOM_CA_CERTS_FILE' -SimpleMatch -Quiet)) {
-        if ((Test-Path /usr/bin/gcloud -PathType Leaf) -or (Test-Path "$HOME/.nix-profile/bin/gcloud" -PathType Leaf) -or (Test-Path "$HOME/google-cloud-sdk/bin/gcloud" -PathType Leaf)) {
-            Write-Verbose 'adding CLOUDSDK_CORE_CUSTOM_CA_CERTS_FILE env var...'
-            $profileContent.AddRange([string[]]@(
-                    "`n#region gcloud-certs"
-                    "if (Test-Path `"$certBundle`" -PathType Leaf) {"
-                    "    [Environment]::SetEnvironmentVariable('CLOUDSDK_CORE_CUSTOM_CA_CERTS_FILE', `"$certBundle`")"
-                    '}'
-                    '#endregion'
-                )
-            )
-            $isProfileModified = $true
-        }
-    }
-}
-
 # save profile if modified
 if ($isProfileModified) {
     [System.IO.File]::WriteAllText(

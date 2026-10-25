@@ -133,12 +133,12 @@ process {
     # add stored local certificates from .assets/certs/ (gitignored)
     $localCertDir = '.assets/certs'
     if (Test-Path $localCertDir -PathType Container) {
-        Get-ChildItem $localCertDir -File -Filter '*.crt' | ForEach-Object {
+        foreach ($crtPath in Get-ChildItem $localCertDir -File -Filter '*.crt') {
             try {
-                $cert = ConvertFrom-PEM -Path $_.FullName
-                $certSet.Add($cert) | Out-Null
+                # a .crt can hold a whole chain
+                ConvertFrom-PEM -Path $crtPath.FullName | ForEach-Object { $certSet.Add($_) | Out-Null }
             } catch {
-                Write-Warning "failed to parse $($_.Name): $($_.Exception.Message)"
+                Write-Warning "failed to parse $($crtPath.Name): $($_.Exception.Message)"
             }
         }
     }
@@ -156,6 +156,9 @@ process {
     # copy certificates to the distro specific cert directory and install them
     $cmnd = "mkdir -p $($crt.path) && install -m 0644 $($tmpFolder.Name)/*.crt $($crt.path) && $($crt.cmnd)"
     wsl -d $Distro -u root --exec bash -c $cmnd
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "Installing certificates into the system store failed ($Distro)."
+    }
 
     # Merge intercepted certs into the in-distro ~/.config/certs/ca-custom.crt
     # instead of overwriting it: a previous `cert_intercept` run inside the
@@ -170,21 +173,25 @@ process {
         # certs.sh lives at .assets/lib/certs.sh; the WSL CWD inherits from the
         # script's CWD (Push-Location to repo root on line 48).
         '. .assets/lib/certs.sh',
-        # `ok` is referenced by certs.sh but normally provided by io.sh -
-        # supply a minimal shim so the merge function runs standalone.
-        'type ok >/dev/null 2>&1 || ok() { printf "\033[32m%s\033[0m\n" "$*"; }',
         "merge_local_certs $($tmpFolder.Name)"
     )
     wsl -d $Distro --exec bash -c $cmndCustom
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "Merging certificates into $userCertDir/ca-custom.crt failed ($Distro)."
+    }
 
     # create ca-bundle.crt - symlink to system CA bundle (which already includes custom certs)
     $cmndBundle = @(
-        "cd $userCertDir"
-        'for f in /etc/ssl/certs/ca-certificates.crt /etc/pki/tls/certs/ca-bundle.crt'
-        'do if [ -f "$f" ]; then ln -sf "$f" ca-bundle.crt; break; fi'
+        "cd $userCertDir || exit 1"
+        'for f in /etc/ssl/certs/ca-certificates.crt /etc/pki/tls/certs/ca-bundle.crt /etc/ssl/ca-bundle.pem'
+        'do if [ -s "$f" ]; then ln -sf "$f" ca-bundle.crt; exit; fi'
         'done'
+        'exit 1'
     ) -join '; '
     wsl -d $Distro --exec bash -c $cmndBundle
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "Linking $userCertDir/ca-bundle.crt failed ($Distro)."
+    }
 }
 
 clean {

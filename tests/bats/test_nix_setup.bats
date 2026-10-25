@@ -1053,7 +1053,7 @@ STUB
   [[ -f "$TEST_HOME/.config/certs/ca-bundle.crt" ]]
 }
 
-@test "nix_profile: mitm_probe rebuilds ca-bundle.crt after cert_intercept (macOS Keychain merge path)" {
+@test "nix_profile: mitm_probe builds ca-bundle.crt once and leaves the post-intercept rebuild to cert_intercept" {
   HOME="$TEST_HOME"
   NIX_ENV_TLS_PROBE_URL="https://example.com"
   _io_curl_probe() { return 1; }
@@ -1061,10 +1061,8 @@ STUB
   _io_run() { :; }
   mkdir -p "$TEST_HOME/.config/certs"
 
-  # Stub build_ca_bundle to count invocations - it must run twice (once
-  # before the probe, once after cert_intercept produces ca-custom.crt) so
-  # the macOS Keychain dump gets the freshly intercepted certs appended.
-  # cert_intercept lives in certs.sh now (post-F-017 move from functions.sh).
+  # Stub build_ca_bundle to count invocations: the phase runs it before the
+  # probe; cert_intercept (stubbed here) runs it again after adding certs.
   local fake_root="$BATS_TEST_TMPDIR/fake_root_rebuild"
   mkdir -p "$fake_root/.assets/lib"
   cat >"$fake_root/.assets/lib/certs.sh" <<'STUB'
@@ -1082,7 +1080,7 @@ STUB
   SCRIPT_ROOT="$fake_root"
 
   phase_nix_profile_mitm_probe
-  [[ "$(cat "$TEST_HOME/.config/certs/build_count")" = "2" ]]
+  [[ "$(cat "$TEST_HOME/.config/certs/build_count")" = "1" ]]
 }
 
 @test "bootstrap: ensure_certs builds ca-bundle.crt before nix operations" {

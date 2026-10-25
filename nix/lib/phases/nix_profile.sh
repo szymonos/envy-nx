@@ -172,16 +172,8 @@ phase_nix_profile_mitm_probe() {
       _io_curl_probe_insecure "$NIX_ENV_TLS_PROBE_URL" && _bypass_ok=true
       if [[ "$_bypass_ok" == "true" ]]; then
         info "corporate TLS proxy detected on $NIX_ENV_TLS_PROBE_URL - importing its certificates into ~/.config/certs/ca-custom.crt so nix-built tools can connect (this is expected on corporate networks)"
-        # cert_intercept now lives in .assets/lib/certs.sh (sourced above on
-        # line 92), so we no longer need to drag in functions.sh wholesale -
-        # which previously polluted setup environment with sysinfo() globals
-        # and aliases. Idempotent re-source-of-certs.sh is unneeded; the
-        # function is already in scope.
+        # cert_intercept rebuilds ca-bundle.crt itself when it adds certs
         cert_intercept
-        # Rebuild ca-bundle.crt to merge the freshly intercepted ca-custom.crt.
-        # No-op on Linux (bundle is a symlink to system store); required on
-        # macOS where the bundle is Keychain dump + custom append.
-        build_ca_bundle
       else
         warn "TLS probe to $NIX_ENV_TLS_PROBE_URL failed for non-cert reason (DNS/network/captive portal) - skipping cert interception"
       fi
