@@ -32,3 +32,17 @@ else
   # redirect target; --proto '=https' already denies a non-https hop there.
   curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL https://gh.io/copilot-install | bash
 fi
+
+# Turn on the footer quota display unless the user already chose a value.
+# jq's `//` treats false as missing, so test for null to keep an explicit false.
+settings="$HOME/.copilot/settings.json"
+mkdir -p "$HOME/.copilot"
+[ -e "$settings" ] || printf '{}\n' >"$settings"
+if jq -se 'length == 1 and (.[0] | type) == "object"' "$settings" >/dev/null 2>&1 &&
+  tmp="$(mktemp "$HOME/.copilot/settings.XXXXXX")" &&
+  jq 'if .footer.showQuota == null then .footer.showQuota = true else . end' "$settings" >"$tmp" 2>/dev/null; then
+  mv "$tmp" "$settings"
+else
+  rm -f "${tmp:-}"
+  printf '\e[33;1m::warning:: %s is not a single JSON object, skipping the quota display setting\e[0m\n' "$settings"
+fi
