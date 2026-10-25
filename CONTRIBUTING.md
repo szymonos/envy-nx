@@ -58,7 +58,7 @@ All `lint*` targets accept `HOOK=<id>` to run a single hook (e.g. `make lint-all
 
 ## Before you commit
 
-- **CHANGELOG entry.** Every PR that changes runtime files (`nix/`, `.assets/`, `wsl/`) must add an entry under `## [Unreleased]` in `CHANGELOG.md`. Enforced by `check-changelog`. Doc-only / test-only PRs can use the `skip-changelog` PR label.
+- **CHANGELOG entry.** Every PR that changes runtime files (`nix/`, `.assets/`, `wsl/`) must add an entry under `## [Unreleased]` in `CHANGELOG.md`. Enforced by `check-changelog`. `nix/nixpkgs_rev.json` is exempt: the weekly bump rewrites it and adds no entry. Doc-only / test-only PRs can use the `skip-changelog` PR label.
 - **Lint clean.** `make lint` must pass. Don't `--no-verify` - fix the underlying issue.
 - **Tests pass.** `make test-unit` must pass. The smart test runners (`bats-tests`, `pester-tests`) auto-run relevant tests on changed files.
 - **Constraints respected.** Bash 3.2 / zsh-compat / file-shebang rules are enforced by hooks; if one fires, see `ARCHITECTURE.md` §7 for the rule and the rationale.

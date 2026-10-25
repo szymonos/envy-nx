@@ -185,32 +185,6 @@ jobs:
           open(p, "a").write("\n")
           PY
 
-      # nix/nixpkgs_rev.json counts as a runtime file, so the check-changelog
-      # hook requires an entry under ## [Unreleased] for this commit.
-      - name: Add CHANGELOG entry
-        env:
-          REV: ${{ needs.resolve.outputs.rev }}
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import os, pathlib
-          rev = os.environ["REV"]
-          entry = (
-              f"- Validated nixpkgs revision advanced to `{rev[:12]}` - built with every "
-              "scope and installed end-to-end on Linux and macOS before landing.\n"
-          )
-          p = pathlib.Path("CHANGELOG.md")
-          s = p.read_text()
-          head = "## [Unreleased]\n"
-          i = s.index(head) + len(head)
-          rest = s[i:]
-          if rest.startswith("\n### Changed\n"):
-              j = i + len("\n### Changed\n")
-              p.write_text(s[:j] + "\n" + entry + s[j:])
-          else:
-              p.write_text(s[:i] + "\n### Changed\n\n" + entry + rest)
-          PY
-
       - name: Open PR and merge
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -230,7 +204,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch -c "$BRANCH"
-          git add nix/nixpkgs_rev.json CHANGELOG.md
+          git add nix/nixpkgs_rev.json
           git commit -m "chore(nix): validate nixpkgs ${short}"
           git push -u origin "$BRANCH"
 
