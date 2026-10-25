@@ -101,6 +101,7 @@ SHARED = Path(".claude/skills/release-auto/scripts")
 SKILLS_DIR = Path.home() / ".claude" / "skills"
 PR_REVIEW_SCRIPT = SKILLS_DIR / "address-pr-review" / "scripts" / "pr_review.py"
 BRIEF_SCRIPT = SKILLS_DIR / "second-opinion" / "scripts" / "review_brief.py"
+RULES_AUDIT_SCRIPT = SKILLS_DIR / "bootstrap-review" / "scripts" / "review_md.py"
 # Each skill carries the same triage-rules block; the gates point at it rather
 # than restate it, since no parity test reaches across repos.
 TRIAGE_RULES = {
@@ -937,10 +938,12 @@ def phase_start(
     reviewed = not (skip_review or reopen)
     review = reviewed and BRIEF_SCRIPT.is_file()
     claude_review = reviewed and claude_review and _claude_code(claude_review)
+    audit_rules = RULES_AUDIT_SCRIPT.is_file() and Path("REVIEW.md").exists()
     context = {
         "version": version,
         "is_rerun": is_rerun,
         "review": review,
+        "audit_rules": audit_rules,
         "claude_review": claude_review,
         "extract": extract,
         "cspell_findings": cspell,
@@ -964,6 +967,16 @@ def phase_start(
             "`| pre-push | <path:line> <one line> | <call> | <why> |`; an "
             "escalate row is held there until the end of the review. "
             if review
+            else ""
+        )
+        + (
+            f"audit_rules is true: run `{RULES_AUDIT_SCRIPT} audit` before the plan, "
+            "fix each stale-path or stale-symbol finding as an uncommitted edit and "
+            "rerun until none remains; for any other finding kind, name it in one "
+            "line, suggest /bootstrap-review and carry on. "
+            "Also replace a rule's '(<branch> branch)' citation with '(#<PR>)' once "
+            "that branch's PR exists. "
+            if audit_rules
             else ""
         )
         + (
