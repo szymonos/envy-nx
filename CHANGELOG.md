@@ -5,6 +5,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.32.2] - 2026-10-25
+
+### Added
+
+- `/release-auto <version> claude-review` adds Claude's `/code-review` after `/second-opinion` at the first gate, in Claude Code only.
+- `/release-auto` hands `/second-opinion` the work's requirements ledger with `--requirements <file>`, so each review pass reports an unmet requirement; the fix review reuses it.
+
+### Changed
+
+- `/release-auto` runs `/second-opinion` at the first gate, before the commits are cut, so its fixes fold into the release commits instead of costing a push and a Copilot round.
+- `/release-auto` triages review findings itself and asks the user only about escalations, once, at the end, and `push --done` posts the decisions to the PR as one comment.
+- `/release-auto` runs one Copilot review round; when it fixes something, `/second-opinion` reviews those fixes instead of a second Copilot round.
+- `/release-auto` retries a `gh` call whose connection dropped when repeating it is harmless, and a push made before Copilot was asked to review no longer spends the round.
+- The project's review rules moved to `.github/copilot-instructions.md`, which Copilot code review reads; `REVIEW.md` links to it for `/second-opinion` and Claude Code Review.
+
+### Removed
+
+- `/release-auto` drops `review-policy.json`; its rules now live in the review rules every reviewer reads. The `second-opinion --files` rerun is gone too.
+
 ## [1.32.1] - 2026-10-24
 
 ### Changed

@@ -130,6 +130,7 @@ nodeenv
 nomatch
 noninteractive
 noout
+nopasswd
 nounset
 oneshot
 openwolf
