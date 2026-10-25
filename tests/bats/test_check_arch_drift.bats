@@ -200,3 +200,75 @@ INNER
   run _run_hook
   [[ "$status" -eq 0 ]]
 }
+
+# ---- C. review ownership ----------------------------------------------------
+
+# Write the fixture's shards.json and commit the fixture, since ownership is
+# judged over tracked files.
+_shards() {
+  cat >"$FIXTURE/design/reviews/shards.json"
+  git -C "$FIXTURE" init -q
+  git -C "$FIXTURE" add -A
+}
+
+@test "ownership: every tracked file owned => pass" {
+  _shards <<'INNER'
+{"skip": [], "unowned_ok": ["design/*"],
+ "shards": [{"name": "lib", "owns": [".assets/lib/*"]}]}
+INNER
+  run _run_hook
+  [[ "$status" -eq 0 ]]
+}
+
+@test "ownership: a file no shard owns => fail naming the nearest shard" {
+  printf 'echo new\n' >"$FIXTURE/.assets/lib/new.sh"
+  _shards <<'INNER'
+{"skip": [], "unowned_ok": ["design/*"],
+ "shards": [{"name": "lib", "owns": [".assets/lib/real.sh"]}]}
+INNER
+  run _run_hook
+  [[ "$status" -eq 1 ]]
+  [[ "$output" == *"\`.assets/lib/new.sh\` is owned by no review shard"* ]]
+  [[ "$output" == *"\`lib\`, the nearest shard"* ]]
+}
+
+@test "ownership: skip and unowned_ok excuse a file" {
+  mkdir -p "$FIXTURE/modules/vendored"
+  printf 'x\n' >"$FIXTURE/modules/vendored/a.ps1"
+  _shards <<'INNER'
+{"skip": ["modules/vendored/*"], "unowned_ok": ["design/*", ".assets/*"],
+ "shards": []}
+INNER
+  run _run_hook
+  [[ "$status" -eq 0 ]]
+}
+
+@test "ownership: the more specific glob owns the file" {
+  _shards <<'INNER'
+{"skip": [], "unowned_ok": ["design/*"],
+ "shards": [{"name": "broad", "owns": [".assets/*"]},
+            {"name": "exact", "owns": [".assets/lib/real.sh"]}]}
+INNER
+  run _run_hook
+  [[ "$status" -eq 0 ]]
+}
+
+@test "ownership: two shards tie on a file => fail naming both" {
+  _shards <<'INNER'
+{"skip": [], "unowned_ok": ["design/*"],
+ "shards": [{"name": "one", "owns": [".assets/lib/*"]},
+            {"name": "two", "owns": [".assets/lib/*"]}]}
+INNER
+  run _run_hook
+  [[ "$status" -eq 1 ]]
+  [[ "$output" == *"owned by one and two at the same specificity"* ]]
+}
+
+@test "path check: record opt-out exempts quoted historical paths" {
+  _arch <<'INNER'
+<!-- arch-drift: record -->
+A review found `.assets/lib/since-deleted.sh` misquoting its input.
+INNER
+  run _run_hook
+  [[ "$status" -eq 0 ]]
+}
