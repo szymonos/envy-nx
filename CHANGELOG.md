@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.32.3] - 2026-10-25
+
+### Fixed
+
+- `make lint` and `make test-unit` no longer fail bats tests on machines with a global git `core.hooksPath`, such as a corporate hook that rejects every rebase.
+
 ## [1.32.2] - 2026-10-25
 
 ### Added
