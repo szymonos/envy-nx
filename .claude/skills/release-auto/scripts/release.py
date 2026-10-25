@@ -29,8 +29,9 @@ underneath the orchestrator.
 
 Usage (from the repo root):
     .claude/skills/release-auto/scripts/release.py start --version X.Y.Z [--skip-review]
+        [--claude-review]
     .claude/skills/release-auto/scripts/release.py resume --decision -
-    .claude/skills/release-auto/scripts/release.py second-opinion [--files ...]
+    .claude/skills/release-auto/scripts/release.py second-opinion [--fixes NOTES]
     .claude/skills/release-auto/scripts/release.py copilot-review
     .claude/skills/release-auto/scripts/release.py recut
     .claude/skills/release-auto/scripts/release.py push [--done [--force]]
@@ -65,6 +66,10 @@ PREV_PLAN_FILE = STATE_DIR / "commit-plan.prev.json"
 GATE_FILE = STATE_DIR / "gate.json"
 # The release's CHANGELOG section, handed to second-opinion as stated intent.
 INTENT_FILE = STATE_DIR / "intent.md"
+# The requirements ledger given at phase 1, reused by the fix review.
+REQUIREMENTS_FILE = STATE_DIR / "requirements.md"
+# Every review call the agent makes, posted to the PR when the run finishes.
+DECISION_LOG = STATE_DIR / "decision-log.md"
 
 EXIT_OK = 0
 EXIT_ERROR = 1
@@ -77,7 +82,13 @@ EXIT_GATE = 10
 CLI = str(Path(__file__).resolve())
 
 # Files that always ride with the CHANGELOG commit (content-coupled to the bump).
-CHANGELOG_RIDERS = ("CHANGELOG.md", "project-words.txt", "pyproject.toml", "uv.lock")
+CHANGELOG_RIDERS = (
+    "CHANGELOG.md",
+    "project-words.txt",
+    "pyproject.toml",
+    "uv.lock",
+    ".github/copilot-instructions.md",
+)
 
 # What ships to a user's machine. A release touching none of it - agent skills,
 # tests, CI, design docs - adds no feature, whatever its CHANGELOG sections say.
@@ -85,13 +96,37 @@ PRODUCT_GLOBS = ("nix/**", ".assets/**", "wsl/**", "modules/**")
 
 SECTION_HEADER_RE = re.compile(r"^## \[([^\]]+)\](?:\s*-\s*(\S+))?\s*$")
 SHARED = Path(".claude/skills/release-auto/scripts")
-# Committed review policy; copilot-review pre-matches every thread against it.
-POLICY = Path(".claude/skills/release-auto/review-policy.json")
-# Review skills are installed per user, not vendored here. Each one present adds
-# its layer to the review coda; with neither, a release ends at the spine.
+# Review skills are installed per user, not vendored here. second-opinion adds a
+# review at the phase-1 gate, address-pr-review the Copilot coda after the push.
 SKILLS_DIR = Path.home() / ".claude" / "skills"
 PR_REVIEW_SCRIPT = SKILLS_DIR / "address-pr-review" / "scripts" / "pr_review.py"
 BRIEF_SCRIPT = SKILLS_DIR / "second-opinion" / "scripts" / "review_brief.py"
+# Each skill carries the same triage-rules block; the gates point at it rather
+# than restate it, since no parity test reaches across repos.
+TRIAGE_RULES = {
+    "second-opinion": SKILLS_DIR / "second-opinion" / "SKILL.md",
+    "copilot-review": SKILLS_DIR / "address-pr-review" / "SKILL.md",
+}
+TRIAGE_SUMMARY = (
+    "fix a defect you can point to at a file:line (escalate instead when the only "
+    "fix breaks a project rule); decline everything else - style, 'consider X', "
+    "hardening for a case that cannot happen, however well argued - with a "
+    "one-sentence reason, and record a decline that will hold on the next change "
+    "as a rule in REVIEW.md; resolve-only what is already addressed; escalate only "
+    "what changes what the user sees or the release is for, shifts architecture or "
+    "is hard to reverse, touches security, or you are unsure of - held for one "
+    "question at the end"
+)
+# Escalations wait through the reviews and possibly a compaction, so
+# the decision log holds them rather than the agent's memory.
+HELD = (
+    f"the held escalations are the rows whose call is escalate in {DECISION_LOG} "
+    "and that no `end` row answers yet - none left means nothing to ask; ask them "
+    "in one AskUserQuestion and append each answer as its own row, "
+    "`| end | <finding> | asked: fix / left open / declined | <author's reason> |`. "
+    "A fix is an edit and a resolve of its thread; the other way is a reply giving "
+    "the author's reason, then a resolve"
+)
 
 # Workflows gated on this PR label run the integration suite. The label also
 # re-runs them on every push, so it is applied once, when nothing is left to push.
@@ -108,16 +143,28 @@ TRANSIENT_GH_ERRORS = (
     "proxyconnect tcp",
     "Timeout trying to log in",
 )
+# `gh` errors raised after the request may have reached GitHub: the connection
+# dropped mid-call, or a gateway answered for it. Retried only for calls that are
+# safe to repeat - reads, and edits that set absolute values - never for
+# `gh pr create` or `gh pr comment`. Same list as address-pr-review's pr_review.py.
+IN_FLIGHT_GH_ERRORS = (
+    "EOF",
+    "connection reset",
+    "i/o timeout",
+    "HTTP 502",
+    "HTTP 503",
+    "HTTP 504",
+)
 GH_ATTEMPTS = 3
 GH_BACKOFF = 2.0
 # The release PR's base, and what `start` rebases onto.
 TRUNK = "main"
 
 BULLET_WORD_CAP = 40
-# Second-opinion runs allowed per release (the review + one scoped rerun), and
-# coda re-pushes after which remaining review threads go back to the user.
-SECOND_OPINION_CAP = 2
-CODA_PUSH_CAP = 2
+# One Copilot round: the phase-1 reviews already ran, and a second round mostly
+# finds defects in the first round's own fixes. Those fixes get second-opinion
+# instead. A push Copilot never reviewed or was asked to does not count.
+CODA_PUSH_CAP = 1
 
 
 # -- errors -------------------------------------------------------------------
@@ -801,7 +848,9 @@ def read_decision(src: str) -> dict:
 # -- phases -------------------------------------------------------------------
 
 
-def phase_start(version: str, skip_review: bool, reopen: bool = False) -> int:
+def phase_start(
+    version: str, skip_review: bool, reopen: bool = False, claude_review: bool = False
+) -> int:
     """
     Run the headless pre-gate work and stop at the phase-1 gate.
 
@@ -884,9 +933,15 @@ def phase_start(version: str, skip_review: bool, reopen: bool = False) -> int:
     extract = run_extract(version)
     cspell = _cspell_scan()
     diff = git(["diff", "--name-status", tag], check=False)
+    # A reopen re-cuts commits that were already reviewed when first cut.
+    reviewed = not (skip_review or reopen)
+    review = reviewed and BRIEF_SCRIPT.is_file()
+    claude_review = reviewed and claude_review and _claude_code(claude_review)
     context = {
         "version": version,
         "is_rerun": is_rerun,
+        "review": review,
+        "claude_review": claude_review,
         "extract": extract,
         "cspell_findings": cspell,
         "diff_name_status": diff,
@@ -896,7 +951,32 @@ def phase_start(version: str, skip_review: bool, reopen: bool = False) -> int:
             "Compose the CHANGELOG entry (Edit CHANGELOG.md), fix any cspell typos, "
             "then author .release/commit-plan.json (file-granularity glob->commit). "
             "When plan_seed.seeded is true the previous release's plan is already "
-            "there - edit it rather than starting over. Resume with a decision: "
+            "there - edit it rather than starting over. "
+        )
+        + (
+            f"review is true: after the CHANGELOG is written, run `{CLI} "
+            "second-opinion` - adding `--requirements <file>` when the work behind "
+            "the release has a requirements ledger, wherever this environment keeps "
+            f"one - and triage its findings yourself ({TRIAGE_SUMMARY}; "
+            f"full rules between the triage-rules markers in "
+            f"{TRIAGE_RULES['second-opinion']}). Leave fixes uncommitted - the plan "
+            f"folds them in - and append one row per finding to {DECISION_LOG} as "
+            "`| pre-push | <path:line> <one line> | <call> | <why> |`; an "
+            "escalate row is held there until the end of the review. "
+            if review
+            else ""
+        )
+        + (
+            f"claude_review is true: then run /code-review at medium on {tag} and the "
+            "uncommitted changes, giving it the CHANGELOG section and any requirements "
+            "ledger as intent, every "
+            "finding declined so far with its reason under 'Already decided', and "
+            "triage and log it the same way. "
+            if claude_review
+            else ""
+        )
+        + (
+            "Resume with a decision: "
             '{"cspell_add": [...], "version_final": "X.Y.Z", "plan_written": true}'
         )
         + (
@@ -1063,9 +1143,11 @@ def resume_phase1(state: dict, decision: dict) -> int:
         "instructions": (
             "Review the commit sequence and PR body. Resume with "
             '{"approve": true} to push + open/update the PR, or {"abort": true}. '
-            "review_coda lists the review layers that will run - one per review "
-            "skill installed in ~/.claude/skills; when it is empty this push wipes "
-            'the run. If the user asked for the review, add {"review": true} here - '
+            "review_coda names the Copilot review when address-pr-review is "
+            "installed in ~/.claude/skills; when it is empty this push finishes "
+            f"the run, so ask the held escalations first ({HELD}); after an "
+            f"answered fix, run `{CLI} recut` before approving. "
+            'If the user asked for the review, add {"review": true} here - '
             "this gate is the last point at which it can be turned on."
         ),
     }
@@ -1170,6 +1252,13 @@ def resume_push(state: dict, decision: dict) -> int:
         raise ReleaseError('push gate needs {"approve": true} or {"abort": true}')
     if decision.get("review"):
         state["skip_review"] = False
+    # An escalation answered at this gate is an edit the cut commits lack.
+    stale = uncommitted_covered_paths(load_plan())
+    if stale:
+        raise ReleaseError(
+            "uncommitted changes on plan-covered paths would not be pushed - "
+            f"run `{CLI} recut`, then approve again:\n  " + "\n  ".join(stale)
+        )
 
     _do_push()
     _upsert_pr(state["version"])
@@ -1193,12 +1282,7 @@ def resume_push(state: dict, decision: dict) -> int:
                 "version": state["version"],
                 "review_coda": layers,
                 "fix_cycles_left": CODA_PUSH_CAP - state.get("coda_pushes", 0),
-                "next": (
-                    "Run the review coda: "
-                    + ", then ".join(f"`{CLI} {layer}`" for layer in layers)
-                    + f". Fold fixes with `{CLI} recut` + `{CLI} push`. Finish "
-                    f"with `{CLI} push --done`, which triggers the integration tests."
-                ),
+                "next": _coda_next(CODA_PUSH_CAP - state.get("coda_pushes", 0), layers),
             },
             indent=2,
         )
@@ -1262,8 +1346,14 @@ def _upsert_pr(version: str) -> None:
         _gh(["pr", "create", "--base", TRUNK, "--title", title, "--body", body])
 
 
+def _repeatable(args: list[str]) -> bool:
+    """Whether a ``gh`` call is safe to send twice: a read, or an absolute edit."""
+    return args[:1] == ["run"] or args[:2] in (["pr", "view"], ["pr", "edit"])
+
+
 def _run_gh(args: list[str]) -> subprocess.CompletedProcess[str]:
-    """Run a ``gh`` command, retrying the failures in ``TRANSIENT_GH_ERRORS``."""
+    """Run a ``gh`` command, retrying transient errors; in-flight ones if repeatable."""
+    tokens = TRANSIENT_GH_ERRORS + (IN_FLIGHT_GH_ERRORS if _repeatable(args) else ())
     for attempt in range(1, GH_ATTEMPTS + 1):
         result = subprocess.run(
             ["gh", *args],
@@ -1272,12 +1362,11 @@ def _run_gh(args: list[str]) -> subprocess.CompletedProcess[str]:
             check=False,
             timeout=GH_TIMEOUT,
         )
-        transient = any(token in result.stderr for token in TRANSIENT_GH_ERRORS)
+        transient = any(token in result.stderr for token in tokens)
         if result.returncode == 0 or not transient or attempt == GH_ATTEMPTS:
             return result
         print(
-            "gh: network error before reaching GitHub, retrying "
-            f"({attempt}/{GH_ATTEMPTS - 1})",
+            f"gh: network error, retrying ({attempt}/{GH_ATTEMPTS - 1})",
             file=sys.stderr,
         )
         time.sleep(GH_BACKOFF * attempt)
@@ -1394,6 +1483,27 @@ def _load_pr_review():
     return module
 
 
+def copilot_engaged() -> bool:
+    """
+    Whether Copilot reviewed, or is asked to review, the head a push would replace.
+
+    ``pr_review``'s state A is the one "no": a fix reported before the round was
+    triggered can go out without spending it. Unknown counts as engaged - a
+    miscount spends the round early, while the other way a failed lookup would
+    lift the cap.
+    """
+    pr_review = _load_pr_review()
+    if pr_review is None:
+        return True
+    try:
+        owner, repo = pr_review._repo_info()
+        return (
+            pr_review._detect_state(owner, repo, pr_review._auto_pr())["state"] != "A"
+        )
+    except (SystemExit, Exception):
+        return True
+
+
 def open_threads() -> list[dict] | None:
     """
     Every unresolved thread on this branch's PR, outdated ones included.
@@ -1431,6 +1541,7 @@ def _finish(state: dict, message: str, *, check_threads: bool = True) -> int:
     """
     # No address-pr-review skill means no way to ask, and nothing to warn about.
     still_open = open_threads() if check_threads and PR_REVIEW_SCRIPT.is_file() else []
+    post_decision_log()
     integration = trigger_integration()
     delete_backup(state["version"])
     _wipe_state_dir()
@@ -1454,6 +1565,34 @@ def _finish(state: dict, message: str, *, check_threads: bool = True) -> int:
                 file=sys.stderr,
             )
     return EXIT_OK
+
+
+def post_decision_log() -> None:
+    """
+    Post the run's review decisions as one PR comment, before ``.release/`` goes.
+
+    Once the threads are resolved this is the only record of why each finding was
+    fixed or declined, so a failed post prints the log rather than losing it.
+    """
+    rows = DECISION_LOG.read_text().strip() if DECISION_LOG.is_file() else ""
+    if not rows:
+        return
+    body = STATE_DIR / "decision-log.post.md"
+    body.write_text(
+        "### Review decisions\n\n| Round | Finding | Call | Why |\n"
+        "| ----- | ------- | ---- | --- |\n" + rows + "\n"
+    )
+    try:
+        _gh(["pr", "comment", "--body-file", str(body)])
+    except (ReleaseError, subprocess.TimeoutExpired) as exc:
+        print(
+            f"WARNING: could not post the decision log ({exc}); post it by hand:\n"
+            + body.read_text(),
+            file=sys.stderr,
+        )
+        return
+    # A `push --done` retried after a failed integration label must not post twice.
+    DECISION_LOG.unlink()
 
 
 # -- integration tests --------------------------------------------------------
@@ -1605,12 +1744,28 @@ def cmd_integration(args: argparse.Namespace) -> int:
 # -- review coda --------------------------------------------------------------
 
 
+def _claude_code(asked: bool) -> bool:
+    """
+    Whether ``/code-review`` can run: it is a Claude Code skill.
+
+    Copilot CLI started from a Claude Code shell inherits ``CLAUDECODE`` and sets
+    ``COPILOT_CLI``, which wins.
+    """
+    ok = os.environ.get("CLAUDECODE") == "1" and "COPILOT_CLI" not in os.environ
+    if asked and not ok:
+        print(
+            "release-auto: claude-review needs Claude Code; running the other "
+            "reviews without it",
+            file=sys.stderr,
+        )
+    return ok
+
+
 def review_layers(state: dict) -> list[str]:
-    """Coda layers this run gets: none on --skip-review, else each installed one."""
-    if state.get("skip_review"):
+    """The Copilot review coda, unless skipped or address-pr-review is missing."""
+    if state.get("skip_review") or not PR_REVIEW_SCRIPT.is_file():
         return []
-    layers = (("second-opinion", BRIEF_SCRIPT), ("copilot-review", PR_REVIEW_SCRIPT))
-    return [name for name, script in layers if script.is_file()]
+    return ["copilot-review"]
 
 
 def _skip_missing(script: Path) -> int | None:
@@ -1623,36 +1778,63 @@ def _skip_missing(script: Path) -> int | None:
 
 def cmd_second_opinion(args: argparse.Namespace) -> int:
     """
-    Handle ``release.py second-opinion`` - coda 4a, a different model family.
+    Handle ``release.py second-opinion`` - a different model family, twice at most.
 
     Delegates to ``review_brief.py run``, which picks the model from the brief
-    (premium on trigger paths or large diffs) and reviews ``<last-tag>..HEAD``
-    through three lenses, or only ``--files`` on the one allowed rerun. The
-    release's CHANGELOG section goes in as the author's stated intent. A missing
-    Copilot CLI (its exit 4) skips the layer rather than blocking the release.
+    (premium on trigger paths or large diffs) and reviews a commit against the
+    working tree through three lenses. At phase 1 the commit is ``<last-tag>``,
+    so the uncommitted bump and CHANGELOG are in it. With ``--fixes`` it is the
+    published head Copilot reviewed, so only the round's uncommitted fixes are,
+    and the agent's notes - what each fix is for, what was declined - follow the
+    CHANGELOG section in the intent. A ``--requirements`` ledger given at phase 1
+    is kept and passed to both runs, where second-opinion checks every
+    ``-> Approach`` row. Each kind runs once. A missing Copilot CLI (its exit 4)
+    skips the layer rather than blocking the release.
     """
     if (skipped := _skip_missing(BRIEF_SCRIPT)) is not None:
         return skipped
-    state = load_state()
-    runs = state.get("second_opinion_runs", 0)
-    if runs >= SECOND_OPINION_CAP:
+    if args.fixes and args.requirements:
         raise ReleaseError(
-            f"second-opinion already ran {runs} times - move on to "
-            f"`{CLI} copilot-review`"
+            "--requirements belongs to the phase-1 run; the fix review reuses it"
+        )
+    for flag, path in (("--requirements", args.requirements), ("--fixes", args.fixes)):
+        if path and not Path(path).is_file():
+            raise ReleaseError(f"{flag} {path}: no such file")
+    state = load_state()
+    if args.fixes:
+        # One fix review per published head: fixes pushed ahead of the Copilot
+        # round leave the round's own fixes a review of their own.
+        base = git(["rev-parse", f"refs/remotes/origin/{current_branch()}"])
+        kind = f"fixes:{base}"
+    else:
+        base = state["last_tag"]
+        kind = "release"
+    done = state.get("second_opinion", [])
+    if kind in done:
+        raise ReleaseError(
+            f"second-opinion already reviewed this {kind.split(':')[0]} - "
+            "triage what it found"
         )
     STATE_DIR.mkdir(exist_ok=True)
-    INTENT_FILE.write_text(changelog_section(state["version"]) + "\n")
+    if args.requirements:
+        shutil.copyfile(args.requirements, REQUIREMENTS_FILE)
+    intent = changelog_section(state["version"]) + "\n"
+    if args.fixes:
+        intent += "\n" + Path(args.fixes).read_text()
+    INTENT_FILE.write_text(intent)
     cmd = [
         str(BRIEF_SCRIPT),
         "run",
-        state["last_tag"],
+        base,
         "--intent",
         str(INTENT_FILE),
         "--timeout",
         str(args.timeout),
     ]
-    if args.files:
-        cmd += ["--files", *args.files]
+    # review_brief.py keeps no state, so the driver hands the phase-1 ledger to
+    # the fix review as well.
+    if REQUIREMENTS_FILE.is_file():
+        cmd += ["--requirements", str(REQUIREMENTS_FILE)]
     # Each lens pass has its own --timeout and they run concurrently, so the
     # whole run ends a few seconds of git past it.
     result = subprocess.run(
@@ -1670,37 +1852,14 @@ def cmd_second_opinion(args: argparse.Namespace) -> int:
         tail = (result.stderr.strip() or result.stdout.strip())[-2000:]
         raise ReleaseError(f"{BRIEF_SCRIPT} run failed:\n{tail}")
     report = json.loads(result.stdout)
-    state["second_opinion_runs"] = runs + 1
+    state["second_opinion"] = [*done, kind]
     save_state(state)
     # Everything but the diff summary, so a key run adds later still reaches
     # the agent.
     dropped = ("trunk", "trunk_ref", "commits", "diffstat")
     kept = {k: v for k, v in report.items() if k not in dropped}
-    print(json.dumps({"run": runs + 1, **kept}, indent=2))
+    print(json.dumps({"reviewed": kind, **kept}, indent=2))
     return EXIT_OK
-
-
-def propose(thread: dict, policy: dict) -> dict | None:
-    """
-    First policy rule matching ``thread``, as a proposed disposition.
-
-    A rule may name ``match_path`` (glob), ``match_body`` (case-insensitive
-    substring) or both; every key it names must match.
-    """
-    body = thread.get("body", "").lower()
-    path = PurePosixPath(thread.get("path") or ".")
-    for section in ("known_false_positives", "path_ownership", "accepted_intentional"):
-        for rule in policy.get(section, []):
-            if "match_path" in rule and not path.full_match(rule["match_path"]):
-                continue
-            if "match_body" in rule and rule["match_body"].lower() not in body:
-                continue
-            return {
-                "disposition": rule["disposition"],
-                "reason": rule["reason"],
-                "rule": section,
-            }
-    return None
 
 
 def _pr_review(args: list[str]) -> dict:
@@ -1729,16 +1888,36 @@ def cmd_copilot_review(args: argparse.Namespace) -> int:
     Handle ``release.py copilot-review`` - coda 4b, the Copilot PR review.
 
     Requests the review only when nobody has (a force-push usually does not
-    re-request it), waits, and gates on the fresh threads with a policy
-    proposal attached to each. Exits 0 when clean, ``EXIT_PENDING`` when the
-    wait timed out, ``EXIT_GATE`` with threads to triage.
+    re-request it), waits, and gates on the fresh threads for the agent to
+    triage. Exits 0 when clean, ``EXIT_PENDING`` when the wait timed out,
+    ``EXIT_GATE`` with threads to triage or a trigger failure to judge.
     """
     if (skipped := _skip_missing(PR_REVIEW_SCRIPT)) is not None:
         return skipped
     state = load_state()
     review = _pr_review(["state"])
     if review["state"] == "A":
-        _pr_review(["trigger"])
+        # pr_review.py reports every gh failure with the same exit code, and its
+        # message (already on stderr) is the only thing that tells a repo without
+        # Copilot code review apart from an auth or network failure.
+        try:
+            _pr_review(["trigger"])
+        except ReleaseError as exc:
+            return emit_gate(
+                "review_unavailable",
+                {
+                    "error": str(exc),
+                    "instructions": (
+                        "Read the pr_review.py trigger message above. If it says "
+                        "Copilot code review is not available for this repository, "
+                        "say so in one line, ask the held escalations "
+                        f"({HELD}), and finish "
+                        f"with `{CLI} push --done`. Any other error: stop and "
+                        "surface it to the user."
+                    ),
+                },
+                ["finish", "stop"],
+            )
     if review["state"] in ("A", "B"):
         review = _pr_review(["wait", "--timeout", str(args.timeout)])
     if review["state"] in ("A", "B"):
@@ -1748,9 +1927,6 @@ def cmd_copilot_review(args: argparse.Namespace) -> int:
     if not threads:
         print(json.dumps({"state": review["state"], "threads": []}, indent=2))
         return EXIT_OK
-    policy = json.loads(POLICY.read_text()) if POLICY.is_file() else {}
-    for thread in threads:
-        thread["proposal"] = propose(thread, policy)
     capped = state.get("coda_pushes", 0) >= CODA_PUSH_CAP
     return emit_gate(
         "review_triage",
@@ -1758,18 +1934,29 @@ def cmd_copilot_review(args: argparse.Namespace) -> int:
             "threads": threads,
             "fix_cycle_cap_reached": capped,
             "instructions": (
-                "Show the user every thread with its proposal (null = no rule "
-                "matched) in one question; confirm or override each. Resolve fix "
-                "and resolve-only threads with pr_review.py resolve <id> before "
-                "re-cutting. A thread the user resolves without a fix first gets "
-                "the reason they approved via pr_review.py reply <id> --body -, "
-                f"and is resolved only once that exits 0. Then `{CLI} recut` + "
-                f"`{CLI} push` and run copilot-review again."
+                f"Triage every thread yourself, never asking mid-loop: {TRIAGE_SUMMARY}"
+                f". Full rules between the triage-rules markers in "
+                f"{TRIAGE_RULES['copilot-review']}. With {PR_REVIEW_SCRIPT}: "
+                "resolve <id> each fix and resolve-only thread; reply <id> --body - "
+                "with the reason for each decline, then resolve it once the reply "
+                "exits 0; leave escalated threads open. Append one row per thread "
+                f"to {DECISION_LOG} as `| copilot | <path:line> <one line> | <call> "
+                "| <why> |`. "
                 + (
-                    " The fix-cycle cap is reached: hand the remaining threads to "
-                    "the user instead of fixing them in this run."
+                    "The Copilot round is spent: a thread you would fix is an "
+                    f"escalation instead. Then ask the held escalations ({HELD}) "
+                    f"and finish with `{CLI} push --done`."
                     if capped
-                    else ""
+                    else "If you fixed anything, write a notes file - each finding "
+                    "you fixed, as what that fix is for, then every finding declined "
+                    "so far with its reason under an 'Already decided' heading - and "
+                    f"run `{CLI} second-opinion --fixes <notes>`. Triage it the same "
+                    "way, logging its rows under round `fixes`, then "
+                    f"`{CLI} recut` + `{CLI} push`: that is the one round, so run no "
+                    "second copilot-review. A round with no fix ends the review: "
+                    f"`{CLI} recut` + `{CLI} push` if a decline added a REVIEW.md "
+                    f"rule, then ask the held escalations ({HELD}) and finish with "
+                    f"`{CLI} push --done`."
                 )
             ),
         },
@@ -1803,7 +1990,7 @@ def cmd_start(args: argparse.Namespace) -> int:
             f"(phase {existing['phase']}). Run `{CLI} status`, `resume`, or "
             "`abort` first."
         )
-    return phase_start(args.version, args.skip_review, args.reopen)
+    return phase_start(args.version, args.skip_review, args.reopen, args.claude_review)
 
 
 def cmd_resume(args: argparse.Namespace) -> int:
@@ -1905,11 +2092,14 @@ def cmd_push(args: argparse.Namespace) -> int:
         )
     if args.done:
         return _done(state, force=getattr(args, "force", False))
-    # A push that sends nothing asks for no review, so it is not a fix cycle.
-    # The count is saved before the PR update can fail: a retry finds the branch
-    # in sync and would not count it again.
+    # A push that sends nothing asks for no review, so it is not a fix cycle, and
+    # neither is one replacing a head Copilot never reviewed or was asked to: it
+    # carries a fix reported ahead of the round, which still runs. Checked before
+    # the push, which moves the head. The count is saved before the PR update can
+    # fail: a retry finds the branch in sync and would not count it again.
+    engaged = "copilot-review" not in review_layers(state) or copilot_engaged()
     pushed = _do_push()
-    if pushed:
+    if pushed and engaged:
         state["coda_pushes"] = state.get("coda_pushes", 0) + 1
     state["head_sha"] = head_sha()
     save_state(state)
@@ -1931,33 +2121,19 @@ def cmd_push(args: argparse.Namespace) -> int:
 
 def _coda_next(left: int, layers: list[str]) -> str:
     """What the coda does after a push, given its fix cycles and review layers."""
+    finish = f"ask the held escalations ({HELD}) and finish with `{CLI} push --done`"
     if "copilot-review" not in layers:
-        if left and layers:
-            return (
-                f"Run `{CLI} second-opinion` if it has not run. Fold fixes with "
-                f"`{CLI} recut` + `{CLI} push`; finish with `{CLI} push --done`."
-            )
-        return f"Finish with `{CLI} push --done`."
-    if left:
-        after = (
-            f" (after `{CLI} second-opinion` if it has not run)"
-            if "second-opinion" in layers
-            else ""
-        )
-        return (
-            f"Run `{CLI} copilot-review`{after}. Fold fixes with `{CLI} recut` + "
-            f"`{CLI} push`; finish with `{CLI} push --done`."
-        )
-    # Said here, not only at triage: by then the agent has already decided
-    # whether the review's fixes go into another cycle.
-    return (
-        f"That was the last fix cycle. Run `{CLI} copilot-review` once more for the "
-        "final review and hand its threads to the user without fixing them. The user "
-        "decides each one: resolve it, after a pr_review.py reply giving the reason, "
-        "or leave it open. `push --done` refuses while "
-        f"any thread is open, so finish with `{CLI} push --done` once they are "
-        "resolved, or with `push --done --force` when the user leaves some open."
+        return finish[0].upper() + finish[1:] + "."
+    # An answered escalation is the author's decision; another round would only
+    # raise findings nobody is left to answer.
+    answered = (
+        f" After a push that only applied answered escalations, skip it: {finish}."
     )
+    if left:
+        return f"Run `{CLI} copilot-review`.{answered}"
+    # Said here, not only at triage: a second round mostly reviews the first
+    # round's own fixes, which second-opinion has already checked.
+    return f"That was the Copilot round - do not run copilot-review again: {finish}."
 
 
 def _done(state: dict, *, force: bool) -> int:
@@ -1970,10 +2146,7 @@ def _done(state: dict, *, force: bool) -> int:
     finishes anyway (e.g. GitHub unreachable), with the warning.
     """
     if not head_is_published():
-        raise ReleaseError(
-            f"HEAD is not pushed - run `{CLI} push` and re-run the review before "
-            "finishing"
-        )
+        raise ReleaseError(f"HEAD is not pushed - run `{CLI} push` before finishing")
     # Without the Copilot review layer there are no threads this run asked for.
     threads = open_threads() if "copilot-review" in review_layers(state) else []
     if threads != [] and not force:
@@ -1982,11 +2155,11 @@ def _done(state: dict, *, force: bool) -> int:
             {
                 "threads": threads,
                 "instructions": (
-                    "null threads = the lookup failed; otherwise triage each "
-                    "thread (outdated ones too) and resolve it with pr_review.py "
-                    "resolve <id> - one resolved without a fix first gets the "
-                    "approved reason via pr_review.py reply <id> --body - - then "
-                    f"re-run `{CLI} push --done`. `--force` finishes regardless."
+                    "null threads = the lookup failed. A thread escalated and left "
+                    f"open by the user: finish with `{CLI} push --done --force`. "
+                    "Any other thread (outdated ones too): triage it by the same "
+                    "rules - resolve <id>, or reply <id> --body - with the reason "
+                    f"before resolving a decline - then re-run `{CLI} push --done`."
                 ),
             },
             ["resolve-and-rerun", "force"],
@@ -2076,6 +2249,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--skip-review", action="store_true", help="Skip the review coda"
     )
     p_start.add_argument(
+        "--claude-review",
+        action="store_true",
+        help="Add Claude's /code-review after second-opinion; Claude Code only",
+    )
+    p_start.add_argument(
         "--reopen",
         action="store_true",
         help="Re-cut/consolidate an already-pushed release (skips bump + upgrade)",
@@ -2105,16 +2283,25 @@ def build_parser() -> argparse.ArgumentParser:
     p_push.set_defaults(func=cmd_push)
 
     p_second = sub.add_parser(
-        "second-opinion", help="Coda 4a: heterogeneous-model review"
+        "second-opinion", help="Heterogeneous-model review: phase 1, or --fixes"
     )
-    p_second.add_argument("--files", nargs="+", help="Limit the rerun to these files")
+    p_second.add_argument(
+        "--fixes",
+        metavar="NOTES",
+        help="Review the Copilot round's fixes alone; NOTES says what each is for",
+    )
+    p_second.add_argument(
+        "--requirements",
+        metavar="FILE",
+        help="Phase 1: the work's requirements ledger, kept for the fix review too",
+    )
     p_second.add_argument(
         "--timeout", type=int, default=540, help="Seconds per lens pass (default 540)"
     )
     p_second.set_defaults(func=cmd_second_opinion)
 
     p_copilot = sub.add_parser(
-        "copilot-review", help="Coda 4b: Copilot PR review + triage"
+        "copilot-review", help="Coda: Copilot PR review + triage"
     )
     p_copilot.add_argument(
         "--timeout", type=int, default=480, help="Wait seconds (default 480)"
@@ -2146,8 +2333,12 @@ def main(argv: list[str] | None = None) -> int:
     """Parse args, dispatch, and translate ``ReleaseError`` into exit code 1."""
     parser = build_parser()
     args = parser.parse_args(argv)
+    # File arguments name the caller's directory; resolve them before the chdir.
     if getattr(args, "decision", "-") != "-":
         args.decision = str(Path(args.decision).resolve())
+    for name in ("requirements", "fixes"):
+        if getattr(args, name, None):
+            setattr(args, name, str(Path(getattr(args, name)).resolve()))
     try:
         top = git(["rev-parse", "--show-toplevel"])
         os.chdir(top)

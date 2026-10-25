@@ -12,9 +12,10 @@
     "",
     "Pre-validation (release.py) requires: every changed path is claimed by exactly",
     "one group (no orphans) and every group is non-empty. Put the CHANGELOG riders",
-    "(CHANGELOG.md, project-words.txt, pyproject.toml, uv.lock) in the final",
-    "docs(changelog) group. trailers are stored as structured lines so a re-cut",
-    "never re-types a Codified-Learning heredoc (decision 3)."
+    "(CHANGELOG.md, project-words.txt, pyproject.toml, uv.lock,",
+    ".github/copilot-instructions.md) in the final docs(changelog) group.",
+    "trailers are stored as structured lines so a re-cut never re-types a",
+    "Codified-Learning heredoc (decision 3)."
   ],
   "version": "1.16.0",
   "groups": [
@@ -39,7 +40,13 @@
       "trailers": []
     },
     {
-      "globs": ["CHANGELOG.md", "project-words.txt", "pyproject.toml", "uv.lock"],
+      "globs": [
+        "CHANGELOG.md",
+        "project-words.txt",
+        "pyproject.toml",
+        "uv.lock",
+        ".github/copilot-instructions.md"
+      ],
       "prefix": "docs",
       "message": "docs(changelog): cut 1.16.0 release notes",
       "trailers": []

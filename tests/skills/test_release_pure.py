@@ -36,6 +36,12 @@ def _gate_in_tmp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep ``emit_gate`` from writing into the real repo's ``.release/``."""
     monkeypatch.setattr(release, "STATE_DIR", tmp_path / ".release")
     monkeypatch.setattr(release, "GATE_FILE", tmp_path / ".release" / "gate.json")
+    monkeypatch.setattr(
+        release, "DECISION_LOG", tmp_path / ".release" / "decision-log.md"
+    )
+    monkeypatch.setattr(
+        release, "REQUIREMENTS_FILE", tmp_path / ".release" / "requirements.md"
+    )
     # No review skill installed unless a test installs one with _install_skills.
     skills = tmp_path / "skills"
     monkeypatch.setattr(release, "BRIEF_SCRIPT", skills / "second-opinion.py")
@@ -223,7 +229,7 @@ def test_wipe_state_dir_removes_decision_and_all(
     for name in (
         "state.json",
         "commit-plan.json",
-        "review-policy.json",
+        "decision-log.md",
         "decision.json",
     ):
         (state_dir / name).write_text("{}")
@@ -520,20 +526,16 @@ def test_review_scripts_live_in_the_user_skills_dir() -> None:
     ("installed", "skip", "layers"),
     [
         ((), False, []),
-        (("BRIEF_SCRIPT",), False, ["second-opinion"]),
+        (("BRIEF_SCRIPT",), False, []),  # second-opinion runs at phase 1
         (("PR_REVIEW_SCRIPT",), False, ["copilot-review"]),
-        (
-            ("BRIEF_SCRIPT", "PR_REVIEW_SCRIPT"),
-            False,
-            ["second-opinion", "copilot-review"],
-        ),
+        (("BRIEF_SCRIPT", "PR_REVIEW_SCRIPT"), False, ["copilot-review"]),
         (("BRIEF_SCRIPT", "PR_REVIEW_SCRIPT"), True, []),
     ],
 )
 def test_review_layers_follow_the_installed_skills(
     installed: tuple[str, ...], skip: bool, layers: list[str]
 ) -> None:
-    """Each installed skill adds its layer; --skip-review still turns all off."""
+    """address-pr-review adds the coda; --skip-review still turns it off."""
     _install_skills(*(getattr(release, name) for name in installed))
 
     assert release.review_layers({"skip_review": skip}) == layers
@@ -618,45 +620,105 @@ def test_changelog_problems_flags_only_bullets_over_the_cap() -> None:
     ] == [over]
 
 
-# -- propose: review-policy matching ------------------------------------------
-
-POLICY = {
-    "known_false_positives": [
-        {"match_body": "ubuntu-slim", "disposition": "resolve-only", "reason": "r1"}
-    ],
-    "path_ownership": [
-        {
-            "match_path": "modules/aliases-git/**",
-            "disposition": "resolve-only",
-            "reason": "r2",
-        }
-    ],
-    "accepted_intentional": [
-        {
-            "match_path": "nix/**",
-            "match_body": "flake.lock",
-            "disposition": "resolve-only",
-            "reason": "r3",
-        }
-    ],
-}
+# -- copilot-review: the agent triages; a trigger failure is judged, not raised --
 
 
-@pytest.mark.parametrize(
-    ("thread", "reason"),
-    [
-        ({"path": "a.yml", "body": "Use UBUNTU-SLIM?"}, "r1"),  # case-insensitive body
-        ({"path": "modules/aliases-git/x/y.ps1", "body": "nit"}, "r2"),
-        ({"path": "nix/setup.sh", "body": "commit flake.lock"}, "r3"),
-        ({"path": "nix/setup.sh", "body": "unrelated"}, None),  # both keys must match
-        ({"path": "wsl/x.ps1", "body": "flake.lock"}, None),
-        ({"path": None, "body": "general comment"}, None),
-    ],
-)
-def test_propose(thread: dict, reason: str | None) -> None:
-    """Every key a rule names must match; body matching ignores case."""
-    got = release.propose(thread, POLICY)
-    assert (got or {}).get("reason") == reason
+def test_copilot_trigger_failure_gates_with_the_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only the message tells "no Copilot review here" from an auth failure."""
+    import json
+
+    _install_skills(release.PR_REVIEW_SCRIPT)
+    monkeypatch.setattr(release, "load_state", lambda: {"coda_pushes": 0})
+
+    def pr_review(args: list[str]) -> dict:
+        if args[0] == "trigger":
+            raise release.ReleaseError("pr_review.py trigger failed (exit 1)")
+        return {"state": "A"}
+
+    monkeypatch.setattr(release, "_pr_review", pr_review)
+    args = release.build_parser().parse_args(["copilot-review"])
+
+    assert release.cmd_copilot_review(args) == release.EXIT_GATE
+    gate = json.loads(release.GATE_FILE.read_text())
+    assert gate["kind"] == "review_unavailable"
+    assert "exit 1" in gate["context"]["error"]
+    assert "rows whose call is escalate" in gate["context"]["instructions"]
+
+
+@pytest.mark.parametrize(("pushes", "capped"), [(0, False), (1, True)])
+def test_copilot_triage_turns_fixes_into_escalations_at_the_cap(
+    monkeypatch: pytest.MonkeyPatch, pushes: int, capped: bool
+) -> None:
+    """Past the cap no fix goes in unasked; before it a fix earns another round."""
+    import json
+
+    _install_skills(release.PR_REVIEW_SCRIPT)
+    monkeypatch.setattr(release, "load_state", lambda: {"coda_pushes": pushes})
+    thread = {"id": "PRRT_x", "path": "a.sh", "body": "b"}
+    monkeypatch.setattr(
+        release,
+        "_pr_review",
+        lambda _a: {"state": "C", "unresolvedFreshThreads": [thread]},
+    )
+    args = release.build_parser().parse_args(["copilot-review"])
+
+    assert release.cmd_copilot_review(args) == release.EXIT_GATE
+    ctx = json.loads(release.GATE_FILE.read_text())["context"]
+    assert ctx["fix_cycle_cap_reached"] is capped
+    assert ("is an escalation instead" in ctx["instructions"]) is capped
+    assert "rows whose call is escalate" in ctx["instructions"]
+    assert "Show the user" not in ctx["instructions"]
+
+
+# -- post_decision_log: the run's only record once threads are resolved ---------
+
+
+def test_decision_log_is_posted_under_a_table_header(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The agent appends rows; the driver adds the header and posts one comment."""
+    release.STATE_DIR.mkdir()
+    release.DECISION_LOG.write_text("| 1 | a.sh:3 x | decline | style |\n")
+    posted: list[str] = []
+    monkeypatch.setattr(
+        release,
+        "_gh",
+        lambda a: posted.append(Path(a[a.index("--body-file") + 1]).read_text()),
+    )
+
+    release.post_decision_log()
+
+    assert posted[0].startswith("### Review decisions")
+    assert "| 1 | a.sh:3 x | decline | style |" in posted[0]
+    release.post_decision_log()  # `push --done` retried after a failed label
+    assert len(posted) == 1
+
+
+def test_decision_log_is_printed_when_the_post_fails(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A failed post must not let the wipe take the only copy."""
+    release.STATE_DIR.mkdir()
+    release.DECISION_LOG.write_text("| 1 | a.sh:3 x | fix | wrong |")
+
+    def boom(_a: list[str]) -> None:
+        raise release.ReleaseError("gh pr comment failed")
+
+    monkeypatch.setattr(release, "_gh", boom)
+
+    release.post_decision_log()
+
+    assert "| 1 | a.sh:3 x | fix | wrong |" in capsys.readouterr().err
+    assert release.DECISION_LOG.is_file()  # a retry can still post it
+
+
+def test_no_decision_log_posts_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A run with no review decisions leaves the PR alone."""
+    monkeypatch.setattr(release, "_gh", lambda _a: pytest.fail("posted"))
+
+    release.post_decision_log()
 
 
 # -- _upsert_pr: only an OPEN PR is this release's ------------------------------
@@ -1081,32 +1143,86 @@ def test_push_counts_the_cycle_before_the_pr_update_can_fail(
 
 
 def test_coda_next_says_when_the_last_fix_cycle_ran() -> None:
-    """At zero the final review's threads go to the user, not into a new cycle."""
-    both = ["second-opinion", "copilot-review"]
-    assert "last fix cycle" in release._coda_next(0, both)
-    assert "last fix cycle" not in release._coda_next(1, both)
+    """Once the round is spent no second Copilot round is offered."""
+    layers = ["copilot-review"]
+    assert "do not run copilot-review again" in release._coda_next(0, layers)
+    assert "again" not in release._coda_next(1, layers)
+
+
+def test_coda_next_skips_the_round_after_answered_escalations() -> None:
+    """An unspent round (Copilot unavailable) still finishes after an answer."""
+    assert "only applied answered escalations" in release._coda_next(
+        1, ["copilot-review"]
+    )
+
+
+def test_push_before_copilot_engaged_keeps_the_round(
+    push_run: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A fix reported before the trigger goes out without spending the round."""
+    _install_skills(release.PR_REVIEW_SCRIPT)
+    monkeypatch.setattr(release, "copilot_engaged", lambda: False)
+    monkeypatch.setattr(release, "_do_push", lambda: True)
+    monkeypatch.setattr(release, "_upsert_pr", lambda _v: None)
+
+    assert release.cmd_push(release.build_parser().parse_args(["push"])) == 0
+    assert push_run["coda_pushes"] == 0
 
 
 @pytest.mark.parametrize(
-    ("layers", "named", "absent"),
+    ("args", "attempts"), [(["pr", "view"], 3), (["pr", "create"], 1)]
+)
+def test_run_gh_retries_a_dropped_connection_only_when_repeatable(
+    monkeypatch: pytest.MonkeyPatch, args: list[str], attempts: int
+) -> None:
+    """A dropped `gh pr create` may have landed; sending it again would duplicate it."""
+    seen: list[int] = []
+
+    def run(*_a: object, **_k: object) -> release.subprocess.CompletedProcess[str]:
+        seen.append(1)
+        return release.subprocess.CompletedProcess([], 1, "", "Post ...: EOF")
+
+    monkeypatch.setattr(release.subprocess, "run", run)
+    monkeypatch.setattr(release.time, "sleep", lambda _s: None)
+
+    release._run_gh(args)
+    assert len(seen) == attempts
+
+
+@pytest.mark.parametrize(
+    ("env", "ok"),
     [
-        (
-            ["second-opinion", "copilot-review"],
-            ["copilot-review", "second-opinion"],
-            [],
-        ),
-        (["copilot-review"], ["copilot-review"], ["second-opinion"]),
-        (["second-opinion"], ["second-opinion"], ["copilot-review"]),
-        ([], ["push --done"], ["second-opinion", "copilot-review"]),
+        ({"CLAUDECODE": "1"}, True),
+        ({"CLAUDECODE": "1", "COPILOT_CLI": "1"}, False),
+        ({}, False),
     ],
 )
-def test_coda_next_names_only_the_installed_layers(
-    layers: list[str], named: list[str], absent: list[str]
+def test_claude_review_runs_only_inside_claude_code(
+    monkeypatch: pytest.MonkeyPatch, env: dict[str, str], ok: bool
 ) -> None:
+    """/code-review is a Claude Code skill; Copilot CLI inherits CLAUDECODE."""
+    for name in ("CLAUDECODE", "COPILOT_CLI"):
+        monkeypatch.delenv(name, raising=False)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+
+    assert release._claude_code(True) is ok
+
+
+@pytest.mark.parametrize(
+    ("left", "layers"), [(1, ["copilot-review"]), (0, ["copilot-review"]), (1, [])]
+)
+def test_coda_next_reads_held_escalations_from_the_log(
+    left: int, layers: list[str]
+) -> None:
+    """Escalations outlive the agent's context, so every finish names their store."""
+    assert "rows whose call is escalate" in release._coda_next(left, layers)
+
+
+def test_coda_next_without_the_copilot_layer_finishes() -> None:
     """The next step never points at a review layer whose skill is missing."""
-    text = release._coda_next(1, layers)
-    assert all(n in text for n in named)
-    assert not any(a in text for a in absent)
+    text = release._coda_next(1, [])
+    assert "push --done" in text and "copilot-review" not in text
 
 
 # -- second-opinion: a thin wrapper over review_brief.py run --------------------
@@ -1117,7 +1233,7 @@ def opinion_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict:
     """A release state in a scratch dir; ``seen`` collects the run command."""
     monkeypatch.chdir(tmp_path)
     _install_skills(release.BRIEF_SCRIPT)
-    state = {"version": "1.2.3", "last_tag": "v1.2.2", "second_opinion_runs": 0}
+    state = {"version": "1.2.3", "last_tag": "v1.2.2"}
     seen: dict = {"state": state}
     monkeypatch.setattr(release, "load_state", lambda: state)
     monkeypatch.setattr(release, "save_state", lambda s: seen.update(saved=dict(s)))
@@ -1138,7 +1254,7 @@ def test_second_opinion_hands_the_changelog_section_to_run_as_intent(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """The release notes are the author's intent; the scoped rerun keeps --files."""
+    """The release notes are the author's intent; one run per release."""
     import json
 
     report = {
@@ -1148,20 +1264,117 @@ def test_second_opinion_hands_the_changelog_section_to_run_as_intent(
         "diffstat": "x",
     }
     _stub_run(monkeypatch, opinion_run, 0, json.dumps(report))
-    args = release.build_parser().parse_args(
-        ["second-opinion", "--files", "a.sh", "--timeout", "100"]
-    )
+    args = release.build_parser().parse_args(["second-opinion", "--timeout", "100"])
 
     assert release.cmd_second_opinion(args) == 0
     cmd = opinion_run["cmd"]
     assert cmd[1:3] == ["run", "v1.2.2"]
-    assert Path(cmd[cmd.index("--intent") + 1]).read_text().startswith("### Added")
-    assert cmd[cmd.index("--files") + 1 :] == ["a.sh"]
+    # No ledger given: the CHANGELOG section is the whole intent.
+    assert Path(cmd[cmd.index("--intent") + 1]).read_text() == "### Added\n\n- x\n"
     assert opinion_run["timeout"] > 100  # the wrapper outlasts every lens pass
     out = json.loads(capsys.readouterr().out)
     assert out["findings"] == report["findings"] and "diffstat" not in out
     assert out["unparsed"] == report["unparsed"]  # a lens to read by hand
-    assert opinion_run["saved"]["second_opinion_runs"] == 1
+    assert opinion_run["saved"]["second_opinion"] == ["release"]
+    with pytest.raises(release.ReleaseError, match="already reviewed"):
+        release.cmd_second_opinion(args)
+
+
+def test_second_opinion_fixes_reviews_from_the_published_head(
+    opinion_run: dict, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The fix review sees only the round's fixes, with the notes as intent."""
+    opinion_run["state"]["second_opinion"] = ["release"]
+    notes = tmp_path / "notes.md"
+    notes.write_text("## Already decided\n\n- F-1 declined: style")
+    monkeypatch.setattr(release, "current_branch", lambda: "release/x")
+    monkeypatch.setattr(
+        release, "git", lambda a, **_k: "abc123" if "origin/release/x" in a[-1] else ""
+    )
+    _stub_run(monkeypatch, opinion_run, 0, '{"findings": []}')
+
+    args = release.build_parser().parse_args(["second-opinion", "--fixes", str(notes)])
+    assert release.cmd_second_opinion(args) == 0
+    cmd = opinion_run["cmd"]
+    assert cmd[1:3] == ["run", "abc123"]
+    intent = Path(cmd[cmd.index("--intent") + 1]).read_text()
+    assert intent.startswith("### Added") and "Already decided" in intent
+    assert "--requirements" not in cmd  # no ledger given, none invented
+    assert opinion_run["saved"]["second_opinion"] == ["release", "fixes:abc123"]
+
+
+def test_requirements_ledger_reaches_both_reviews(
+    opinion_run: dict, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Given once at phase 1, the ledger goes to the release and the fix review."""
+    ledger = tmp_path / "ledger.md"
+    ledger.write_text("1. Keep the round count. -> Approach 1\n")
+    notes = tmp_path / "notes.md"
+    notes.write_text("## Already decided\n")
+    monkeypatch.setattr(release, "current_branch", lambda: "release/x")
+    monkeypatch.setattr(release, "git", lambda _a, **_k: "abc123")
+    _stub_run(monkeypatch, opinion_run, 0, '{"findings": []}')
+    parse = release.build_parser().parse_args
+    saved = str(release.REQUIREMENTS_FILE)
+
+    release.cmd_second_opinion(parse(["second-opinion", "--requirements", str(ledger)]))
+    first = opinion_run["cmd"]
+    release.cmd_second_opinion(parse(["second-opinion", "--fixes", str(notes)]))
+    second = opinion_run["cmd"]
+
+    for cmd in (first, second):
+        assert cmd[cmd.index("--requirements") + 1] == saved
+        intent = Path(cmd[cmd.index("--intent") + 1]).read_text()
+        assert "## Requirements" not in intent  # review_brief.py adds the heading
+    assert release.REQUIREMENTS_FILE.read_text() == ledger.read_text()
+
+
+def test_requirements_with_fixes_is_refused(opinion_run: dict, tmp_path: Path) -> None:
+    """The ledger belongs to phase 1; a second copy on the fix review would drift."""
+    args = release.build_parser().parse_args(
+        ["second-opinion", "--fixes", "n.md", "--requirements", "r.md"]
+    )
+    with pytest.raises(release.ReleaseError, match="phase-1 run"):
+        release.cmd_second_opinion(args)
+
+
+@pytest.mark.parametrize("flag", ["--requirements", "--fixes"])
+def test_missing_input_file_is_a_release_error(opinion_run: dict, flag: str) -> None:
+    """A mistyped path stops with a message, not a traceback."""
+    args = release.build_parser().parse_args(["second-opinion", flag, "x.md"])
+    with pytest.raises(release.ReleaseError, match=f"{flag} x.md: no such file"):
+        release.cmd_second_opinion(args)
+
+
+def test_each_published_head_gets_its_own_fix_review(
+    opinion_run: dict, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Fixes pushed ahead of the Copilot round leave the round's fixes a review."""
+    notes = tmp_path / "notes.md"
+    notes.write_text("## Already decided\n")
+    head = {"sha": "aaa"}
+    monkeypatch.setattr(release, "current_branch", lambda: "release/x")
+    monkeypatch.setattr(release, "git", lambda _a, **_k: head["sha"])
+    _stub_run(monkeypatch, opinion_run, 0, '{"findings": []}')
+    args = release.build_parser().parse_args(["second-opinion", "--fixes", str(notes)])
+
+    assert release.cmd_second_opinion(args) == 0
+    with pytest.raises(release.ReleaseError, match="already reviewed this fixes"):
+        release.cmd_second_opinion(args)
+    head["sha"] = "bbb"
+    assert release.cmd_second_opinion(args) == 0
+
+
+def test_push_gate_refuses_an_edit_the_cut_commits_lack(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An escalation answered at the gate must be recut, not pushed past."""
+    monkeypatch.setattr(release, "load_plan", lambda: {"groups": []})
+    monkeypatch.setattr(release, "uncommitted_covered_paths", lambda _p: ["a.sh"])
+    monkeypatch.setattr(release, "_do_push", lambda: pytest.fail("pushed"))
+
+    with pytest.raises(release.ReleaseError, match="recut"):
+        release.resume_push({"version": "1.2.3"}, {"approve": True})
 
 
 @pytest.mark.parametrize(
@@ -1203,7 +1416,8 @@ def test_second_opinion_failure_is_a_release_error(
 
 
 @pytest.mark.parametrize(
-    ("installed", "finished"), [((), True), (("PR_REVIEW_SCRIPT",), False)]
+    ("installed", "finished"),
+    [((), True), (("BRIEF_SCRIPT",), True), (("PR_REVIEW_SCRIPT",), False)],
 )
 def test_push_runs_the_coda_only_with_a_review_skill(
     monkeypatch: pytest.MonkeyPatch, installed: tuple[str, ...], finished: bool
@@ -1214,6 +1428,8 @@ def test_push_runs_the_coda_only_with_a_review_skill(
     for name in ("_do_push", "_upsert_pr", "save_state"):
         monkeypatch.setattr(release, name, lambda *_a: None)
     monkeypatch.setattr(release, "head_sha", lambda: "abc")
+    monkeypatch.setattr(release, "load_plan", lambda: {"groups": []})
+    monkeypatch.setattr(release, "uncommitted_covered_paths", lambda _p: [])
     monkeypatch.setattr(
         release, "_finish", lambda _s, msg, **_k: seen.update(msg=msg) or 0
     )

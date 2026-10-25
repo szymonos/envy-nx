@@ -1,7 +1,7 @@
 ---
 name: release-auto
-argument-hint: "VERSION [skip-review|reopen]"
-description: Orchestrator-driven release prep. A stateful Python driver runs the deterministic release spine headless - lint, extract, version bump, upgrade, commit-plan recut, lint-diff, force-push, PR upsert, both review layers, and the final integration-test run - and stops at a few batched gates where the agent supplies judgment (CHANGELOG prose, cspell classification, commit topology, version verdict, review triage). Use when the user types `/release-auto` with a target version, asks to cut a release the automated way, or wants the orchestrator-driven release. Disabled for auto-invocation.
+argument-hint: "VERSION [skip-review|claude-review|reopen]"
+description: Orchestrator-driven release prep. A stateful Python driver runs the deterministic release spine headless - lint, extract, version bump, upgrade, commit-plan recut, lint-diff, force-push, PR upsert, both review layers, and the final integration-test run - and stops at a few batched gates where the agent supplies judgment (CHANGELOG prose, cspell classification, commit topology, version verdict, review triage). The agent triages review findings itself and asks the user only about intent, once, at the end. Use when the user types `/release-auto` with a target version, asks to cut a release the automated way, or wants the orchestrator-driven release. Disabled for auto-invocation.
 disable-model-invocation: true
 ---
 
@@ -16,6 +16,7 @@ the agent is a **decision oracle** called only at batched gates. Tagging is
 
 - `/release-auto 1.16.0` - cut 1.16.0 from the current branch
 - `/release-auto 1.16.0 skip-review` - skip *both* review layers (urgent hotfix, Copilot offline, already reviewed)
+- `/release-auto 1.16.0 claude-review` - add Claude's `/code-review` after second-opinion at the first gate (Claude Code only; elsewhere it is ignored with one stderr line)
 - `/release-auto 1.16.0 reopen` - re-cut an already-pushed release with no new changes (fold committed coda follow-ups into clean per-group commits; commit them first); see `references/recovery.md`
 - "minor ver" / "patch" - compute the version from `git describe --tags --abbrev=0`
 
@@ -38,10 +39,13 @@ front: `skip-review` is `--skip-review`. Anything else is an ordinary request.
 
 ```text
 start        ──► rebase, lint, bump, upgrade     ──► GATE phase1   (exit 10)
+               (CHANGELOG, then second-opinion [+ /code-review]; fixes stay uncommitted)
 resume       ──► cspell/changelog checks, recut  ──► GATE push     (exit 10)
 resume       ──► force-push, PR upsert           ──► SPINE_COMPLETE (exit 0)
-second-opinion / copilot-review ──► fixes ──► recut + push ──► (repeat review)
-push --done  ──► thread check, wipe, label PR    ──► integration --since <ts>
+copilot-review ──► triage ──► only if it fixed something:
+               second-opinion --fixes ──► recut + push   (the one round)
+escalations  ──► one AskUserQuestion, at the end
+push --done  ──► thread check, post decision log, wipe, label PR ──► integration
 ```
 
 **Exit codes:** `0` done, `1` error (surface it, don't paper over), `2` usage,
@@ -63,7 +67,7 @@ covers only the judgment behind it.
 ### Step 1 - start
 
 ```bash
-.claude/skills/release-auto/scripts/release.py start --version <X.Y.Z> [--skip-review]
+.claude/skills/release-auto/scripts/release.py start --version <X.Y.Z> [--skip-review] [--claude-review]
 ```
 
 Exit 1 means stop: a failed `make lint`/`make upgrade` must be fixed first.
@@ -82,15 +86,46 @@ pre-rebase HEAD.
    file. Follow **Bullet style** and **Section reclassification**. On a re-run
    (`is_rerun: true`) combine the existing block with `[Unreleased]` and
    **reclassify, don't just merge**.
-2. **Classify cspell findings.** Code identifier or proper noun → `cspell_add`;
+2. **With `review` true in the payload, run second-opinion** once the CHANGELOG
+   section is written - it is the stated intent, and the run reviews
+   `<last-tag>` against the working tree, so the bump is in it:
+
+   ```bash
+   .claude/skills/release-auto/scripts/release.py second-opinion   # Bash timeout 600000
+   ```
+
+   Triage its findings by **Review triage** below. Fixes stay uncommitted
+   edits for the plan to fold in. It runs once per release (`model_reasons`
+   says which model and why); exit 3/4 output says it skipped. Each finding
+   carries its `lens`, and lenses are not deduplicated, so merge findings that
+   name the same defect. `failed` lists lenses that did not finish - their
+   findings are missing.
+
+   **Pass the requirements ledger when the work has one.** A ledger is numbered
+   rows each ending `-> Approach N`, `Out: <why>` or `Unsure: <question>`.
+   Fetch it from wherever this environment keeps one, save it to a file and add
+   `--requirements <file>`. Each pass then reports an `-> Approach` row the code
+   leaves unimplemented, and stays quiet about work an `Out:` row excludes. The
+   driver keeps the file, so the `--fixes` review gets the same ledger. Without
+   one, the CHANGELOG section is the whole intent.
+
+   **With `claude_review` true, run `/code-review` next**, at `medium`, on
+   `<last-tag>` plus the uncommitted fixes. Give it the CHANGELOG section and
+   every finding second-opinion declined, with its reason, so it raises none
+   of them again, and triage it the same way. It runs second so a finding the
+   cheaper reviewer already fixed costs Claude nothing. Log both reviews'
+   findings under round `pre-push`.
+3. **Classify cspell findings.** Code identifier or proper noun → `cspell_add`;
    prose misspelling → fix the source; genuinely ambiguous → one batched
    `AskUserQuestion`.
-3. **Author `.release/commit-plan.json`** (shape: `schemas/commit-plan.example.json`):
+4. **Author `.release/commit-plan.json`** (shape: `schemas/commit-plan.example.json`):
    ordered `groups` of `{globs, prefix, message, trailers}`, file-granularity,
    first match wins. A seeded plan (`plan_seed.seeded`) is last release's -
    edit its messages and the `docs(changelog)` version, not just the globs.
    The CHANGELOG riders (`CHANGELOG.md`, `project-words.txt`, `pyproject.toml`,
-   `uv.lock`) go in the final `docs(changelog)` group. Keep `Co-Authored-By:` /
+   `uv.lock`, `.github/copilot-instructions.md`) go in the final
+   `docs(changelog)` group; the last one is there for a review rule added
+   mid-coda, which `recut` would otherwise refuse as an orphan. Keep `Co-Authored-By:` /
    `Codified-Learning:` lines in `trailers`.
 
 ```bash
@@ -114,83 +149,95 @@ echo '{"approve": true}' | .claude/skills/release-auto/scripts/release.py resume
 ```
 
 `review_coda: []` means this push finishes the run (and triggers the
-integration tests). If the user wants the review after all, add
+integration tests), so ask any escalations held from second-opinion before
+approving; after an answered fix, run `recut` first - the driver refuses to push
+an uncommitted edit. If the user wants the Copilot review after all, add
 `"review": true` - this gate is the last point it can be turned on.
 
-### Step 4 - review coda (skipped with --skip-review)
+### Step 4 - Copilot review coda (skipped with --skip-review)
 
-Up to two layers, in order, one per review skill installed in
-`~/.claude/skills/`: `second-opinion` adds 4a, `address-pr-review` adds 4b. With
-neither installed the push wipes the run, as `--skip-review` does; the push
-gate's `review_coda` and `SPINE_COMPLETE` list the layers that will run. New
-features are the *most* important case to review.
-
-**4a - heterogeneous model.** A different model family reviews
-`<last-tag>..HEAD` through three lenses (logic, inputs, impact), with the
-CHANGELOG section as the author's stated intent:
-
-```bash
-.claude/skills/release-auto/scripts/release.py second-opinion   # Bash timeout 600000
-```
-
-It picks the model itself (`model_reasons` says why), and skips the layer when
-the Copilot CLI is absent or nothing changed. Each finding carries its `lens`;
-lenses are not deduplicated, so merge findings that name the same defect.
-`failed` lists lenses that did not finish - report them, their findings are
-missing. **Challenge every finding** - the reviewer has no
-context beyond the brief. Read the flagged code; dismiss with a reason, fix
-when clearly right, `AskUserQuestion` when uncertain - never auto-fix on doubt.
-Report a verdict per finding (`fixed` / `dismissed (reason)` /
-`needs-user-judgment`). After fixes: `recut` + `push`, optionally one scoped
-rerun with `--files <fixed files>`; the driver refuses a third run.
-
-**4b - Copilot PR review:**
+Runs when `address-pr-review` is installed in `~/.claude/skills/`; without it
+the push gate's `review_coda` is empty and the push finishes the run.
 
 ```bash
 .claude/skills/release-auto/scripts/release.py copilot-review   # Bash timeout 540000
 ```
 
 **A reported issue outranks the running review.** When the user or another
-session reports a defect in this release mid-coda, stop: do not run another
-review. Fix every open report, `recut`, `push`, then review again - a review of
-the old head is spent on code about to change.
+session reports a defect in this release mid-coda, stop and fix every open
+report, leaving the fixes uncommitted. Before `copilot-review` has requested
+Copilot: run `second-opinion --fixes` on them as below, `recut`, `push` - a push
+Copilot never reviewed or was asked to does not spend the round - then run
+`copilot-review`. After: the fixes join the round's own and go through its fix
+review and its one push.
 
 It requests the review only when needed (a force-push usually does not
-re-request it) and waits. Exit 4: re-run it. Exit 10 (`review_triage`): every
-thread carries a `proposal` from `review-policy.json` (`null` = no rule
-matched). Present the whole bundle in one `AskUserQuestion` - nothing is
-dismissed without being shown. Write fixes yourself, never copying a
-suggestion verbatim; fold fixes to unshipped code into the existing `Added`
-bullet. **Resolve every `fix`/`resolve-only` thread before re-cutting** -
-the force-push makes them outdated, and an outdated thread still blocks merge:
+re-request it) and waits. Exit 4: re-run it. Exit 10 `review_unavailable`: the
+trigger failed - read its message; if Copilot code review is not available for
+the repo, say so in one line and go to the finish, otherwise stop and surface
+the error. Exit 10 `review_triage`: triage every thread yourself by **Review
+triage** below, using `pr_review.py` from `~/.claude/skills/address-pr-review/scripts/`:
+
+- `fix` - edit, then `resolve <id>` **before re-cutting**: the force-push
+  makes the thread outdated, and an outdated thread still blocks merge.
+- `decline` - `reply <id> --body -` with the one-sentence reason, then
+  `resolve <id>` once the reply exits 0. Write the reason to a file with the
+  file-writing tool, never a heredoc, and pipe it: `--body - < <file>`.
+- `resolve-only` - `resolve <id>`.
+- `escalate` - leave the thread open and hold it for the end.
+
+Fold fixes to unshipped code into the existing `Added` bullet.
+
+**There is one Copilot round.** A round with no fix ends the review; when a
+decline added a REVIEW.md rule, `recut` + `push` it first. A round
+that fixed something gets second-opinion on those fixes instead of a second
+Copilot round, which mostly finds defects in the first round's own fixes and
+costs far more. Write a notes file - each finding the round fixed, as what that
+fix is for, then every finding declined so far with its reason under an
+`Already decided` heading - and run:
 
 ```bash
-python3 ~/.claude/skills/address-pr-review/scripts/pr_review.py resolve <thread-id> [<thread-id> ...]
-.claude/skills/release-auto/scripts/release.py recut
-.claude/skills/release-auto/scripts/release.py push
+.claude/skills/release-auto/scripts/release.py second-opinion --fixes <notes>   # Bash timeout 600000
 ```
 
-A thread the user resolves **without a fix** - `skip`, or a `fix` proposal
-they override - is the one exception to silent resolve: nothing else records
-why. A confirmed `resolve-only` stays silent; its reason lives in
-`review-policy.json`. Offer a one- or two-sentence draft reason in the same
-question, post the approved text, and resolve only once `reply` exits 0:
+It reviews from the head Copilot reviewed, so only the uncommitted fixes, with
+the CHANGELOG section and your notes as intent. It runs once per published head,
+so fixes pushed ahead of the round leave the round's own fixes a review. Exit 3/4 is one line in the
+report. Triage it, log its rows under round `fixes`, then `recut` + `push`. The
+push reports `fix_cycles_left: 0`: do not run `copilot-review` again. If you do,
+its payload sets `fix_cycle_cap_reached` and a thread you would fix becomes an
+escalation.
 
-```bash
-python3 ~/.claude/skills/address-pr-review/scripts/pr_review.py reply <thread-id> --body '<the approved reason>'
-python3 ~/.claude/skills/address-pr-review/scripts/pr_review.py reply <thread-id> --body - < <file>
-```
+**The end of the review.** The held escalations are the rows whose call is
+`escalate` in `.release/decision-log.md` - second-opinion's and Copilot's - that
+no `end` row answers yet; the log holds them, not your memory. Ask them in one `AskUserQuestion` and append
+each answer as its own row: `| end | <finding> | asked: fix / left open /
+declined | <author's reason> |`. A "yes" is an edit and a `resolve` of its
+thread: `recut`, `push`, then `push --done`, with no further round. The other
+way is a `reply` giving the author's reason, then `resolve`. "Leave open" leaves the thread for a
+human reviewer; finish with `push --done --force`.
 
-The second form is for a reason containing an apostrophe; write that file with
-the file-writing tool, never a heredoc.
+### Review triage
 
-Then follow the `next` that `push` prints. A push that changed nothing is not
-a fix cycle. At `fix_cycles_left: 0` the next `copilot-review` is the final
-review (its payload sets `fix_cycle_cap_reached`): hand its threads to the user
-instead of fixing them. The user resolves each one (with a reply, as above) or
-leaves it open; since
-`push --done` refuses on an open thread, finish with `push --done --force` when
-the user leaves some open.
+The four calls - `fix`, `decline`, `resolve-only`, `escalate` - the
+decline-becomes-a-rule step, and the escalation question format are the
+triage-rules block in `~/.claude/skills/address-pr-review/SKILL.md` (identical
+in `second-opinion`). Read it before the first triage. A decline that becomes a
+rule goes in `.github/copilot-instructions.md` (`REVIEW.md` links to it).
+
+A release adds escalation triggers of its own:
+
+- **A fix that would change the earned bump** - a user-visible capability added
+  inside a patch release, say. The release would grow scope from a review.
+- **A finding on `.assets/config/bin/wslview`** - a repo-owned shim whose
+  overwrite-on-change is deliberate; a human judges any change to it.
+
+CHANGELOG wording counts as stated intent: a bullet that contradicts the code is
+`fix`, style is `decline`. "A bug the change did not introduce" means one that
+predates `<last-tag>`.
+
+Append one row per finding to `.release/decision-log.md` in the form the gate
+payload gives; `push --done` posts it to the PR as one comment.
 
 **`recut` is the lint gate - never validate a coda fix with bare `make lint`.**
 During a release `[Unreleased]` is empty, so bare `make lint` false-positives
@@ -207,8 +254,9 @@ or an empty group): fix the globs and re-run it.
 
 It refuses while HEAD is not pushed, and gates (`unresolved_threads`) on any
 open thread, outdated ones included - triage and resolve them, then re-run.
-`--force` finishes regardless (e.g. GitHub unreachable), with a warning to
-relay. It applies the `test:integration` label, then wipes `.release/` and
+`--force` finishes regardless (an escalation left open, GitHub unreachable),
+with a warning to relay. It posts the decision log (printing it instead if the
+post fails), applies the `test:integration` label, then wipes `.release/` and
 prints `integration.since`; a failed label leaves the run intact for a retry. The label re-runs the suite on every push,
 which is why it is applied only now.
 
@@ -252,13 +300,15 @@ is **not** "Fixed". This is the most common merge-case error.
 
 ## Anti-patterns
 
-- **Editing `.release/` by hand** (except `commit-plan.json`). Use `abort` to restart.
+- **Editing `.release/` by hand** (except `commit-plan.json` and appending to `decision-log.md`). Use `abort` to restart.
+- **Asking the user mid-loop.** Escalations wait for the one question at the end.
 - **Reasoning about whether to recut.** Just call `recut` after any fix, including a revert (drop the now-empty group).
 - **Pushing past a review thread instead of resolving it.** The force-push hides it; it stays open and blocks merge.
 - **Copying a reviewer's fix verbatim** or applying findings unchallenged.
+- **Running a second Copilot round.** It finds something, mostly in the first round's own fixes, and that something is the over-engineering. The fixes get `second-opinion --fixes` instead.
 - **A `Fixed`/`Changed` bullet for something that never shipped.** Fold into `Added`.
 - **Tagging the release** - `make release` does that after merge.
-- **Skipping a review layer by your own judgment.** Only `--skip-review` (both layers) or an uninstalled review skill (its layer) skips one.
+- **Skipping a review layer by your own judgment.** Only `--skip-review` (both layers), `reopen` (second-opinion) or an uninstalled review skill (its layer) skips one.
 
 ## Recovery
 
