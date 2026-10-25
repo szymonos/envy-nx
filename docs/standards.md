@@ -14,7 +14,7 @@ This tool provisions developer environments - if it breaks, developers cannot wo
 | CI workflows                 | 7 (preflight, CodeQL, Linux, macOS, upgrade walk, release, docs)            |
 | CI matrix axes               | 5 (Linux daemon, Linux rootless, Linux tarball, macOS Sequoia, macOS Tahoe) |
 | Platforms validated per PR   | macOS (bash 3.2 + BSD), Ubuntu (bash 5 + GNU)                               |
-| Standing review shards       | 9 charter-driven, manual `/review` trigger                                  |
+| Standing review shards       | 14 charter-driven, every tracked file owned, manual `/review` trigger       |
 
 ## Why these standards exist
 
@@ -212,23 +212,21 @@ Every check above this section fires on a diff: a commit, a PR, a push. That's t
 
 Per-PR fires per diff (full PDCA, all four phases). Chunked fires per shard on a manual cadence (Plan / Check / Act only - no Do, since the code already exists). Per-PR catches what's being added; chunked catches what's already there.
 
-The repo runs a periodic chunked agentic-review framework orthogonally to the daily PR cycle. Nine shards by concern (`certs`, `orchestration`, `nx-cli`, `config-templates`, `system-installers`, `wsl-orchestration`, `precommit-hooks`, `test-quality`, `enterprise-readiness`), each with a versioned charter that defines scope, "what good looks like", and what NOT to flag. One shard is reviewed at a time on a manual cadence (`/review <shard>`), rotating through the nine so the whole repo cycles every two months without overloading any single review's context.
+The repo runs a periodic chunked agentic-review framework orthogonally to the daily PR cycle. Fourteen shards by concern, each owning its code and the tests for it; `design/reviews/shards.json` assigns every tracked file to exactly one shard, and `check-arch-drift` fails a commit that adds a file nobody owns. Each shard has a charter that says what good looks like and what not to flag. One shard is reviewed at a time, the whole shard every run, so no review overloads its context.
 
-Three subagents with deliberately separated roles and restricted tool sets:
+A run goes to the end without a question in the middle:
 
-- **Reviewer** - `Read, Grep, Glob, Bash` only. Cannot edit code; the tool restriction is the bias-control mechanism (cannot pick easy issues because cannot fix anything). Outputs structured findings JSON.
-- **Triage** - interactive, human in the loop. Each finding gets `apply | defer | dispute`; defers and disputes accumulate in a versioned ledger so the next review skips them.
-- **Fixer** - minimum-scope edits, one commit per finding, gates each commit on `make lint && make test-unit`. Hard DONE marker is machine-verifiable, not LLM judgment.
-- **Verifier** - read-only second opinion on the fixer's diff. Reads cold; asks whether each fix addresses the root cause or just silences the symptom. Escalates via report; cannot edit, cannot approve a PR.
+- **Two reviewers** - the `reviewer` subagent (`Read, Grep, Glob, Bash` only, so it cannot pick findings by how easy they are to fix) and `second-opinion`, a different model family. Both are told what earlier reviews of the shard declined.
+- **Agent triage** - every finding becomes fix, decline, hand off to its owning shard, or escalate, against stated criteria. Declining about half is normal.
+- **One question** - the escalations only, at the end.
+- **A machine-checked finish** - `review.py finish` refuses while any finding, hand-off or escalation lacks a decision, runs `make test-unit`, and records the run in `design/reviews/history.md`.
 
-This is **manual machinery, not automated**. There is no cron, no CI gate, no auto-merge. The framework's value is not "more enforcement" - it's a periodic outside view on the standing state, with bias controls baked into the agent definitions rather than left to convention. Findings drive triage; human judgment decides which to fix.
-
-Just landed as v1; charters were seeded from the existing codebase before any actual review run, so expect the first cycle on each shard to surface things the charter didn't anticipate. Design rationale: [Process decisions](decisions.md#process-decisions).
+The fixes then reach a PR through `/release-auto`, which reviews them again and gives them one Copilot round. This is **manual machinery, not automated**: no cron, no CI gate, no auto-merge. Its value is a periodic outside view on the standing state, with the bias controls in the agent definitions and the limits in a script. Design rationale: [Process decisions](decisions.md#process-decisions).
 
 ### Operational lessons - per-PR auto-codification
 
 Where the chunked review framework is *periodic + per-shard + manual*, the operational-lessons ledger ([`design/lessons.md`](https://github.com/szymonos/envy-nx/blob/main/design/lessons.md)) is the *per-PR + auto-codified* complement. Contributors add a `Codified-Learning: <generalization>` trailer to commit bodies; the post-merge `codify_learnings.yml` workflow scrapes those trailers and appends numbered entries to `design/lessons.md` via an auto-merging follow-up PR. No hand-editing of the ledger in the normal flow; no per-cycle triage burden.
 
-This lives alongside two other durable ledgers: `docs/decisions.md` (architectural ADRs, hand-maintained) and `design/reviews/accepted.md` (review-triage decisions, updated during `/review act`). Each ledger answers a different question - **why we chose this architecture** (`decisions.md`), **why we deferred this review finding** (`accepted.md`), and **what generalization this fix taught** (`lessons.md`) - so they compound without overlap. The full convention is documented in `CONTRIBUTING.md` § "Codifying learnings".
+This lives alongside two other durable ledgers: `docs/decisions.md` (architectural ADRs, hand-maintained) and `design/reviews/history.md` (standing-review runs and decisions, written by `/review`). Each ledger answers a different question - **why we chose this architecture** (`decisions.md`), **what a review decided about each finding** (`history.md`), and **what generalization this fix taught** (`lessons.md`) - so they compound without overlap. The full convention is documented in `CONTRIBUTING.md` § "Codifying learnings".
 
 This layer is tool-agnostic by design: `AGENTS.md` + `design/lessons.md` + the trailer convention + the GitHub Action together form the L4 compounding loop that works for every contributor whether they use Claude Code, Codex, GitHub Copilot, Cursor, Aider, or no AI agent at all.

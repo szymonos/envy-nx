@@ -96,11 +96,11 @@ to system pwsh on Coder/Ubuntu where ~/.nix-profile/bin/pwsh is absent.
 
 **Where lessons live vs other ledgers.** Three durable ledgers divide the space:
 
-| Ledger                       | Records                                          | Maintained by                                  |
-| ---------------------------- | ------------------------------------------------ | ---------------------------------------------- |
-| `docs/decisions.md`          | Architectural decisions (why A over B)           | Manual ADR style; PR-reviewed                  |
-| `design/reviews/accepted.md` | Review-triage decisions (`defer`/`dispute`)      | Updated by `/review act` during chunked review |
-| `design/lessons.md`          | Operational lessons - generalizations from fixes | Auto-populated by `codify_learnings.yml`       |
+| Ledger                      | Records                                          | Maintained by                               |
+| --------------------------- | ------------------------------------------------ | ------------------------------------------- |
+| `docs/decisions.md`         | Architectural decisions (why A over B)           | Manual ADR style; PR-reviewed               |
+| `design/reviews/history.md` | Standing-review runs, decisions and hand-offs    | Written by `/review` at the end of each run |
+| `design/lessons.md`         | Operational lessons - generalizations from fixes | Auto-populated by `codify_learnings.yml`    |
 
 A lesson is the *rule the fix teaches*, not the fix itself (the fix is the merged code).
 
