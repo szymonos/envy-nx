@@ -119,9 +119,9 @@ cross-version upgrade walk.
   scratch directory are script-owned, git-ignored state, and `release.py` / `review.py` file arguments come from
   the agent running it. Symlink or alias planting under either directory and empty, directory or non-UTF-8 file
   arguments are not findings. (#117, #122)
-- **A symlink, hard link or directory planted at a path a repo script owns** - `design/reviews/history.tmp`,
-  `design/reviews/shards.json`, the findings JSON the review agents write - is not a finding; nothing but the
-  scripts and their agents writes there. (#122)
+- **A symlink, hard link or directory planted at a path a repo script owns** - the temp file beside
+  `design/reviews/history.md`, `design/reviews/shards.json`, the findings JSON the review agents write - is not a
+  finding; nothing but the scripts and their agents writes there. (#122)
 - **Commands in a SKILL.md written `scripts/<name>`** resolve against the skill's own directory, where the agent
   runs them - not a missing repo-root path. (#122)
 - **"a REVIEW.md rule" in `release-auto`** names the rule, not a write target. Only an instruction to edit the rules

@@ -5,6 +5,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.32.8] - 2026-10-25
+
+### Fixed
+
+- `ca-bundle.crt` is now built on openSUSE (`/etc/ssl/ca-bundle.pem`), and an empty system CA file is no longer linked as the trust store.
+- A `.crt` holding a whole chain in `.assets/certs/` now imports every certificate, not just the first, on both the setup and WSL paths.
+- An unreadable `.crt`, or an apostrophe in a certificate's subject, no longer aborts setup.
+- macOS keeps the previous `ca-bundle.crt` when one of the two Keychain exports fails, instead of replacing it with a partial bundle.
+- `cert_intercept` no longer prints its variables in zsh, accepts URLs as well as hosts, and rebuilds the macOS `ca-bundle.crt` after adding certificates.
+- `fix_azcli_certs.sh` and `fix_gcloud_certs.sh` write the certificate headers on a home without the deployed shell config.
+- `wsl_certs_add.ps1` warns when installing, merging or linking certificates inside the distro fails.
+
+### Removed
+
+- The static certificate-region writer in `setup_profile_user.ps1`, which never ran once the managed `nix:certs` region existed.
+
 ## [1.32.7] - 2026-10-25
 
 ### Changed

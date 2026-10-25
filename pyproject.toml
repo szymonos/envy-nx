@@ -1,6 +1,6 @@
 [project]
 name = "envy-nx"
-version = "1.32.7"
+version = "1.32.8"
 requires-python = "~=3.14.0"
 dependencies = ["PyYAML"]
 

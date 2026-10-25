@@ -1,5 +1,6 @@
 adsi
 anson
+apfs
 autoexec
 autolinks
 azcli
