@@ -34,7 +34,6 @@ cutover
 cword
 debconf
 dedup
-diffable
 direnv
 diskpart
 distrobox
@@ -59,11 +58,9 @@ fastfetch
 fetchurl
 fileno
 findutils
-fixability
 fixcertpy
 fnm
 fontawesome
-footgun
 frontmatter
 gbda
 gheof
@@ -72,12 +69,10 @@ gtimeout
 gtkd
 hackathons
 hashtable
-hashtables
 hkcu
 httpx
 hyperv
 idna
-incompat
 intune
 isatty
 jamf
@@ -121,7 +116,6 @@ mtimes
 multishells
 namerefs
 narhash
-nerdplain
 netrc
 nixos
 nixpkgs
@@ -146,7 +140,6 @@ pipestatus
 pkgs
 platformdirs
 pname
-powerline
 precmd
 prek
 prio
@@ -157,10 +150,8 @@ pyproject
 pytest
 readarray
 readlink
-redef
 redir
 reexeced
-regenerable
 reimplementations
 rekor
 remediations
@@ -220,7 +211,6 @@ wikilinks
 winget
 worktree
 worktrees
-wslconfig
 wslg
 wslpath
 wslview

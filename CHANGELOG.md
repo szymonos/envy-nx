@@ -5,6 +5,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.32.7] - 2026-10-25
+
+### Changed
+
+- `/review` now runs a standing review to the end alone: `second-opinion` and the reviewer subagent read the whole shard, the agent triages every finding, and the user answers only the escalations, once.
+- Review shards are re-split into fourteen that own every tracked file with its tests, and `check-arch-drift` fails a commit adding a file no shard owns.
+- Review runs, decisions and cross-shard hand-offs are recorded in the committed `design/reviews/history.md`, replacing per-machine state and `design/reviews/accepted.md`.
+
+### Removed
+
+- The `/review act` and `/review fix` verbs and the fixer and verifier subagents; review fixes reach a PR through `/release-auto`.
+
 ## [1.32.6] - 2026-10-25
 
 ### Fixed
