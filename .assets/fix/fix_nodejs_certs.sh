@@ -30,13 +30,9 @@ if [ $EUID -eq 0 ]; then
     exit 0
     ;;
   esac
-  # `npm config get cafile` returns the value directly (`null` for unset).
-  # The previous `npm config get | grep -q 'cafile'` substring-matched the
-  # full listing - which always contains `cafile=null` even when unset, so
-  # the condition was always true and the body never ran. Match the same
-  # pattern used in nix/configure/nodejs.sh:107-108. Also gate on CERT_PATH
-  # actually existing - ships-with-distro paths can be missing on minimal
-  # container images.
+  # `npm config get cafile` prints the value (`null` when unset); grepping the
+  # full `npm config get` listing always matches, since it holds `cafile=null`.
+  # CERT_PATH can be missing on minimal container images.
   _existing_cafile="$(npm config get cafile 2>/dev/null || echo null)"
   if { [ "$_existing_cafile" = "null" ] || [ -z "$_existing_cafile" ]; } && [ -f "$CERT_PATH" ]; then
     npm config set -g cafile "$CERT_PATH"
