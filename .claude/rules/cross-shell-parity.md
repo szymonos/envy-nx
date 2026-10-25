@@ -37,10 +37,10 @@ When fixing a shell-init bug, explicitly walk: bash ✓, zsh ✓, pwsh ✓. If p
 
 ## Out of scope for this rule
 
-- **WSL host-side scripts under `wsl/*.ps1`** - those run on the Windows host before any user shell is alive. Different concern, covered by the `wsl-orchestration` review shard.
+- **WSL host-side scripts under `wsl/*.ps1`** - those run on the Windows host before any user shell is alive. Different concern, covered by the `wsl` review shard.
 - **Generated completion files (`completions.bash`, `completions.zsh`)** - auto-generated from `nx_surface.json`; pwsh has its own completer mechanism (`NxCompleter.Tests.ps1`) that's separately tested. Don't hand-edit the generated artifacts.
 - **Tests, CI, pre-commit hooks** - covered by their own shards.
 
 ## Periodic safety net
 
-Even with this rule active, the per-PR cycle can miss things. The [`config-templates`](../../design/reviews/charters/config-templates.md) and [`nx-cli`](../../design/reviews/charters/nx-cli.md) review charters list cross-shell parity as a criterion their periodic review pass checks for. This rule is the first line of defense; the charters are the second.
+Even with this rule active, the per-PR cycle can miss things. The [`shell-config`](../../design/reviews/charters/shell-config.md) and [`doctor-profile`](../../design/reviews/charters/doctor-profile.md) review charters list cross-shell parity as a criterion their periodic review pass checks for. This rule is the first line of defense; the charters are the second.

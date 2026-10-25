@@ -6,11 +6,11 @@ Append-only ledger of operational lessons. Auto-populated by the post-merge `cod
 
 This file is one of three durable ledgers in the repo. They divide cleanly by *what kind of decision they record*:
 
-| Ledger                                              | Records                                                                           | Maintained by                                     |
-| --------------------------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------- |
-| [`docs/decisions.md`](../docs/decisions.md)         | Architectural decisions - why approach A was chosen over B                        | Manual ADR style; PR-reviewed                     |
-| [`design/reviews/accepted.md`](reviews/accepted.md) | Review-triage decisions (`defer`/`dispute`) so the reviewer skips them next cycle | Updated by `/review act` during chunked review    |
-| This file (`design/lessons.md`)                     | Operational lessons - generalizations learned from a specific fix                 | Auto-populated by `codify_learnings.yml` on merge |
+| Ledger                                            | Records                                                                                                  | Maintained by                                     |
+| ------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| [`docs/decisions.md`](../docs/decisions.md)       | Architectural decisions - why approach A was chosen over B                                               | Manual ADR style; PR-reviewed                     |
+| [`design/reviews/history.md`](reviews/history.md) | Standing-review runs and every finding's decision, so the next review of a shard skips what was declined | Written by `/review` at the end of each run       |
+| This file (`design/lessons.md`)                   | Operational lessons - generalizations learned from a specific fix                                        | Auto-populated by `codify_learnings.yml` on merge |
 
 A lesson is **not** the fix itself (the fix lives in the merged code). It is the *rule the fix teaches* - the thing future contributors should know so they avoid the same trap.
 

@@ -75,7 +75,7 @@
   <!-- Act (9 o'clock) -->
   <ellipse cx="450" cy="170" rx="62" ry="22" class="node-bg"/>
   <text x="450" y="167" class="label label-name">Act</text>
-  <text x="450" y="183" class="label label-detail">triage / fixer / verifier</text>
+  <text x="450" y="183" class="label label-detail">agent triage / one question</text>
 
   <!-- Arcs - Plan->Do and Do->Check faded since Do is n/a -->
   <path class="arc-faded" d="M 595 95 Q 630 110 630 148" marker-end="url(#arrowhead-faded)"/>

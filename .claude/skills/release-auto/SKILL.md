@@ -139,7 +139,9 @@ pre-rebase HEAD.
    The CHANGELOG riders (`CHANGELOG.md`, `project-words.txt`, `pyproject.toml`,
    `uv.lock`, `.github/copilot-instructions.md`) go in the final
    `docs(changelog)` group; the last one is there for a review rule added
-   mid-coda, which `recut` would otherwise refuse as an orphan. Keep `Co-Authored-By:` /
+   mid-coda, which `recut` would otherwise refuse as an orphan. A branch carrying
+   `/review` runs also changes `design/reviews/history.md` and charters: give
+   `design/reviews/**` a group with those runs' fixes. Keep `Co-Authored-By:` /
    `Codified-Learning:` lines in `trailers`.
 
 ```bash
