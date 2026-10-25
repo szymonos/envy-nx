@@ -5,6 +5,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.32.4] - 2026-10-25
+
+### Changed
+
+- Copilot CLI setup turns on the footer quota display (`footer.showQuota` in `~/.copilot/settings.json`) when it is unset; an explicit `false`, other settings and a file that is not a single JSON object are left untouched.
+- The weekly nixpkgs bump PR no longer edits `CHANGELOG.md`, so it cannot conflict with release work; the `check-changelog` hook exempts `nix/nixpkgs_rev.json`.
+
 ## [1.32.3] - 2026-10-25
 
 ### Fixed
