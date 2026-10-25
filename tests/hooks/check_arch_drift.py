@@ -26,6 +26,12 @@ B. **Line budgets** - `<!-- arch:max-lines <path> <max> -->`. For counts that
    budget then has to be a deliberate edit to the number. Exact counts (tests
    in a file, hooks in a config) are not guarded: state none in prose.
 
+C. **Review ownership.** Every tracked file is owned by exactly one review
+   shard in `design/reviews/shards.json`, unless its `skip` or `unowned_ok`
+   globs excuse it. A new file nobody owns is never reviewed, and nothing else
+   would say so. The ownership rule itself lives in the `/review` skill's
+   script, so the check and the skill cannot disagree about who owns a file.
+
 Markers live inline next to the claim they guard so the two cannot drift
 apart. HTML comments are safe in these files: `check-md-html-tags` scopes to
 `^docs/.*\.md$`, and `align-tables` only rewrites tables.
@@ -37,6 +43,7 @@ check would defeat the point of having one.
 python3 -m tests.hooks.check_arch_drift
 """
 
+import importlib.util
 import os
 import re
 import shlex
@@ -91,12 +98,13 @@ PATH_RE = re.compile(r"`([.\w-]+(?:/[.\w*-]+)+)(?:::[\w.]+|:\d+)?`")
 
 MARKER_RE = re.compile(r"<!--\s*arch:max-lines\s+(.*?)\s*-->")
 
-# A design proposal describes files that do not exist yet - that is its job, not
-# drift. Such a doc declares itself with `<!-- arch-drift: proposal -->`, which
-# exempts it from the path check only. Line budgets still apply, and the
-# opt-out lives in the document rather than in an allowlist here so it is visible
-# to whoever is reading the proposal.
-PROPOSAL_RE = re.compile(r"<!--\s*arch-drift:\s*proposal\s*-->")
+# A design proposal describes files that do not exist yet, and a record (the
+# review history) quotes findings about files that may since be gone - neither
+# is drift. Such a doc declares itself with `<!-- arch-drift: proposal -->` or
+# `<!-- arch-drift: record -->`, which exempts it from the path check only. Line
+# budgets still apply, and the opt-out lives in the document rather than in an
+# allowlist here so it is visible to whoever is reading it.
+PROPOSAL_RE = re.compile(r"<!--\s*arch-drift:\s*(?:proposal|record)\s*-->")
 
 # Inline code span. A marker written inside backticks is documenting the syntax
 # (§8 of ARCHITECTURE.md does exactly that) and must not be evaluated as a claim.
@@ -180,6 +188,37 @@ def _check_max_lines(root: Path, args: list[str]) -> list[str]:
     return []
 
 
+def _review_module():
+    """The /review skill's script, loaded for its ownership functions."""
+    path = REPO_ROOT / ".claude/skills/review/scripts/review.py"
+    spec = importlib.util.spec_from_file_location("review_skill", path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _check_ownership(root: Path) -> list[str]:
+    """Report tracked files no review shard owns, or two shards tie on."""
+    if not (root / "design/reviews/shards.json").is_file():
+        return []
+    review = _review_module()
+    manifest = review.load_manifest(root)
+    files = review.tracked_files(root)
+    unowned, ambiguous = review.coverage(files, manifest)
+    failures = []
+    for path in unowned:
+        near = review.nearest_shard(path, manifest, files)
+        hint = f" - add a glob to `{near}`, the nearest shard" if near else ""
+        failures.append(f"`{path}` is owned by no review shard{hint}")
+    for path, names in ambiguous.items():
+        failures.append(
+            f"`{path}` is owned by {' and '.join(names)} at the same specificity - "
+            "make one glob more specific"
+        )
+    return failures
+
+
 def main(argv: list[str] | None = None) -> int:
     """Check every agent-facing doc for dead paths and blown line budgets."""
     del argv  # pre-commit passes no filenames; budgets must fire on code edits too
@@ -188,6 +227,8 @@ def main(argv: list[str] | None = None) -> int:
     for doc in _docs():
         for lineno, msg in _check_paths(doc, root) + _check_markers(doc, root):
             failures.append((doc, lineno, msg))
+    manifest = root / "design/reviews/shards.json"
+    failures.extend((manifest, 1, msg) for msg in _check_ownership(root))
 
     if not failures:
         return 0
