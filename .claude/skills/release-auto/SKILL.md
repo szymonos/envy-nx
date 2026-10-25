@@ -101,6 +101,18 @@ pre-rebase HEAD.
    name the same defect. `failed` lists lenses that did not finish - their
    findings are missing.
 
+   **With `audit_rules` true in the payload, keep the review rules current**,
+   independent of `review`. The driver sets it only when `REVIEW.md` exists and
+   `/bootstrap-review` is installed. Run the `review_md.py audit` command the
+   payload gives before the commit plan and fix every finding as an uncommitted
+   edit: update a rule whose file or function moved, delete one whose target is
+   gone. Rerun until no `stale-path` or `stale-symbol` finding remains. Any
+   other kind (`section`, `link`, `legacy`) means onboarding is unfinished: name
+   it in one line, suggest `/bootstrap-review`, and carry on. Also replace a
+   rule's `(<branch> branch)` citation with `(#<PR>)` once that branch's PR
+   exists. The rules file only grows unless a run prunes it,
+   and a stale rule teaches the reviewer a deleted file matters.
+
    **Pass the requirements ledger when the work has one.** A ledger is numbered
    rows each ending `-> Approach N`, `Out: <why>` or `Unsure: <question>`.
    Fetch it from wherever this environment keeps one, save it to a file and add
