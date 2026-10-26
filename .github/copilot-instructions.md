@@ -76,7 +76,7 @@ Load-bearing constraints (`ARCHITECTURE.md` §5 and §7 hold the full list):
 Pre-commit hooks (`prek`): shellcheck, shfmt, ruff, markdownlint, cspell, check-bash32,
 check-zsh-compat, check-no-aliased-builtins (bare `mv`/`cp`), check-no-tty-read, check-distro-case-arm,
 check-curl-tls, check-nx-generated, check-executables-have-shebangs, check-shebang-scripts-are-executable,
-validate-scopes, check-changelog, check-learning-trailer, check-arch-drift, check-skills, gremlins,
+validate-scopes, check-changelog, check-arch-drift, check-skills, gremlins,
 bats and Pester tests. CI runs Linux and macOS integration tests, the all-scopes env build and the
 cross-version upgrade walk.
 
@@ -86,7 +86,6 @@ cross-version upgrade walk.
   from upstream `ps-modules`; fix upstream, not here.
 - `.assets/config/shell_cfg/completions.{bash,zsh}` and every other artifact
   `tests/hooks/gen_nx_completions.py` writes from `.assets/lib/nx_surface.json`.
-- `design/lessons.md` - appended by the `codify_learnings.yml` workflow.
 - `uv.lock`.
 
 ### Author decisions
@@ -107,7 +106,6 @@ cross-version upgrade walk.
 - **OTBS braces in PowerShell** are the project convention.
 - **pwsh aliases in `_aliases_nix.ps1` are not gated on a TTY** like the bash ones - agents run bash, and a
   pwsh profile is never in their shell snapshot. (`ARCHITECTURE.md` §7.10)
-- **`# no-learning`** in a commit body is a deliberate opt-out of `check-learning-trailer`.
 - **A PowerShell `clean {}` block is enough to remove temp files** - it runs on Ctrl-C and on uncaught
   exceptions. (certs standing review, 2026-05-13)
 - **`.assets/fix/*.sh` are execution-only** - source-safety is not part of their contract.

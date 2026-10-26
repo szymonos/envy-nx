@@ -5,6 +5,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.32.9] - 2026-10-26
+
+### Changed
+
+- The PowerShell style rule covers two silent-success traps: an empty pipeline binding `$null` to a Mandatory array parameter, and a library dot-sourced under `SilentlyContinue`.
+- CONTRIBUTING now says where a lesson goes, replacing the lessons ledger: a hook, a comment at the point of use, a path rule, a review rule or a decision record.
+
+### Removed
+
+- The `Codified-Learning:` trailer pipeline: the `codify_learnings.yml` workflow, the `check-learning-trailer` commit-msg hook and the `design/lessons.md` ledger.
+
 ## [1.32.8] - 2026-10-25
 
 ### Fixed

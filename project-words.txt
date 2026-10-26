@@ -35,7 +35,6 @@ cutover
 cword
 debconf
 dedup
-direnv
 diskpart
 distrobox
 distros
