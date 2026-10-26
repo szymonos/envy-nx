@@ -22,6 +22,7 @@ globs: ["*.ps1", "*.psm1", "*.psd1"]
 
 - Use `[Parameter(Mandatory, Position = 0)]` for required positional parameters
 - Use `[Alias('s')]` for short parameter aliases (single letter)
+- A pipeline that yields nothing binds `$null`, not `@()`: a Mandatory array parameter needs `[AllowNull()]` beside `[AllowEmptyCollection()]`, and the caller wraps the producing pipeline in `@()`. A loop over either runs zero times, so guard emptiness explicitly or the function succeeds having done nothing
 - Use `[ValidateSet(...)]` for enums, `[ValidateNotNullOrEmpty()]` for required strings, `[ValidateScript({ ... })]` for complex validation
 - Switches are never mandatory
 - Use parameter splatting for >3 parameters; cast switches to bool when passing: `-WebDownload ([bool]$WebDownload)`
@@ -31,6 +32,7 @@ globs: ["*.ps1", "*.psm1", "*.psd1"]
 
 - Set `$ErrorActionPreference = 'Stop'` in `begin` block
 - Use specific exception types in catch blocks before generic catch-all
+- A library dot-sourced under `$ErrorActionPreference = 'SilentlyContinue'` cannot fail loudly: a missing or unparsable file leaves its helpers undefined and every call returns `$null` with exit 0. Probe one helper with `Get-Command` after the dot-source and gate the call sites on it
 - Check `$LASTEXITCODE` immediately after external command invocations (`wsl.exe`, native binaries)
 - Use `Show-LogContext` for structured logging with `-Level` (INFO, WARNING, ERROR, DEBUG) and `-ErrorStackTrace $_.ScriptStackTrace`
 
