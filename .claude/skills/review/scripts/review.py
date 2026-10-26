@@ -867,7 +867,7 @@ def cmd_finish(args: argparse.Namespace) -> int:
     )
     if hook.returncode != 0:
         raise ReviewError(
-            "commit-msg hooks failed - pass the trailer they ask for and run "
+            "commit-msg hooks failed - fix what they name and run "
             f"finish again:\n{(hook.stdout + hook.stderr).strip()[-3000:]}"
         )
     git("commit", "-q", "--no-verify", "-F", str(msg_file))

@@ -31,8 +31,7 @@ Why this hook exists: agent runtimes differ in how strictly they enforce the
 spec. Claude Code is lenient about over-cap descriptions and loads the skill
 anyway; GitHub Copilot CLI strictly validates and silently drops the skill
 directory from its registry (e.g., `~/.copilot/skills/`) on sync. Catching
-violations at commit time prevents that asymmetric, silent-failure regression
-(see design/lessons.md L-011).
+violations at commit time prevents that asymmetric, silent-failure regression.
 
 Usage:
     # Pre-commit invokes the script directly (entry: tests/hooks/check_skills.py,

@@ -575,18 +575,9 @@ For a dynamic value completer (e.g. listing installed packages, scope names):
 4. Regenerate completers: `python3 -m tests.hooks.gen_nx_completions`.
 5. Run `make lint`.
 
-### 6.9. Codify a learning
+### 6.9. Record a lesson
 
-When a fix or refactor teaches a generalization future contributors should know, route it into `design/lessons.md` via the trailer + workflow path rather than hand-editing the ledger.
-
-1. Add a `Codified-Learning: <one-line generalization>` trailer to the commit body (or `Codified-Learning(<tag>): <text>` for an optional grouping tag - defaults to `general`).
-2. Push, get the PR reviewed and merged.
-3. `.github/workflows/codify_learnings.yml` fires on merge; runs `tests/hooks/codify_learnings.py` against `gh pr view --json commits,mergeCommit` output.
-4. The workflow opens a follow-up PR `codify/PR-<N>-L-NNN` whose single change is the appended entry/entries in `design/lessons.md` with the source PR link + merge SHA pre-filled. The PR is queued for auto-merge (`gh pr merge --auto --squash`).
-5. If lint fails on the follow-up PR (rare - usually a markdown line-length issue from a long trailer), close it and re-issue from a shorter trailer in a follow-up commit, or fix in-place.
-6. **Do not hand-edit `design/lessons.md`** in the normal flow; the workflow owns the file shape and the auto-generated tag index. The L-000 seed entry shows the richer hand-authored format if you want to enrich an auto-generated entry later.
-
-The `check-learning-trailer` pre-commit hook (commit-msg stage) nudges contributors when high-leverage changes (`.assets/lib/nx_*.sh`, `nix/lib/phases/*.sh`, `tests/hooks/*.py`) lack a trailer. Skippable via `# no-learning` anywhere in the commit body for changes that genuinely teach no generalization.
+A lesson goes where its reader already looks: a hook, a comment at the point of use, a path rule or §7 constraint, a review rule, or a decision record - the first that fits. The order and examples are in `CONTRIBUTING.md` § "Recording a lesson".
 
 ## 7. Constraints reference
 
@@ -766,7 +757,6 @@ Configured in `.pre-commit-config.yaml`, run via `prek` (not `pre-commit`).
 | `check-curl-tls`            | `check_curl_tls.py`            | Requires `--proto` and `--tlsv1.2` on every *executing* curl/wget fetch in `.assets/` and `nix/`. Skips comments, examples blocks, output-helper strings, package names, existence probes; resolves flags held in a variable. Suppress with `# tls-probe-ok: <reason>`. See §7.12.                                                                                                            |
 | `check-md-html-tags`        | `check_md_html_tags.py`        | Forbids unbalanced tag-like `<...` in `docs/*.md` - Python-Markdown's HTML preprocessor eats them and silently drops the rest of the page                                                                                                                                                                                                                                                     |
 | `check-changelog`           | `check_changelog.py`           | Runtime file changes require CHANGELOG entry under `[Unreleased]`, except `nix/nixpkgs_rev.json` (bypass via `skip-changelog` label)                                                                                                                                                                                                                                                          |
-| `check-learning-trailer`    | `check_learning_trailer.py`    | Commit-msg stage: nudges for a `Codified-Learning:` trailer when high-leverage paths are staged. Skippable with `# no-learning`                                                                                                                                                                                                                                                               |
 | `check-nx-generated`        | `check_nx_completions.py`      | All generated artifacts match `nx_surface.json`: bash/zsh/PS completers, `_nx_lifecycle_help` body, `_nx_verb_help`, `nx_main` case arms, PS `nx:dispatch` region, lib-file for-loops in 2 sync/audit sites. Regenerate via `python3 -m tests.hooks.gen_nx_completions`. Replaces 4 earlier parity hooks.                                                                                     |
 | `check-arch-drift`          | `check_arch_drift.py`          | Agent-facing docs match the tree: every backtick-quoted repo path exists, every `<!-- arch:max-lines -->` budget still holds, and every tracked file has exactly one review shard in `design/reviews/shards.json`. Covers this file, `CONTRIBUTING.md`, `.claude/rules/*.md`, `design/**`. A proposal or a record opts out of the path check with `<!-- arch-drift: proposal -->` / `record`. |
 | `bats-tests`                | `run_bats.py`                  | Runs bats unit tests when relevant files change (parses `source` directives to map files to tests)                                                                                                                                                                                                                                                                                            |

@@ -132,10 +132,10 @@ def test_commit_message_with_trailers() -> None:
     msg = release.commit_message(
         {
             "message": "feat: x",
-            "trailers": ["Codified-Learning: L-1", "Co-Authored-By: C <c@x>"],
+            "trailers": ["Reviewed-By: R <r@x>", "Co-Authored-By: C <c@x>"],
         }
     )
-    assert msg == "feat: x\n\nCodified-Learning: L-1\nCo-Authored-By: C <c@x>"
+    assert msg == "feat: x\n\nReviewed-By: R <r@x>\nCo-Authored-By: C <c@x>"
 
 
 # -- backup_ref ---------------------------------------------------------------

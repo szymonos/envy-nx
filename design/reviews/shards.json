@@ -14,6 +14,7 @@
     "uv.lock"
   ],
   "unowned_ok": [
+    ".assets/certs/*",
     "docs/*",
     "design/*",
     "*.md",
@@ -222,7 +223,6 @@
       "owns": [
         "tests/hooks/*",
         "tests/bats/diagnose.sh",
-        "tests/bats/test_codify_learnings.bats",
         ".assets/docker/*",
         "Makefile",
         "pyproject.toml",
