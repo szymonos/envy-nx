@@ -90,12 +90,6 @@ repos:
         language: system
         pass_filenames: true
         files: (CHANGELOG\.md|nix/|\.assets/lib/|\.assets/config/|\.assets/setup/|\.assets/provision/|wsl/)
-      - id: check-learning-trailer
-        name: Nudge for Codified-Learning trailer on high-leverage changes
-        entry: python3 -m tests.hooks.check_learning_trailer
-        language: system
-        stages: [commit-msg]
-        always_run: true
       - id: check-skills
         name: validate Claude Skills frontmatter (spec compliance)
         entry: tests/hooks/check_skills.py

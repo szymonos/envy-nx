@@ -15,7 +15,7 @@
     "(CHANGELOG.md, project-words.txt, pyproject.toml, uv.lock,",
     ".github/copilot-instructions.md) in the final docs(changelog) group.",
     "trailers are stored as structured lines so a re-cut never re-types a",
-    "Codified-Learning heredoc (decision 3)."
+    "trailer heredoc (decision 3)."
   ],
   "version": "1.16.0",
   "groups": [
@@ -24,7 +24,7 @@
       "prefix": "feat",
       "message": "feat(provision): MSAL browser-auth shim for headless Linux",
       "trailers": [
-        "Codified-Learning: provisioning gated on a not-yet-installed module silently no-ops"
+        "Co-Authored-By: Claude <noreply@anthropic.com>"
       ]
     },
     {

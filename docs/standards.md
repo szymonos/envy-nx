@@ -6,11 +6,11 @@ This tool provisions developer environments - if it breaks, developers cannot wo
 
 | Metric                       | Value                                                                       |
 | ---------------------------- | --------------------------------------------------------------------------- |
-| Unit test files              | 47 (37 bats + 10 Pester)                                                    |
-| Individual test cases        | 930 (766 bats + 164 Pester)                                                 |
-| Test code                    | 11,100+ lines                                                               |
-| Custom pre-commit hooks      | 18 local hooks                                                              |
-| Pre-commit checks per commit | 30 hooks                                                                    |
+| Unit test files              | 53 (39 bats + 11 Pester + 3 pytest)                                         |
+| Individual test cases        | 1,234 (890 bats + 193 Pester + 151 pytest)                                  |
+| Test code                    | 17,400+ lines                                                               |
+| Custom pre-commit hooks      | 17 local hooks                                                              |
+| Pre-commit checks per commit | 29 hooks                                                                    |
 | CI workflows                 | 7 (preflight, CodeQL, Linux, macOS, upgrade walk, release, docs)            |
 | CI matrix axes               | 5 (Linux daemon, Linux rootless, Linux tarball, macOS Sequoia, macOS Tahoe) |
 | Platforms validated per PR   | macOS (bash 3.2 + BSD), Ubuntu (bash 5 + GNU)                               |
@@ -46,11 +46,11 @@ The checks downstream exist to enforce four invariants. Reading them first makes
 
 ## Pre-commit hooks
 
-Every commit passes through 30 hooks split across two categories: **custom hooks** (Python scripts maintained in this repo, purpose-built for this codebase's invariants) and **vendored hooks** (third-party hooks pulled in via `.pre-commit-config.yaml`, covering general-purpose checks). For exact file scopes, hook IDs, and pinned revisions, read `.pre-commit-config.yaml` directly -- the tables below describe intent.
+Every commit passes through 29 hooks split across two categories: **custom hooks** (Python scripts maintained in this repo, purpose-built for this codebase's invariants) and **vendored hooks** (third-party hooks pulled in via `.pre-commit-config.yaml`, covering general-purpose checks). For exact file scopes, hook IDs, and pinned revisions, read `.pre-commit-config.yaml` directly -- the tables below describe intent.
 
 ### Custom hooks
 
-18 local hooks, wired in as `repo: local` entries and backed by `tests/hooks/`:
+17 local hooks, wired in as `repo: local` entries and backed by `tests/hooks/`:
 
 | Hook                          | Why it exists                                                                                                                                                                                                                                                  |
 | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -66,7 +66,6 @@ Every commit passes through 30 hooks split across two categories: **custom hooks
 | `check-curl-tls`              | Requires `--proto` and `--tlsv1.2` on every executing curl/wget fetch. Most of the hook is the false-positive surface: comments, examples blocks, output-helper strings, package names and existence probes all mention curl.                                  |
 | `check-md-html-tags`          | Forbids unbalanced tag-like `<...` substrings in `docs/*.md` -- Python-Markdown's HTML preprocessor consumes them as malformed tag openers (even inside backticks), silently dropping subsequent rendered content. Recurrence guard.                           |
 | `check-changelog`             | Runtime file changes require a CHANGELOG entry under `[Unreleased]`, except `nix/nixpkgs_rev.json`. Can be skipped via a label when the change is genuinely doc-only.                                                                                          |
-| `check-learning-trailer`      | Commit-msg hook nudging for a `Codified-Learning:` trailer when high-leverage paths (`.assets/lib/nx_*.sh`, `nix/lib/phases/*.sh`, `tests/hooks/*.py`) are staged. Skippable via `# no-learning`.                                                              |
 | `check-nx-generated`          | The `nx` CLI's bash, zsh, and PowerShell completers are generated from a single JSON surface description. Catches mismatches between the source and the generated artifacts -- usually means somebody hand-edited a generated file.                            |
 | `check-arch-drift`            | Holds the design docs to the tree they describe: a backtick-quoted repo path that no longer exists, or a stated line budget / test count that has drifted, fails the commit. These docs are what a contributor or agent is told to trust before changing code. |
 | `bats-tests` / `pester-tests` | Smart test runners that map changed files to the tests that source them -- only re-runs tests the change could affect, not the full suite.                                                                                                                     |
@@ -88,13 +87,15 @@ Third-party hooks for general-purpose checks. Each is a problem the project woul
 
 ## Unit tests
 
-37 bats files cover bash logic: scope dependency resolution, `nx` CLI commands and tab completers, managed-block injection / removal, profile migration, the overlay system, health checks, certificate handling, manager-scope removal hooks (`conda`, `nodejs`, `python`), the colima.yaml cert provisioner, and zsh runtime smoke tests.
+39 bats files cover bash logic: scope dependency resolution, `nx` CLI commands and tab completers, managed-block injection / removal, profile migration, the overlay system, health checks, certificate handling, manager-scope removal hooks (`conda`, `nodejs`, `python`), the colima.yaml cert provisioner, and zsh runtime smoke tests.
 
-10 Pester files mirror this for PowerShell components: WSL orchestration (high-level integration in `WslSetup.Tests.ps1`), the 16 phase functions extracted from `wsl/wsl_setup.ps1` into the `utils-setup` module (`WslSetupPhases.Tests.ps1` - 56 unit tests across the new module surface), scope parsing, certificate conversion, and the `nx` CLI argument completer.
+11 Pester files mirror this for PowerShell components: WSL orchestration (high-level integration in `WslSetup.Tests.ps1`), the phase functions extracted from `wsl/wsl_setup.ps1` into the `utils-setup` module (`WslSetupPhases.Tests.ps1`), scope parsing, certificate conversion, and the `nx` CLI argument completer.
+
+3 pytest files cover the pure logic of the `/review` and `/release-auto` skill scripts - shard ownership, triage bookkeeping and history records for `/review`, commit-plan handling and message assembly for `/release-auto` - and the Ctrl-C handling in the bats runner.
 
 Phase functions from `nix/lib/phases/` are tested by sourcing them directly and overriding the `_io_nix` / `_io_run` / `_io_curl_probe` side-effect wrappers - three lines per test, no mocking framework, no external dependencies. The same pattern works identically on bash 3.2 and bash 5, so a single test file proves both portability and correctness.
 
-Tests run locally in two ways: the file-aware `bats-tests` and `pester-tests` pre-commit hooks (only relevant tests on commit) and `make test-unit` (the full suite, parallelized across 4 bats workers and one Pester session). Both paths complete in under 30 seconds on a modern laptop.
+Tests run locally in two ways: the file-aware `bats-tests` and `pester-tests` pre-commit hooks (only relevant tests on commit) and `make test-unit` (the full suite, parallelized across 4 bats workers and one Pester session, plus pytest). Both paths complete in under 30 seconds on a modern laptop.
 
 ## CI pipelines
 
@@ -169,7 +170,7 @@ Every check, test, build, and operation in this repo is reachable through a `mak
 ```bash
 make install                      # install pre-commit hooks (one-time)
 make lint                         # run hooks on changed files (before every commit)
-make test-unit                    # bats + Pester unit tests (fast, no Docker)
+make test-unit                    # bats + Pester + pytest unit tests (fast, no Docker)
 make test                         # all tests including Docker smoke tests
 make test-nix                     # Docker smoke test for the nix path
 make test-upgrade-walk            # cross-version upgrade walk in Docker
@@ -222,11 +223,3 @@ A run goes to the end without a question in the middle:
 - **A machine-checked finish** - `review.py finish` refuses while any finding, hand-off or escalation lacks a decision, runs `make test-unit`, and records the run in `design/reviews/history.md`.
 
 The fixes then reach a PR through `/release-auto`, which reviews them again and gives them one Copilot round. This is **manual machinery, not automated**: no cron, no CI gate, no auto-merge. Its value is a periodic outside view on the standing state, with the bias controls in the agent definitions and the limits in a script. Design rationale: [Process decisions](decisions.md#process-decisions).
-
-### Operational lessons - per-PR auto-codification
-
-Where the chunked review framework is *periodic + per-shard + manual*, the operational-lessons ledger ([`design/lessons.md`](https://github.com/szymonos/envy-nx/blob/main/design/lessons.md)) is the *per-PR + auto-codified* complement. Contributors add a `Codified-Learning: <generalization>` trailer to commit bodies; the post-merge `codify_learnings.yml` workflow scrapes those trailers and appends numbered entries to `design/lessons.md` via an auto-merging follow-up PR. No hand-editing of the ledger in the normal flow; no per-cycle triage burden.
-
-This lives alongside two other durable ledgers: `docs/decisions.md` (architectural ADRs, hand-maintained) and `design/reviews/history.md` (standing-review runs and decisions, written by `/review`). Each ledger answers a different question - **why we chose this architecture** (`decisions.md`), **what a review decided about each finding** (`history.md`), and **what generalization this fix taught** (`lessons.md`) - so they compound without overlap. The full convention is documented in `CONTRIBUTING.md` § "Codifying learnings".
-
-This layer is tool-agnostic by design: `AGENTS.md` + `design/lessons.md` + the trailer convention + the GitHub Action together form the L4 compounding loop that works for every contributor whether they use Claude Code, Codex, GitHub Copilot, Cursor, Aider, or no AI agent at all.

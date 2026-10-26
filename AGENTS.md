@@ -12,13 +12,12 @@ Universal, cross-platform system configuration and developer environment setup. 
 
 ## Compound knowledge
 
-Three knowledge layers beyond this file. Read on demand, not upfront:
+Two knowledge layers beyond this file. Read on demand, not upfront:
 
 | Layer                                            | When to read                                                            | What it answers         |
 | ------------------------------------------------ | ----------------------------------------------------------------------- | ----------------------- |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md)             | Reasoning about or modifying phases, scopes, nx CLI, hooks, constraints | How things connect      |
 | [`design/decisions/`](design/decisions/INDEX.md) | Questioning why the project uses approach A over B                      | Why things are this way |
-| [`design/lessons.md`](design/lessons.md)         | Fixing bugs in shell-init, caching, profiles                            | What went wrong before  |
 
 ## Architecture
 

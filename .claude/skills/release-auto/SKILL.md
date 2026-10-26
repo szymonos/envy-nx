@@ -141,8 +141,8 @@ pre-rebase HEAD.
    `docs(changelog)` group; the last one is there for a review rule added
    mid-coda, which `recut` would otherwise refuse as an orphan. A branch carrying
    `/review` runs also changes `design/reviews/history.md` and charters: give
-   `design/reviews/**` a group with those runs' fixes. Keep `Co-Authored-By:` /
-   `Codified-Learning:` lines in `trailers`.
+   `design/reviews/**` a group with those runs' fixes. Keep `Co-Authored-By:`
+   lines in `trailers`.
 
 ```bash
 echo '{"cspell_add": [], "version_final": "<X.Y.Z>", "plan_written": true}' | .claude/skills/release-auto/scripts/release.py resume --decision -

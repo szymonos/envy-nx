@@ -63,46 +63,17 @@ All `lint*` targets accept `HOOK=<id>` to run a single hook (e.g. `make lint-all
 - **Tests pass.** `make test-unit` must pass. The smart test runners (`bats-tests`, `pester-tests`) auto-run relevant tests on changed files.
 - **Constraints respected.** Bash 3.2 / zsh-compat / file-shebang rules are enforced by hooks; if one fires, see `ARCHITECTURE.md` §7 for the rule and the rationale.
 
-## Codifying learnings
+## Recording a lesson
 
-When a fix or refactor teaches a generalization future contributors should know - a constraint, a non-obvious pattern, a class-of-bug to watch for - add a `Codified-Learning:` trailer to the commit body. The post-merge [`codify_learnings.yml`](.github/workflows/codify_learnings.yml) workflow scrapes those trailers and auto-appends numbered entries to [`design/lessons.md`](design/lessons.md) via a separate auto-merging PR. No hand-editing of `lessons.md` for the normal flow.
+A fix that teaches something general - a constraint, a non-obvious pattern, a class of bug - goes where the next person to make the mistake will read it, not into a ledger. Take the first place that fits:
 
-Trailer syntax:
+1. **A pre-commit hook** when the mistake is mechanically detectable (`check-curl-tls`, `check-distro-case-arm`).
+2. **A comment at the point of use** when it is about one function or file.
+3. **A rule for whoever writes that code** - `.claude/rules/*.md` for a language or path, `ARCHITECTURE.md` §7 for a cross-cutting constraint.
+4. **A review rule** - the shard charter's "What NOT to flag", or `### Author decisions` in `.github/copilot-instructions.md` - when reviewers keep flagging a deliberate choice.
+5. **A decision record** in `design/decisions/` when it settles A over B.
 
-```text
-Codified-Learning: <one-line generalization>                  # tag = "general"
-Codified-Learning(do-not-repeat): <one-line generalization>   # tag = "do-not-repeat"
-```
-
-Two real-world-shaped examples:
-
-```text
-fix(profile): guard prompt() against re-init under OMP
-
-Codified-Learning: In pwsh profile scripts, never define `function Prompt`
-unconditionally - the last function definition wins, so a fallback prompt
-clobbers oh-my-posh's installed prompt.
-```
-
-```text
-fix(pwsh): always invoke pwsh via _io_pwsh_nop, never bare pwsh
-
-Codified-Learning(do-not-repeat): nix-built pwsh leaks LD_LIBRARY_PATH
-into child processes; the wrapper clears it before invoking and falls back
-to system pwsh on Coder/Ubuntu where ~/.nix-profile/bin/pwsh is absent.
-```
-
-**When to opt out.** A pre-commit hook (`check-learning-trailer`) nudges when commits touch high-leverage paths (`.assets/lib/nx_*.sh`, `nix/lib/phases/*.sh`, `tests/hooks/*.py`) without a trailer. If the commit genuinely teaches no generalization (trivial refactor, dependency bump, typo fix), add `# no-learning` anywhere in the commit body to skip the nudge.
-
-**Where lessons live vs other ledgers.** Three durable ledgers divide the space:
-
-| Ledger                      | Records                                          | Maintained by                               |
-| --------------------------- | ------------------------------------------------ | ------------------------------------------- |
-| `docs/decisions.md`         | Architectural decisions (why A over B)           | Manual ADR style; PR-reviewed               |
-| `design/reviews/history.md` | Standing-review runs, decisions and hand-offs    | Written by `/review` at the end of each run |
-| `design/lessons.md`         | Operational lessons - generalizations from fixes | Auto-populated by `codify_learnings.yml`    |
-
-A lesson is the *rule the fix teaches*, not the fix itself (the fix is the merged code).
+The commit message carries the story of how it was found; `git log --grep` is the archive.
 
 ## Where things live
 
