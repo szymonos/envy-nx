@@ -469,7 +469,8 @@ def cmd_prepare(args: argparse.Namespace) -> int:
         "decision_log": str(DECISION_LOG),
         "reviewer_prompt": _reviewer_prompt(shard, mine, INTENT_FILE),
         "next": (
-            f"Run `{CLI} second-opinion` in the background (Bash timeout 600000) and "
+            f"Run `{CLI} second-opinion --caller <your own model id>` in the "
+            "background (Bash timeout 600000) and "
             "spawn the reviewer subagent with reviewer_prompt at the same time. Then "
             f"triage every finding into {DECISION_LOG}."
         ),
@@ -510,6 +511,9 @@ def cmd_second_opinion(args: argparse.Namespace) -> int:
         str(REPO / INTENT_FILE),
         "--timeout",
         str(args.timeout),
+        # review_brief.py picks the other model family from the caller's own id.
+        *(["--caller", args.caller] if args.caller else []),
+        # Last: --files takes every argument after it.
         "--files",
         *files,
     ]
@@ -525,7 +529,15 @@ def cmd_second_opinion(args: argparse.Namespace) -> int:
     report = json.loads(result.stdout)
     kept = {
         k: report.get(k)
-        for k in ("model", "model_reasons", "failed", "unparsed", "count", "findings")
+        for k in (
+            "model",
+            "model_reasons",
+            "usage",
+            "failed",
+            "unparsed",
+            "count",
+            "findings",
+        )
         if k in report
     }
     out.write_text(json.dumps(kept, indent=2) + "\n", encoding="utf-8")
@@ -874,6 +886,7 @@ def cmd_finish(args: argparse.Namespace) -> int:
     shutil.rmtree(REPO / STATE_DIR)
     skipped = reports["second-opinion.json"].get("skipped")
     failed = reports["second-opinion.json"].get("failed")
+    usage = reports["second-opinion.json"].get("usage")
     print(
         json.dumps(
             {
@@ -884,6 +897,7 @@ def cmd_finish(args: argparse.Namespace) -> int:
                 "distinct": distinct_causes(rows),
                 **({"second_opinion_skipped": skipped} if skipped else {}),
                 **({"second_opinion_failed_lenses": failed} if failed else {}),
+                **({"second_opinion_usage": usage} if usage else {}),
                 "next": "Hand the branch to /release-auto once the reviews "
                 "you want are in.",
             },
@@ -908,6 +922,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.set_defaults(func=cmd_prepare)
     p = sub.add_parser("second-opinion", help="Review the shard with second-opinion")
+    p.add_argument(
+        "--caller",
+        metavar="MODEL",
+        help="Your own model id; the review runs on the other model family",
+    )
     p.add_argument(
         "--timeout", type=int, default=540, help="Seconds per lens pass (default 540)"
     )
