@@ -5,6 +5,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.32.10] - 2026-10-31
+
+### Changed
+
+- `/release-auto` runs the Copilot round through `pr_review.py drive` and answers every thread with `settle`, so outdated threads are triaged and each resolved thread carries its reason.
+- `/release-auto push --done` posts one `## Review decisions` comment with each review's model, time and credits; a failed post keeps the run, and the retry edits that comment.
+- `/release-auto` audits the review rules again at the end of the review, catching rules added during the Copilot round and citing them by PR number.
+- `/release-auto second-opinion` and `/review second-opinion` take `--caller`, so the review runs on the other model family from the agent's own.
+
 ## [1.32.9] - 2026-10-26
 
 ### Changed
