@@ -31,7 +31,8 @@ Usage (from the repo root):
     .claude/skills/release-auto/scripts/release.py start --version X.Y.Z [--skip-review]
         [--claude-review]
     .claude/skills/release-auto/scripts/release.py resume --decision -
-    .claude/skills/release-auto/scripts/release.py second-opinion [--fixes NOTES]
+    .claude/skills/release-auto/scripts/release.py second-opinion [--caller MODEL]
+        [--fixes NOTES]
     .claude/skills/release-auto/scripts/release.py copilot-review
     .claude/skills/release-auto/scripts/release.py recut
     .claude/skills/release-auto/scripts/release.py push [--done [--force]]
@@ -47,6 +48,7 @@ import importlib.util
 import json
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import sys
@@ -68,8 +70,15 @@ GATE_FILE = STATE_DIR / "gate.json"
 INTENT_FILE = STATE_DIR / "intent.md"
 # The requirements ledger given at phase 1, reused by the fix review.
 REQUIREMENTS_FILE = STATE_DIR / "requirements.md"
-# Every review call the agent makes, posted to the PR when the run finishes.
-DECISION_LOG = STATE_DIR / "decision-log.md"
+# Every review call the agent makes, as address-pr-review's decisions JSON:
+# `settle` replies to and resolves each thread from it, and `push --done` posts
+# it to the PR.
+DECISION_LOG = STATE_DIR / "decisions.json"
+# One line per review run - model, time, credits - tabled under the decisions.
+REVIEWS_LOG = STATE_DIR / "reviews.jsonl"
+# Lives in the repo rather than ~/.claude/skills, so rules_added() reads it at a
+# fixed path; REVIEW.md links to it.
+RULES_FILE = ".github/copilot-instructions.md"
 
 EXIT_OK = 0
 EXIT_ERROR = 1
@@ -121,12 +130,14 @@ TRIAGE_SUMMARY = (
 # Escalations wait through the reviews and possibly a compaction, so
 # the decision log holds them rather than the agent's memory.
 HELD = (
-    f"the held escalations are the rows whose call is escalate in {DECISION_LOG} "
-    "and that no `end` row answers yet - none left means nothing to ask; ask them "
-    "in one AskUserQuestion and append each answer as its own row, "
-    "`| end | <finding> | asked: fix / left open / declined | <author's reason> |`. "
-    "A fix is an edit and a resolve of its thread; the other way is a reply giving "
-    "the author's reason, then a resolve"
+    f"the held escalations are the decisions in {DECISION_LOG} whose call is "
+    "still escalate and whose why is empty - none means nothing to ask; ask them "
+    "in one AskUserQuestion and rewrite each answered row: a fix is an edit, call "
+    "fix and a why saying what changed; the other way is call decline with the "
+    "author's reason; 'Leave open' stays escalate with the user's reason as why, "
+    "so it is never asked again, its thread left for a human reviewer. Add one "
+    "note per question asked ('Asked: ... - left as is.'), then, when an answered "
+    f"row carries a thread, run `{PR_REVIEW_SCRIPT} settle {DECISION_LOG}`"
 )
 
 # Workflows gated on this PR label run the integration suite. The label also
@@ -860,6 +871,7 @@ def phase_start(
     version), gather extract/cspell/diff signals. Then gate so the agent can
     compose CHANGELOG prose, classify cspell findings, and author the plan.
     """
+    started_at = time.time()
     refuse_shared_branch()
     tag = last_tag()
     if not tag:
@@ -919,8 +931,14 @@ def phase_start(
         run_make("upgrade")
 
     is_rerun = version_exists(version)
+    audit_rules = RULES_AUDIT_SCRIPT.is_file() and Path("REVIEW.md").exists()
     state = {
         "version": version,
+        # The decisions comment reports the run's time, and run_id lets a retried
+        # `push --done` edit that comment rather than post a second one.
+        "started_at": started_at,
+        "run_id": secrets.token_hex(6),
+        "audit_rules": audit_rules,
         "skip_review": skip_review,
         "last_tag": tag,
         "reset_target": tag,  # first cut; re-run target refined at plan time
@@ -938,7 +956,6 @@ def phase_start(
     reviewed = not (skip_review or reopen)
     review = reviewed and BRIEF_SCRIPT.is_file()
     claude_review = reviewed and claude_review and _claude_code(claude_review)
-    audit_rules = RULES_AUDIT_SCRIPT.is_file() and Path("REVIEW.md").exists()
     context = {
         "version": version,
         "is_rerun": is_rerun,
@@ -958,14 +975,17 @@ def phase_start(
         )
         + (
             f"review is true: after the CHANGELOG is written, run `{CLI} "
-            "second-opinion` - adding `--requirements <file>` when the work behind "
-            "the release has a requirements ledger, wherever this environment keeps "
-            f"one - and triage its findings yourself ({TRIAGE_SUMMARY}; "
-            f"full rules between the triage-rules markers in "
-            f"{TRIAGE_RULES['second-opinion']}). Leave fixes uncommitted - the plan "
-            f"folds them in - and append one row per finding to {DECISION_LOG} as "
-            "`| pre-push | <path:line> <one line> | <call> | <why> |`; an "
-            "escalate row is held there until the end of the review. "
+            "second-opinion --caller <your own model id>` - adding `--requirements "
+            "<file>` when the work behind the release has a requirements ledger, "
+            "wherever this environment keeps one - and triage its findings "
+            f"yourself ({TRIAGE_SUMMARY}; full rules between the triage-rules "
+            f"markers in {TRIAGE_RULES['second-opinion']}). Leave fixes "
+            "uncommitted - the plan folds them in - and record one decision per "
+            f"finding in {DECISION_LOG}, written with the file tool: "
+            '{"decisions": [{"round": "pre-push", "finding": "<path:line> <one '
+            'line>", "call": "<call>", "why": "<why>"}], "notes": []}. An '
+            "escalate row leaves why empty and is held there until the end of the "
+            "review. "
             if review
             else ""
         )
@@ -1297,7 +1317,9 @@ def resume_push(state: dict, decision: dict) -> int:
                 "version": state["version"],
                 "review_coda": layers,
                 "fix_cycles_left": CODA_PUSH_CAP - state.get("coda_pushes", 0),
-                "next": _coda_next(CODA_PUSH_CAP - state.get("coda_pushes", 0), layers),
+                "next": _coda_next(
+                    CODA_PUSH_CAP - state.get("coda_pushes", 0), layers, state
+                ),
             },
             indent=2,
         )
@@ -1556,12 +1578,12 @@ def _finish(state: dict, message: str, *, check_threads: bool = True) -> int:
     """
     # No address-pr-review skill means no way to ask, and nothing to warn about.
     still_open = open_threads() if check_threads and PR_REVIEW_SCRIPT.is_file() else []
-    post_decision_log()
+    decisions = post_decision_log(state)
     integration = trigger_integration()
     delete_backup(state["version"])
     _wipe_state_dir()
     print(message)
-    print(json.dumps({"integration": integration}, indent=2))
+    print(json.dumps({"decisions": decisions, "integration": integration}, indent=2))
     if still_open is None:
         print(
             "WARNING: could not check for unresolved review threads - verify the "
@@ -1582,32 +1604,90 @@ def _finish(state: dict, message: str, *, check_threads: bool = True) -> int:
     return EXIT_OK
 
 
-def post_decision_log() -> None:
-    """
-    Post the run's review decisions as one PR comment, before ``.release/`` goes.
+def rules_added(state: dict) -> list[str]:
+    """The bold labels of ``### Author decisions`` bullets this release added."""
 
-    Once the threads are resolved this is the only record of why each finding was
-    fixed or declined, so a failed post prints the log rather than losing it.
-    """
-    rows = DECISION_LOG.read_text().strip() if DECISION_LOG.is_file() else ""
-    if not rows:
-        return
-    body = STATE_DIR / "decision-log.post.md"
-    body.write_text(
-        "### Review decisions\n\n| Round | Finding | Call | Why |\n"
-        "| ----- | ------- | ---- | --- |\n" + rows + "\n"
-    )
-    try:
-        _gh(["pr", "comment", "--body-file", str(body)])
-    except (ReleaseError, subprocess.TimeoutExpired) as exc:
-        print(
-            f"WARNING: could not post the decision log ({exc}); post it by hand:\n"
-            + body.read_text(),
-            file=sys.stderr,
+    def labels(rev: str, path: str) -> list[str]:
+        text = git(["show", f"{rev}:{path}"], check=False)
+        section = re.search(
+            r"^### Author decisions\n(.*?)(?=^#{1,3} |\Z)", text, re.M | re.S
         )
-        return
-    # A `push --done` retried after a failed integration label must not post twice.
-    DECISION_LOG.unlink()
+        return (
+            re.findall(r"^- \*\*(.+?)\*\*", section.group(1), re.M) if section else []
+        )
+
+    base = state.get("last_tag")
+    if not base:
+        return []
+    # Read the base at every place the rules have lived, so a moved rule is not
+    # counted as an added one.
+    before = {
+        label
+        for path in (RULES_FILE, "REVIEW.md", ".claude/REVIEW-BRIEF.md")
+        for label in labels(base, path)
+    }
+    return [label for label in labels("HEAD", RULES_FILE) if label not in before]
+
+
+def post_decision_log(state: dict) -> str:
+    """
+    Post the decisions and reviews logs as the PR's ``## Review decisions`` comment.
+
+    Returns ``posted``, ``updated`` or ``none`` (nothing logged). Once the threads
+    are resolved this comment is the only record of why each finding was fixed or
+    declined, so a failed post raises before ``_finish`` wipes ``.release/``, and
+    the retry edits the comment through ``run_id`` instead of posting it twice.
+    """
+    # Before loading the skill: a run that logged nothing (--skip-review) must not
+    # depend on an installed address-pr-review having these helpers.
+    if not DECISION_LOG.is_file() and not REVIEWS_LOG.is_file():
+        return "none"
+    pr_review = _load_pr_review()
+    if pr_review is None:
+        # No retry can post it either, so print every log rather than keep a run
+        # that could never finish.
+        for log in (DECISION_LOG, REVIEWS_LOG):
+            if log.is_file():
+                print(
+                    f"WARNING: address-pr-review is not installed, so {log} cannot "
+                    "be posted; post it by hand:\n" + log.read_text(),
+                    file=sys.stderr,
+                )
+        return "none"
+    try:
+        data = {"decisions": [], "notes": []}
+        if DECISION_LOG.is_file():
+            data = pr_review._load_decisions(str(DECISION_LOG))
+            if data is None:
+                raise ReleaseError(
+                    f"the decision log {DECISION_LOG} is invalid (see above); fix it "
+                    f"and run `{CLI} push --done` again"
+                )
+        reviews = pr_review.load_reviews(REVIEWS_LOG)
+        if not data["decisions"] and not reviews:
+            return "none"
+        notes = [str(n) for n in data.get("notes") or []]
+        added = rules_added(state)
+        if added and not any(n.startswith("Rules added to REVIEW.md") for n in notes):
+            notes.append(f"Rules added to REVIEW.md: {'; '.join(added)}.")
+        started = state.get("started_at")
+        body = pr_review.decisions_comment(
+            {**data, "notes": notes},
+            reviews,
+            time.time() - started if isinstance(started, int | float) else None,
+        )
+        owner, repo = pr_review._repo_info()
+        action, _url = pr_review.post_decisions(
+            owner, repo, pr_review._auto_pr(), body, run_id=state.get("run_id")
+        )
+    # SystemExit: pr_review reports every gh failure that way. AttributeError: an
+    # installed address-pr-review older than these helpers.
+    except (SystemExit, AttributeError) as exc:
+        raise ReleaseError(
+            f"the decisions comment did not post ({exc!r}); the run is kept - run "
+            f"`{CLI} push --done` again"
+        ) from exc
+    return action
 
 
 # -- integration tests --------------------------------------------------------
@@ -1796,9 +1876,11 @@ def cmd_second_opinion(args: argparse.Namespace) -> int:
     Handle ``release.py second-opinion`` - a different model family, twice at most.
 
     Delegates to ``review_brief.py run``, which picks the model from the brief
-    (premium on trigger paths or large diffs) and reviews a commit against the
-    working tree through three lenses. At phase 1 the commit is ``<last-tag>``,
-    so the uncommitted bump and CHANGELOG are in it. With ``--fixes`` it is the
+    (the other family to ``--caller``; larger or security-sensitive diffs get a
+    stronger model) and reviews a commit against the working tree through its
+    lenses. Each run appends its model, time and credits to ``REVIEWS_LOG``.
+    At phase 1 the commit is ``<last-tag>``, so the uncommitted bump and
+    CHANGELOG are in it. With ``--fixes`` it is the
     published head Copilot reviewed, so only the round's uncommitted fixes are,
     and the agent's notes - what each fix is for, what was declined - follow the
     CHANGELOG section in the intent. A ``--requirements`` ledger given at phase 1
@@ -1845,7 +1927,15 @@ def cmd_second_opinion(args: argparse.Namespace) -> int:
         str(INTENT_FILE),
         "--timeout",
         str(args.timeout),
+        "--reviews-log",
+        str(REVIEWS_LOG),
+        "--stage",
+        "fixes" if args.fixes else "pre-push",
     ]
+    # review_brief.py picks the other model family from the caller's own id and
+    # assumes a Claude caller without one.
+    if args.caller:
+        cmd += ["--caller", args.caller]
     # review_brief.py keeps no state, so the driver hands the phase-1 ledger to
     # the fix review as well.
     if REQUIREMENTS_FILE.is_file():
@@ -1885,13 +1975,13 @@ def _pr_review(args: list[str]) -> dict:
         text=True,
         check=False,
     )
-    # 0-4 are review states (D, C, B, A) and the wait timeout, but an error also
-    # exits 1 - with no JSON on stdout, which is what tells the two apart
+    # `drive` exits 0, 1, 3, 4 or 5 by its `result`, but an error also exits 1 -
+    # with no JSON on stdout, which is what tells the two apart.
     try:
         payload = json.loads(result.stdout)
     except json.JSONDecodeError:
         payload = None
-    if result.returncode not in range(5) or not isinstance(payload, dict):
+    if result.returncode not in range(6) or not isinstance(payload, dict):
         raise ReleaseError(
             f"pr_review.py {args[0]} failed (exit {result.returncode}), see stderr"
         )
@@ -1902,46 +1992,53 @@ def cmd_copilot_review(args: argparse.Namespace) -> int:
     """
     Handle ``release.py copilot-review`` - coda 4b, the Copilot PR review.
 
-    Requests the review only when nobody has (a force-push usually does not
-    re-request it), waits, and gates on the fresh threads for the agent to
-    triage. Exits 0 when clean, ``EXIT_PENDING`` when the wait timed out,
-    ``EXIT_GATE`` with threads to triage or a trigger failure to judge.
+    One ``pr_review.py drive`` call requests the review only when nobody has (a
+    force-push usually does not re-request it), waits, and lists every open
+    thread, outdated ones included; its ``result`` decides, never its exit code
+    alone. Exits 0 when clean, ``EXIT_PENDING`` when the wait timed out,
+    ``EXIT_GATE`` with threads to triage or a review that cannot run.
     """
     if (skipped := _skip_missing(PR_REVIEW_SCRIPT)) is not None:
         return skipped
     state = load_state()
-    review = _pr_review(["state"])
-    if review["state"] == "A":
-        # pr_review.py reports every gh failure with the same exit code, and its
-        # message (already on stderr) is the only thing that tells a repo without
-        # Copilot code review apart from an auth or network failure.
-        try:
-            _pr_review(["trigger"])
-        except ReleaseError as exc:
-            return emit_gate(
-                "review_unavailable",
-                {
-                    "error": str(exc),
-                    "instructions": (
-                        "Read the pr_review.py trigger message above. If it says "
-                        "Copilot code review is not available for this repository, "
-                        "say so in one line, ask the held escalations "
-                        f"({HELD}), and finish "
-                        f"with `{CLI} push --done`. Any other error: stop and "
-                        "surface it to the user."
-                    ),
-                },
-                ["finish", "stop"],
-            )
-    if review["state"] in ("A", "B"):
-        review = _pr_review(["wait", "--timeout", str(args.timeout)])
-    if review["state"] in ("A", "B"):
-        print(json.dumps({"state": review["state"], "pending": True}, indent=2))
+    review = _pr_review(
+        [
+            "drive",
+            "--timeout",
+            str(args.timeout),
+            "--reviews-log",
+            str(REVIEWS_LOG),
+            "--stage",
+            "PR review",
+        ]
+    )
+    result = review.get("result")
+    if result == "timeout":
+        print(json.dumps({"result": result, "pending": True}, indent=2))
         return EXIT_PENDING
-    threads = review["unresolvedFreshThreads"]
-    if not threads:
-        print(json.dumps({"state": review["state"], "threads": []}, indent=2))
+    if result == "clean":
+        print(json.dumps({"result": result, "threads": []}, indent=2))
         return EXIT_OK
+    if result != "triage":
+        # trigger-failed: pr_review.py's message on stderr is the only thing
+        # that tells a repo without Copilot code review apart from an auth or
+        # network failure. not-requested: somebody removed the request.
+        return emit_gate(
+            "review_unavailable",
+            {
+                "result": result,
+                "instructions": (
+                    "trigger-failed: read the pr_review.py message above. If it "
+                    "says Copilot code review is not available for this "
+                    "repository, say so in one line; any other error, stop and "
+                    "surface it to the user. not-requested: Copilot's review "
+                    "request was removed; say so in one line. Either way, unless "
+                    f"stopped: {_finish_steps(state)}."
+                ),
+            },
+            ["finish", "stop"],
+        )
+    threads = review["unresolved"]
     capped = state.get("coda_pushes", 0) >= CODA_PUSH_CAP
     return emit_gate(
         "review_triage",
@@ -1949,29 +2046,30 @@ def cmd_copilot_review(args: argparse.Namespace) -> int:
             "threads": threads,
             "fix_cycle_cap_reached": capped,
             "instructions": (
-                f"Triage every thread yourself, never asking mid-loop: {TRIAGE_SUMMARY}"
-                f". Full rules between the triage-rules markers in "
-                f"{TRIAGE_RULES['copilot-review']}. With {PR_REVIEW_SCRIPT}: "
-                "resolve <id> each fix and resolve-only thread; reply <id> --body - "
-                "with the reason for each decline, then resolve it once the reply "
-                "exits 0; leave escalated threads open. Append one row per thread "
-                f"to {DECISION_LOG} as `| copilot | <path:line> <one line> | <call> "
-                "| <why> |`. "
+                "Triage every thread, outdated ones included, yourself and never "
+                f"asking mid-loop: {TRIAGE_SUMMARY}. Full rules between the "
+                f"triage-rules markers in {TRIAGE_RULES['copilot-review']}. Add one "
+                f"decision per thread to {DECISION_LOG}: round 'PR review', its "
+                "'thread' id, and a why that is also the thread's reply - what "
+                "changed for a fix, why not for a decline, why it no longer "
+                "applies for a resolve-only; an escalate leaves why empty and its "
+                f"thread open. Then run `{PR_REVIEW_SCRIPT} settle {DECISION_LOG}` "
+                "before any recut - the force-push outdates a thread it has not "
+                "resolved - and re-run it at once if anything failed. "
                 + (
                     "The Copilot round is spent: a thread you would fix is an "
-                    f"escalation instead. Then ask the held escalations ({HELD}) "
-                    f"and finish with `{CLI} push --done`."
+                    f"escalation instead. Then {_finish_steps(state)}."
                     if capped
-                    else "If you fixed anything, write a notes file - each finding "
-                    "you fixed, as what that fix is for, then every finding declined "
-                    "so far with its reason under an 'Already decided' heading - and "
-                    f"run `{CLI} second-opinion --fixes <notes>`. Triage it the same "
-                    "way, logging its rows under round `fixes`, then "
+                    else "If you fixed anything, write .release/fixes-notes.md - "
+                    "each finding you fixed, as what that fix is for, then every "
+                    "finding declined so far with its reason under an 'Already "
+                    f"decided' heading - and run `{CLI} second-opinion --caller "
+                    "<your own model id> --fixes .release/fixes-notes.md`. Triage "
+                    "it the same way, logging its rows under round 'fixes', then "
                     f"`{CLI} recut` + `{CLI} push`: that is the one round, so run no "
                     "second copilot-review. A round with no fix ends the review: "
                     f"`{CLI} recut` + `{CLI} push` if a decline added a REVIEW.md "
-                    f"rule, then ask the held escalations ({HELD}) and finish with "
-                    f"`{CLI} push --done`."
+                    f"rule, then {_finish_steps(state)}."
                 )
             ),
         },
@@ -2126,7 +2224,7 @@ def cmd_push(args: argparse.Namespace) -> int:
                 "pushed": state["version"] if pushed else None,
                 "pr": "updated",
                 "fix_cycles_left": left,
-                "next": _coda_next(left, review_layers(state)),
+                "next": _coda_next(left, review_layers(state), state),
             },
             indent=2,
         )
@@ -2134,15 +2232,42 @@ def cmd_push(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
-def _coda_next(left: int, layers: list[str]) -> str:
+def _finish_steps(state: dict) -> str:
+    """
+    The end of a reviewed release: escalations, the rules audit, ``push --done``.
+
+    The rules are audited again here because a rule a decline added during the
+    Copilot round arrived after the phase-1 audit, and only now does the PR
+    number exist for its citation.
+    """
+    audit = (
+        f"audit the review rules again - run `{RULES_AUDIT_SCRIPT} audit`, fix "
+        f"each stale-path or stale-symbol finding in {RULES_FILE}, replace this "
+        "branch's '(<branch> branch)' citations with '(#<PR>)' (never another "
+        "branch's), add a 'Rules audit: N stale rules fixed' note when it changed "
+        "anything; "
+        if state.get("audit_rules")
+        else ""
+    )
+    return (
+        f"ask the held escalations ({HELD}); {audit}if an answered fix, the audit "
+        f"or a rule added this round changed any file, run `{CLI} recut` + "
+        f"`{CLI} push`, with no further review round; then finish with "
+        f"`{CLI} push --done` (`--force` when a thread is deliberately left "
+        "open), which posts the decision log"
+    )
+
+
+def _coda_next(left: int, layers: list[str], state: dict) -> str:
     """What the coda does after a push, given its fix cycles and review layers."""
-    finish = f"ask the held escalations ({HELD}) and finish with `{CLI} push --done`"
+    finish = _finish_steps(state)
     if "copilot-review" not in layers:
         return finish[0].upper() + finish[1:] + "."
     # An answered escalation is the author's decision; another round would only
     # raise findings nobody is left to answer.
     answered = (
-        f" After a push that only applied answered escalations, skip it: {finish}."
+        " After a push that only applied answered escalations or the finish "
+        f"audit, skip it: {finish}."
     )
     if left:
         return f"Run `{CLI} copilot-review`.{answered}"
@@ -2173,8 +2298,10 @@ def _done(state: dict, *, force: bool) -> int:
                     "null threads = the lookup failed. A thread escalated and left "
                     f"open by the user: finish with `{CLI} push --done --force`. "
                     "Any other thread (outdated ones too): triage it by the same "
-                    "rules - resolve <id>, or reply <id> --body - with the reason "
-                    f"before resolving a decline - then re-run `{CLI} push --done`."
+                    f"rules, add its decision with its 'thread' id to {DECISION_LOG} "
+                    f"unless the log holds it, run `{PR_REVIEW_SCRIPT} settle "
+                    f"{DECISION_LOG}`, `{CLI} recut` + `{CLI} push` after any fix, "
+                    f"then re-run `{CLI} push --done`."
                 ),
             },
             ["resolve-and-rerun", "force"],
@@ -2309,6 +2436,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--requirements",
         metavar="FILE",
         help="Phase 1: the work's requirements ledger, kept for the fix review too",
+    )
+    p_second.add_argument(
+        "--caller",
+        metavar="MODEL",
+        help="Your own model id; the review runs on the other model family",
     )
     p_second.add_argument(
         "--timeout", type=int, default=540, help="Seconds per lens pass (default 540)"

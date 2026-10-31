@@ -42,10 +42,10 @@ start        ──► rebase, lint, bump, upgrade     ──► GATE phase1   (
                (CHANGELOG, then second-opinion [+ /code-review]; fixes stay uncommitted)
 resume       ──► cspell/changelog checks, recut  ──► GATE push     (exit 10)
 resume       ──► force-push, PR upsert           ──► SPINE_COMPLETE (exit 0)
-copilot-review ──► triage ──► only if it fixed something:
+copilot-review ──► (pr_review.py drive) triage ──► settle ──► only if it fixed something:
                second-opinion --fixes ──► recut + push   (the one round)
-escalations  ──► one AskUserQuestion, at the end
-push --done  ──► thread check, post decision log, wipe, label PR ──► integration
+escalations  ──► one AskUserQuestion, at the end ──► rules audit again
+push --done  ──► thread check, post decisions + review costs, label PR, wipe ──► integration
 ```
 
 **Exit codes:** `0` done, `1` error (surface it, don't paper over), `2` usage,
@@ -91,10 +91,13 @@ pre-rebase HEAD.
    `<last-tag>` against the working tree, so the bump is in it:
 
    ```bash
-   .claude/skills/release-auto/scripts/release.py second-opinion   # Bash timeout 600000
+   .claude/skills/release-auto/scripts/release.py second-opinion --caller <your model id>   # Bash timeout 600000
    ```
 
-   Triage its findings by **Review triage** below. Fixes stay uncommitted
+   `--caller` is your own model id (`claude-opus-5-5`, `gpt-6.1-sol`, ...):
+   second-opinion reviews with the other model family, and assumes a Claude
+   caller without it. Its model, time and credits go to `.release/reviews.jsonl`
+   for the PR comment. Triage its findings by **Review triage** below. Fixes stay uncommitted
    edits for the plan to fold in. It runs once per release (`model_reasons`
    says which model and why); exit 3/4 output says it skipped. Each finding
    carries its `lens`, and lenses are not deduplicated, so merge findings that
@@ -113,7 +116,9 @@ pre-rebase HEAD.
    it in one line, suggest `/bootstrap-review`, and carry on. Also replace a
    rule's `(<branch> branch)` citation with `(#<PR>)` once that branch's PR
    exists. The rules file only grows unless a run prunes it,
-   and a stale rule teaches the reviewer a deleted file matters.
+   and a stale rule teaches the reviewer a deleted file matters. The report
+   says `review rules: audited, clean` or `review rules: audited, N stale rules
+   fixed`. A reviewed release audits again at the end of the review (Step 4).
 
    **Pass the requirements ledger when the work has one.** A ledger is numbered
    rows each ending `-> Approach N`, `Out: <why>` or `Unsure: <question>`.
@@ -128,7 +133,7 @@ pre-rebase HEAD.
    every finding second-opinion declined, with its reason, so it raises none
    of them again, and triage it the same way. It runs second so a finding the
    cheaper reviewer already fixed costs Claude nothing. Log both reviews'
-   findings under round `pre-push`.
+   findings under round `pre-push` (see **Decision log**).
 3. **Classify cspell findings.** Code identifier or proper noun → `cspell_add`;
    prose misspelling → fix the source; genuinely ambiguous → one batched
    `AskUserQuestion`.
@@ -187,20 +192,28 @@ Copilot never reviewed or was asked to does not spend the round - then run
 `copilot-review`. After: the fixes join the round's own and go through its fix
 review and its one push.
 
-It requests the review only when needed (a force-push usually does not
-re-request it) and waits. Exit 4: re-run it. Exit 10 `review_unavailable`: the
-trigger failed - read its message; if Copilot code review is not available for
-the repo, say so in one line and go to the finish, otherwise stop and surface
-the error. Exit 10 `review_triage`: triage every thread yourself by **Review
-triage** below, using `pr_review.py` from `~/.claude/skills/address-pr-review/scripts/`:
+It runs `pr_review.py drive` from `~/.claude/skills/address-pr-review/scripts/`,
+which requests the review only when nobody has (a force-push usually does not
+re-request it), waits, times the round into `.release/reviews.jsonl`, and lists
+every open thread, outdated ones included. Exit 4: re-run it. Exit 10
+`review_unavailable`: `trigger-failed` - read the message above; if Copilot code
+review is not available for the repo, say so in one line and go to the end of
+the review, otherwise stop and surface the error; `not-requested` - the request
+was removed, say so and go to the end of the review. Exit 10 `review_triage`:
+triage every thread yourself by **Review triage** below and add one row per
+thread to the decision log, with its `thread` id. Its `why` is also the reply:
+what changed for a fix, why not for a decline, why it no longer applies for a
+resolve-only. An `escalate` leaves `why` empty and its thread open. Then:
 
-- `fix` - edit, then `resolve <id>` **before re-cutting**: the force-push
-  makes the thread outdated, and an outdated thread still blocks merge.
-- `decline` - `reply <id> --body -` with the one-sentence reason, then
-  `resolve <id>` once the reply exits 0. Write the reason to a file with the
-  file-writing tool, never a heredoc, and pipe it: `--body - < <file>`.
-- `resolve-only` - `resolve <id>`.
-- `escalate` - leave the thread open and hold it for the end.
+```bash
+~/.claude/skills/address-pr-review/scripts/pr_review.py settle .release/decisions.json
+```
+
+`settle` replies to each thread but an escalation, then resolves it, and never
+resolves one whose reply failed. Run it **before re-cutting**: the force-push
+makes an unresolved thread outdated, and an outdated thread still blocks merge.
+It exits 1 when anything failed; re-run it at once - it skips what already
+landed - and report what still fails.
 
 Fold fixes to unshipped code into the existing `Added` bullet.
 
@@ -208,12 +221,12 @@ Fold fixes to unshipped code into the existing `Added` bullet.
 decline added a REVIEW.md rule, `recut` + `push` it first. A round
 that fixed something gets second-opinion on those fixes instead of a second
 Copilot round, which mostly finds defects in the first round's own fixes and
-costs far more. Write a notes file - each finding the round fixed, as what that
-fix is for, then every finding declined so far with its reason under an
-`Already decided` heading - and run:
+costs far more. Write `.release/fixes-notes.md` - each finding the round fixed,
+as what that fix is for, then every finding declined so far with its reason
+under an `Already decided` heading - and run:
 
 ```bash
-.claude/skills/release-auto/scripts/release.py second-opinion --fixes <notes>   # Bash timeout 600000
+.claude/skills/release-auto/scripts/release.py second-opinion --caller <your model id> --fixes .release/fixes-notes.md   # Bash timeout 600000
 ```
 
 It reviews from the head Copilot reviewed, so only the uncommitted fixes, with
@@ -225,13 +238,25 @@ its payload sets `fix_cycle_cap_reached` and a thread you would fix becomes an
 escalation.
 
 **The end of the review.** The held escalations are the rows whose call is
-`escalate` in `.release/decision-log.md` - second-opinion's and Copilot's - that
-no `end` row answers yet; the log holds them, not your memory. Ask them in one `AskUserQuestion` and append
-each answer as its own row: `| end | <finding> | asked: fix / left open /
-declined | <author's reason> |`. A "yes" is an edit and a `resolve` of its
-thread: `recut`, `push`, then `push --done`, with no further round. The other
-way is a `reply` giving the author's reason, then `resolve`. "Leave open" leaves the thread for a
-human reviewer; finish with `push --done --force`.
+still `escalate` with an empty `why` in `.release/decisions.json` -
+second-opinion's and Copilot's;
+the log holds them, not your memory. Ask them in one `AskUserQuestion`, up to
+four per call, and rewrite each answered row: a "yes" is an edit, `call: fix`
+and a `why` saying what changed; the other way is `call: decline` with the
+author's reason; "Leave open" stays `escalate`, with the user's reason as
+`why`, so it is never asked again, its thread left for a human reviewer. Add a
+note per question asked (`Asked: ... - left as is.`) and run `settle` again when
+an answered row carries a thread.
+
+**Then audit the review rules again** when the run audits them (`audit_rules`
+at phase 1; the post-push `next` names it). A rule a decline added in the
+Copilot round was never audited, and only now does the PR exist. Fix stale rules
+as at phase 1, replace this branch's `(<branch> branch)` citations with
+`(#<PR>)` - never another branch's - and add a `Rules audit: N stale rules
+fixed` note when it changed anything. If an answered fix, the audit or a rule
+added this round changed a file: `recut`, `push`, with no further round. The
+report gets a second `review rules:` line, ending `at the finish`. A thread left
+open finishes with `push --done --force`.
 
 ### Review triage
 
@@ -252,8 +277,30 @@ CHANGELOG wording counts as stated intent: a bullet that contradicts the code is
 `fix`, style is `decline`. "A bug the change did not introduce" means one that
 predates `<last-tag>`.
 
-Append one row per finding to `.release/decision-log.md` in the form the gate
-payload gives; `push --done` posts it to the PR as one comment.
+### Decision log
+
+One row per finding from every review, in `.release/decisions.json`, written
+with the file-writing tool - never a heredoc, which worktree-isolated sessions
+refuse. Rounds are `pre-push` (second-opinion and `/code-review` at phase 1),
+`PR review` (each Copilot thread, with its `thread` id) and `fixes` (the fix
+review). There is one Copilot round, so a round number would say nothing.
+
+```json
+{
+  "decisions": [
+    {"round": "PR review", "finding": "`_run_gh` has no timeout", "call": "fix",
+     "why": "Added a 120s timeout, so a hung `gh` fails instead of stalling.", "thread": "PRRT_xxx"},
+    {"round": "pre-push", "finding": "validate the repo name from `gh`", "call": "decline",
+     "why": "It comes from the session, not user input."}
+  ],
+  "notes": []
+}
+```
+
+`settle` replies with each thread's `why`, and `push --done` posts the whole log
+to the PR as one `## Review decisions` comment. Resolving a thread hides it, so
+that comment is the only record of what was decided, and the only way a
+misclassification gets caught.
 
 **`recut` is the lint gate - never validate a coda fix with bare `make lint`.**
 During a release `[Unreleased]` is empty, so bare `make lint` false-positives
@@ -269,12 +316,17 @@ or an empty group): fix the globs and re-run it.
 ```
 
 It refuses while HEAD is not pushed, and gates (`unresolved_threads`) on any
-open thread, outdated ones included - triage and resolve them, then re-run.
-`--force` finishes regardless (an escalation left open, GitHub unreachable),
-with a warning to relay. It posts the decision log (printing it instead if the
-post fails), applies the `test:integration` label, then wipes `.release/` and
-prints `integration.since`; a failed label leaves the run intact for a retry. The label re-runs the suite on every push,
-which is why it is applied only now.
+open thread, outdated ones included - triage them into the log and `settle`,
+then re-run. `--force` finishes regardless (an escalation left open, GitHub
+unreachable), with a warning to relay. It posts the `## Review decisions`
+comment: the decision log as a table, then each review's model, time and
+credits from `.release/reviews.jsonl`, the total review time and the time from
+`start` to done, then the notes, plus a `Rules added to REVIEW.md` line it
+writes itself. Its `decisions` payload says `posted`, `updated` or `none`. Then
+it applies the `test:integration` label, wipes `.release/` and prints
+`integration.since`. A failed post or label exits 1 with the run intact; the
+retry edits the same comment rather than adding one. The label re-runs the
+suite on every push, which is why it is applied only now.
 
 ```bash
 .claude/skills/release-auto/scripts/release.py integration --since <since>   # Bash timeout 600000
@@ -316,7 +368,8 @@ is **not** "Fixed". This is the most common merge-case error.
 
 ## Anti-patterns
 
-- **Editing `.release/` by hand** (except `commit-plan.json` and appending to `decision-log.md`). Use `abort` to restart.
+- **Editing `.release/` by hand** (except `commit-plan.json`, `decisions.json` and `fixes-notes.md`). Use `abort` to restart.
+- **Replying to or resolving threads one by one.** `settle` does both from the log, and never resolves a thread whose reply failed.
 - **Asking the user mid-loop.** Escalations wait for the one question at the end.
 - **Reasoning about whether to recut.** Just call `recut` after any fix, including a revert (drop the now-empty group).
 - **Pushing past a review thread instead of resolving it.** The force-push hides it; it stays open and blocks merge.
