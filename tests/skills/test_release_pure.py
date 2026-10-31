@@ -37,8 +37,9 @@ def _gate_in_tmp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(release, "STATE_DIR", tmp_path / ".release")
     monkeypatch.setattr(release, "GATE_FILE", tmp_path / ".release" / "gate.json")
     monkeypatch.setattr(
-        release, "DECISION_LOG", tmp_path / ".release" / "decision-log.md"
+        release, "DECISION_LOG", tmp_path / ".release" / "decisions.json"
     )
+    monkeypatch.setattr(release, "REVIEWS_LOG", tmp_path / ".release" / "reviews.jsonl")
     monkeypatch.setattr(
         release, "REQUIREMENTS_FILE", tmp_path / ".release" / "requirements.md"
     )
@@ -229,7 +230,7 @@ def test_wipe_state_dir_removes_decision_and_all(
     for name in (
         "state.json",
         "commit-plan.json",
-        "decision-log.md",
+        "decisions.json",
         "decision.json",
     ):
         (state_dir / name).write_text("{}")
@@ -631,11 +632,11 @@ def test_copilot_trigger_failure_gates_with_the_error(
 
     _install_skills(release.PR_REVIEW_SCRIPT)
     monkeypatch.setattr(release, "load_state", lambda: {"coda_pushes": 0})
+    seen: list[list[str]] = []
 
     def pr_review(args: list[str]) -> dict:
-        if args[0] == "trigger":
-            raise release.ReleaseError("pr_review.py trigger failed (exit 1)")
-        return {"state": "A"}
+        seen.append(args)
+        return {"result": "trigger-failed", "state": "A"}
 
     monkeypatch.setattr(release, "_pr_review", pr_review)
     args = release.build_parser().parse_args(["copilot-review"])
@@ -643,8 +644,32 @@ def test_copilot_trigger_failure_gates_with_the_error(
     assert release.cmd_copilot_review(args) == release.EXIT_GATE
     gate = json.loads(release.GATE_FILE.read_text())
     assert gate["kind"] == "review_unavailable"
-    assert "exit 1" in gate["context"]["error"]
-    assert "rows whose call is escalate" in gate["context"]["instructions"]
+    assert gate["context"]["result"] == "trigger-failed"
+    assert "whose call is still escalate" in gate["context"]["instructions"]
+    # One drive call, timed into the reviews log.
+    assert [a[0] for a in seen] == ["drive"]
+    assert seen[0][seen[0].index("--stage") + 1] == "PR review"
+    assert seen[0][seen[0].index("--reviews-log") + 1] == str(release.REVIEWS_LOG)
+
+
+@pytest.mark.parametrize(
+    ("result", "code"),
+    [
+        ("clean", 0),
+        ("timeout", 4),
+        ("not-requested", 10),
+    ],
+)
+def test_copilot_review_decides_on_drives_result(
+    monkeypatch: pytest.MonkeyPatch, result: str, code: int
+) -> None:
+    """drive's `wait` can exit 4 with state D, so the `result` field decides."""
+    _install_skills(release.PR_REVIEW_SCRIPT)
+    monkeypatch.setattr(release, "load_state", lambda: {"coda_pushes": 0})
+    monkeypatch.setattr(release, "_pr_review", lambda _a: {"result": result})
+    args = release.build_parser().parse_args(["copilot-review"])
+
+    assert release.cmd_copilot_review(args) == code
 
 
 @pytest.mark.parametrize(("pushes", "capped"), [(0, False), (1, True)])
@@ -656,19 +681,21 @@ def test_copilot_triage_turns_fixes_into_escalations_at_the_cap(
 
     _install_skills(release.PR_REVIEW_SCRIPT)
     monkeypatch.setattr(release, "load_state", lambda: {"coda_pushes": pushes})
-    thread = {"id": "PRRT_x", "path": "a.sh", "body": "b"}
+    thread = {"id": "PRRT_x", "path": "a.sh", "body": "b", "isOutdated": True}
     monkeypatch.setattr(
         release,
         "_pr_review",
-        lambda _a: {"state": "C", "unresolvedFreshThreads": [thread]},
+        lambda _a: {"result": "triage", "unresolved": [thread]},
     )
     args = release.build_parser().parse_args(["copilot-review"])
 
     assert release.cmd_copilot_review(args) == release.EXIT_GATE
     ctx = json.loads(release.GATE_FILE.read_text())["context"]
+    assert ctx["threads"] == [thread]  # outdated threads are triaged too
+    assert "settle" in ctx["instructions"]
     assert ctx["fix_cycle_cap_reached"] is capped
     assert ("is an escalation instead" in ctx["instructions"]) is capped
-    assert "rows whose call is escalate" in ctx["instructions"]
+    assert "whose call is still escalate" in ctx["instructions"]
     assert "Show the user" not in ctx["instructions"]
 
 
@@ -717,50 +744,115 @@ def test_audit_rules_sends_edits_to_the_link_target(
 # -- post_decision_log: the run's only record once threads are resolved ---------
 
 
-def test_decision_log_is_posted_under_a_table_header(
+def _decisions_module(
+    monkeypatch: pytest.MonkeyPatch,
+    posted: list[dict],
+    reviews: list[dict] | None = None,
+    fail: bool = False,
+) -> None:
+    """Stand in for address-pr-review's decision helpers; record each post."""
+    import json
+
+    class Stub:
+        @staticmethod
+        def _load_decisions(path: str) -> dict:
+            return json.loads(Path(path).read_text())
+
+        @staticmethod
+        def load_reviews(_path: object) -> list[dict]:
+            return reviews or []
+
+        @staticmethod
+        def decisions_comment(data: dict, revs: list, seconds: float | None) -> str:
+            return json.dumps({"data": data, "reviews": revs, "seconds": seconds})
+
+        @staticmethod
+        def _repo_info() -> tuple[str, str]:
+            return "o", "r"
+
+        @staticmethod
+        def _auto_pr() -> int:
+            return 7
+
+        @staticmethod
+        def post_decisions(
+            _o: str, _r: str, pr: int, body: str, run_id: str | None = None
+        ) -> tuple[str, str]:
+            if fail:
+                raise SystemExit("gh failed")
+            posted.append({"pr": pr, "run_id": run_id, **json.loads(body)})
+            return ("updated" if len(posted) > 1 else "posted"), "url"
+
+    monkeypatch.setattr(release, "_load_pr_review", lambda: Stub)
+    monkeypatch.setattr(release, "rules_added", lambda _s: ["**x** rule"])
+
+
+def test_decision_log_posts_decisions_reviews_and_rules_added(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The agent appends rows; the driver adds the header and posts one comment."""
+    """One comment carries the decisions, every review's cost and the new rules."""
+    import json
+
     release.STATE_DIR.mkdir()
-    release.DECISION_LOG.write_text("| 1 | a.sh:3 x | decline | style |\n")
-    posted: list[str] = []
-    monkeypatch.setattr(
-        release,
-        "_gh",
-        lambda a: posted.append(Path(a[a.index("--body-file") + 1]).read_text()),
-    )
+    row = {"round": "pre-push", "finding": "a.sh:3", "call": "decline", "why": "x"}
+    release.DECISION_LOG.write_text(json.dumps({"decisions": [row], "notes": []}))
+    posted: list[dict] = []
+    _decisions_module(monkeypatch, posted, reviews=[{"reviewer": "Copilot"}])
+    state = {"run_id": "abc", "started_at": release.time.time() - 60}
 
-    release.post_decision_log()
+    assert release.post_decision_log(state) == "posted"
+    assert posted[0]["pr"] == 7 and posted[0]["run_id"] == "abc"
+    assert posted[0]["data"]["decisions"] == [row]
+    assert posted[0]["data"]["notes"] == ["Rules added to REVIEW.md: **x** rule."]
+    assert posted[0]["reviews"] == [{"reviewer": "Copilot"}]
+    assert posted[0]["seconds"] >= 60
+    # A retried `push --done` edits the same comment through run_id.
+    assert release.post_decision_log(state) == "updated"
 
-    assert posted[0].startswith("### Review decisions")
-    assert "| 1 | a.sh:3 x | decline | style |" in posted[0]
-    release.post_decision_log()  # `push --done` retried after a failed label
-    assert len(posted) == 1
 
-
-def test_decision_log_is_printed_when_the_post_fails(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+def test_a_failed_decisions_post_raises_before_the_wipe(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A failed post must not let the wipe take the only copy."""
+    import json
+
     release.STATE_DIR.mkdir()
-    release.DECISION_LOG.write_text("| 1 | a.sh:3 x | fix | wrong |")
+    row = {"round": "PR review", "finding": "a", "call": "fix", "why": "w"}
+    release.DECISION_LOG.write_text(json.dumps({"decisions": [row]}))
+    _decisions_module(monkeypatch, [], fail=True)
 
-    def boom(_a: list[str]) -> None:
-        raise release.ReleaseError("gh pr comment failed")
-
-    monkeypatch.setattr(release, "_gh", boom)
-
-    release.post_decision_log()
-
-    assert "| 1 | a.sh:3 x | fix | wrong |" in capsys.readouterr().err
-    assert release.DECISION_LOG.is_file()  # a retry can still post it
+    with pytest.raises(release.ReleaseError, match="run is kept"):
+        release.post_decision_log({})
+    assert release.DECISION_LOG.is_file()
 
 
-def test_no_decision_log_posts_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A run with no review decisions leaves the PR alone."""
-    monkeypatch.setattr(release, "_gh", lambda _a: pytest.fail("posted"))
+def test_no_decision_and_no_review_posts_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A run with nothing to record leaves the PR alone, without loading the skill."""
+    monkeypatch.setattr(release, "_load_pr_review", lambda: pytest.fail("loaded"))
 
-    release.post_decision_log()
+    assert release.post_decision_log({}) == "none"
+
+
+def test_rules_added_ignores_rules_that_only_moved(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Onboarding moves REVIEW.md's rules into the file it links to; not new rules."""
+    files = {
+        ("v1", "REVIEW.md"): "### Author decisions\n- **old** - kept\n",
+        ("HEAD", release.RULES_FILE): (
+            "### Author decisions\n- **old** - kept\n- **new** - why. (#9)\n## Next\n"
+        ),
+    }
+
+    def git(args: list[str], **_k: object) -> str:
+        rev, _, path = args[1].partition(":")
+        return files.get((rev, path), "")
+
+    monkeypatch.setattr(release, "git", git)
+
+    assert release.rules_added({"last_tag": "v1"}) == ["new"]
 
 
 # -- _upsert_pr: only an OPEN PR is this release's ------------------------------
@@ -1187,14 +1279,14 @@ def test_push_counts_the_cycle_before_the_pr_update_can_fail(
 def test_coda_next_says_when_the_last_fix_cycle_ran() -> None:
     """Once the round is spent no second Copilot round is offered."""
     layers = ["copilot-review"]
-    assert "do not run copilot-review again" in release._coda_next(0, layers)
-    assert "again" not in release._coda_next(1, layers)
+    assert "do not run copilot-review again" in release._coda_next(0, layers, {})
+    assert "do not run copilot-review again" not in release._coda_next(1, layers, {})
 
 
 def test_coda_next_skips_the_round_after_answered_escalations() -> None:
     """An unspent round (Copilot unavailable) still finishes after an answer."""
     assert "only applied answered escalations" in release._coda_next(
-        1, ["copilot-review"]
+        1, ["copilot-review"], {}
     )
 
 
@@ -1258,13 +1350,24 @@ def test_coda_next_reads_held_escalations_from_the_log(
     left: int, layers: list[str]
 ) -> None:
     """Escalations outlive the agent's context, so every finish names their store."""
-    assert "rows whose call is escalate" in release._coda_next(left, layers)
+    assert "whose call is still escalate" in release._coda_next(left, layers, {})
 
 
 def test_coda_next_without_the_copilot_layer_finishes() -> None:
     """The next step never points at a review layer whose skill is missing."""
-    text = release._coda_next(1, [])
+    text = release._coda_next(1, [], {})
     assert "push --done" in text and "copilot-review" not in text
+
+
+@pytest.mark.parametrize("audit", [True, False])
+def test_finish_audits_the_rules_again_only_when_the_run_audits_them(
+    audit: bool,
+) -> None:
+    """A rule added in the Copilot round missed the phase-1 audit; the PR now exists."""
+    text = release._finish_steps({"audit_rules": audit})
+    assert ("audit the review rules again" in text) is audit
+    assert ("'(#<PR>)'" in text) is audit
+    assert text.index("held escalations") < text.index("push --done")
 
 
 # -- second-opinion: a thin wrapper over review_brief.py run --------------------
@@ -1306,11 +1409,16 @@ def test_second_opinion_hands_the_changelog_section_to_run_as_intent(
         "diffstat": "x",
     }
     _stub_run(monkeypatch, opinion_run, 0, json.dumps(report))
-    args = release.build_parser().parse_args(["second-opinion", "--timeout", "100"])
+    args = release.build_parser().parse_args(
+        ["second-opinion", "--timeout", "100", "--caller", "claude-opus-5-5"]
+    )
 
     assert release.cmd_second_opinion(args) == 0
     cmd = opinion_run["cmd"]
     assert cmd[1:3] == ["run", "v1.2.2"]
+    assert cmd[cmd.index("--caller") + 1] == "claude-opus-5-5"
+    assert cmd[cmd.index("--stage") + 1] == "pre-push"
+    assert cmd[cmd.index("--reviews-log") + 1] == str(release.REVIEWS_LOG)
     # No ledger given: the CHANGELOG section is the whole intent.
     assert Path(cmd[cmd.index("--intent") + 1]).read_text() == "### Added\n\n- x\n"
     assert opinion_run["timeout"] > 100  # the wrapper outlasts every lens pass
@@ -1339,6 +1447,8 @@ def test_second_opinion_fixes_reviews_from_the_published_head(
     assert release.cmd_second_opinion(args) == 0
     cmd = opinion_run["cmd"]
     assert cmd[1:3] == ["run", "abc123"]
+    assert cmd[cmd.index("--stage") + 1] == "fixes"
+    assert "--caller" not in cmd  # none given: review_brief assumes Claude
     intent = Path(cmd[cmd.index("--intent") + 1]).read_text()
     assert intent.startswith("### Added") and "Already decided" in intent
     assert "--requirements" not in cmd  # no ledger given, none invented
