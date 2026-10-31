@@ -434,3 +434,40 @@ def test_an_answer_must_start_with_its_outcome() -> None:
     ]
     problems = review.log_problems(rows, [], STATE, SHARDS)
     assert any("starts with fix:, decline:, leave:" in p for p in problems), problems
+
+
+def test_second_opinion_passes_the_caller_and_keeps_usage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """--files takes every argument after it, so --caller goes first; usage is kept."""
+    import json
+
+    brief = tmp_path / "review_brief.py"
+    brief.touch()
+    (tmp_path / review.FINDINGS_DIR).mkdir(parents=True)
+    monkeypatch.setattr(review, "REPO", tmp_path)
+    monkeypatch.setattr(review, "BRIEF_SCRIPT", brief)
+    monkeypatch.setattr(review, "load_state", lambda: {"shard": "lib"})
+    monkeypatch.setattr(review, "load_manifest", lambda: MANIFEST)
+    monkeypatch.setattr(review, "owned_files", lambda *_a: ["a.sh", "b.sh"])
+    monkeypatch.setattr(review, "tracked_files", lambda: [])
+    monkeypatch.setattr(review, "git", lambda *_a, **_k: "base")
+    seen: dict = {}
+    report = {"model": "m", "usage": {"credits": 9.0}, "findings": [], "diffstat": "x"}
+
+    def run(cmd: list[str], **_k: object) -> review.subprocess.CompletedProcess[str]:
+        seen["cmd"] = cmd
+        return review.subprocess.CompletedProcess(cmd, 0, json.dumps(report), "")
+
+    monkeypatch.setattr(review.subprocess, "run", run)
+    args = review.build_parser().parse_args(
+        ["second-opinion", "--caller", "claude-opus-5-5"]
+    )
+
+    assert review.cmd_second_opinion(args) == review.EXIT_OK
+    cmd = seen["cmd"]
+    assert cmd[cmd.index("--caller") + 1] == "claude-opus-5-5"
+    assert cmd[cmd.index("--files") :] == ["--files", "a.sh", "b.sh"]
+    out = tmp_path / review.FINDINGS_DIR / "second-opinion.json"
+    saved = json.loads(out.read_text())
+    assert saved["usage"] == {"credits": 9.0} and "diffstat" not in saved
