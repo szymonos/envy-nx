@@ -5,6 +5,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.33.0] - 2026-11-01
+
+Overlays are now named sets of scopes in a repository's `overlays/<name>/` folders, subscribed by name with no manual clone or `git pull`; the organization overlay folder is folded into subscriptions.
+
+### Added
+
+- `nx overlay add <repo> [overlay...]` subscribes to overlays by name - from `github:<owner>/<repo>`, any https/ssh git URL or a local folder - with `--ref`, `--as` and `--all`, and applies them through `nx setup`.
+- With no name, `nx overlay add` installs the only overlay or the one named `default`, offers a picker in a terminal, and refuses unattended; the choice is saved by name and never re-resolved.
+- `nx overlay browse <repo>` lists a repository's overlays with the first line of each `README.md`, and `nx overlay remove` and `nx overlay update` drop or refresh subscriptions.
+- `nix/setup.sh --overlay '<repo>#<overlay>'` (repeatable, `github:o/r/<ref>#k8s` or `<url>?ref=<ref>#k8s`) subscribes during setup, and `wsl/wsl_setup.ps1 -Overlay` passes each address through from Windows.
+- Overlay scopes are named `<overlay>/<scope>`, one clone serves every overlay of a repository and ref, and files outside `overlays/` are shared by import or symlink; a symlink leaving the repository is refused.
+- Every `nx setup` and `nx upgrade` fast-forwards each subscription and prints the incoming commits; a `shell_cfg/` change asks first, and an unreachable source keeps its previous copy.
+- An address given with `--overlay` or `nx overlay add` counts as reviewed and must resolve: its shell config applies unattended, and a source that cannot be read stops setup before any scope changes.
+- `nx scope remove <overlay>/<scope>` opts out of one overlay scope across updates, and so does `nx scope remove <scope>` for a scope an overlay header names; `nx scope add` takes either back.
+- An overlay subscribed from a local folder, such as an image's `/opt/overlays`, runs its `hooks/post-setup.d` scripts; one fetched from git never does.
+- `nx doctor` checks that every subscription has its copy and its source.
+
+### Changed
+
+- `nx scope remove`, `nx scope add`, `nx scope edit` and `setup.sh --remove` no longer refuse scopes an organization overlay provides; any overlay scope can be opted out of instead.
+
+### Fixed
+
+- Overlay post-setup hooks run with the trust-store variables the shell profile exports (`NODE_EXTRA_CA_CERTS`, `SSL_CERT_FILE`, ...), so `npm` or `pip` in a hook works behind a TLS-inspecting proxy.
+- `nx scope add` and `nx scope remove` keep `allowUnfree` when they rewrite `config.nix`, instead of dropping it and turning unfree packages off on the next rebuild.
+
+### Removed
+
+- `NIX_ENV_OVERLAY_DIR`, `nix/setup.sh --overlay-dir`, `nx overlay set` and `nx overlay unset` - subscribe to the folder instead with `--overlay '<folder>#<overlay>'`; setup warns while the old setting is still there.
+- `nx overlay list` and `nx overlay status` - plain `nx overlay` shows the subscriptions.
+- The `overlay_dir` doctor check, replaced by `overlay_subscriptions`.
+
 ## [1.32.10] - 2026-10-31
 
 ### Changed
