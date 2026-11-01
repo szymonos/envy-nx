@@ -1,0 +1,1046 @@
+
+<!DOCTYPE html>
+
+<html class="no-js" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width,initial-scale=1" name="viewport"/>
+<meta content="Universal, cross-platform developer environment provisioning with Nix" name="description"/>
+<link href="https://szymonos.github.io/envy-nx/overlays/" rel="canonical"/>
+<link href="../customization/" rel="prev"/>
+<link href="../assets/images/favicon.png" rel="icon"/>
+<meta content="mkdocs-1.6.1, mkdocs-material-9.8.0" name="generator"/>
+<title>Overlays - Dev Environment Setup</title>
+<link href="../assets/stylesheets/main.57a0d79d.min.css" rel="stylesheet"/>
+<link href="../assets/stylesheets/palette.fb2fffe2.min.css" rel="stylesheet"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&amp;display=fallback" rel="stylesheet"/>
+<style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+<link href="../assets/stylesheets/layout-wide-screen.css" rel="stylesheet"/>
+<link href="../assets/stylesheets/mermaid-lightbox.css" rel="stylesheet"/>
+<script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+</head>
+<body data-md-color-accent="blue" data-md-color-primary="indigo" data-md-color-scheme="slate" dir="ltr">
+<input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox"/>
+<input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox"/>
+<label class="md-overlay" for="__drawer"></label>
+<div data-md-component="skip">
+<a class="md-skip" href="#overlays">
+          Skip to content
+        </a>
+</div>
+<div data-md-component="announce">
+</div>
+<header class="md-header md-header--shadow" data-md-component="header">
+<nav aria-label="Header" class="md-header__inner md-grid">
+<a aria-label="Dev Environment Setup" class="md-header__button md-logo" data-md-component="logo" href=".." title="Dev Environment Setup">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
+</a>
+<label class="md-header__button md-icon" for="__drawer">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"></path></svg>
+</label>
+<div class="md-header__title" data-md-component="header-title">
+<div class="md-header__ellipsis">
+<div class="md-header__topic">
+<span class="md-ellipsis">
+            Dev Environment Setup
+          </span>
+</div>
+<div class="md-header__topic" data-md-component="header-topic">
+<span class="md-ellipsis">
+            
+              Overlays
+            
+          </span>
+</div>
+</div>
+</div>
+<label class="md-header__button md-icon" for="__search">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+</label>
+<div class="md-search" data-md-component="search" role="dialog">
+<label class="md-search__overlay" for="__search"></label>
+<div class="md-search__inner" role="search">
+<form class="md-search__form" name="search">
+<input aria-label="Search" autocapitalize="off" autocomplete="off" autocorrect="off" class="md-search__input" data-md-component="search-query" name="query" placeholder="Search" required="" spellcheck="false" type="text"/>
+<label class="md-search__icon md-icon" for="__search">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
+</label>
+<nav aria-label="Search" class="md-search__options">
+<button aria-label="Clear" class="md-search__icon md-icon" tabindex="-1" title="Clear" type="reset">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
+</button>
+</nav>
+</form>
+<div class="md-search__output">
+<div class="md-search__scrollwrap" data-md-scrollfix="" tabindex="0">
+<div class="md-search-result" data-md-component="search-result">
+<div class="md-search-result__meta">
+            Initializing search
+          </div>
+<ol class="md-search-result__list" role="presentation"></ol>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="md-header__source">
+<a class="md-source" data-md-component="source" href="https://github.com/szymonos/envy-nx" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewbox="0 0 512 512" xmlns="http://www.w3.org/2000/svg"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"></path></svg>
+</div>
+<div class="md-source__repository">
+    szymonos/envy-nx
+  </div>
+</a>
+</div>
+</nav>
+</header>
+<div class="md-container" data-md-component="container">
+<main class="md-main" data-md-component="main">
+<div class="md-main__inner md-grid">
+<div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Navigation" class="md-nav md-nav--primary" data-md-level="0">
+<label class="md-nav__title" for="__drawer">
+<a aria-label="Dev Environment Setup" class="md-nav__button md-logo" data-md-component="logo" href=".." title="Dev Environment Setup">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
+</a>
+    Dev Environment Setup
+  </label>
+<div class="md-nav__source">
+<a class="md-source" data-md-component="source" href="https://github.com/szymonos/envy-nx" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewbox="0 0 512 512" xmlns="http://www.w3.org/2000/svg"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"></path></svg>
+</div>
+<div class="md-source__repository">
+    szymonos/envy-nx
+  </div>
+</a>
+</div>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="..">
+<span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../benefits/">
+<span class="md-ellipsis">
+    
+  
+    Benefits
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../nx/">
+<span class="md-ellipsis">
+    
+  
+    The nx CLI
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../architecture/">
+<span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../decisions/">
+<span class="md-ellipsis">
+    
+  
+    Design Decisions
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../standards/">
+<span class="md-ellipsis">
+    
+  
+    Quality &amp; Testing
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../enterprise/">
+<span class="md-ellipsis">
+    
+  
+    Enterprise Readiness
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../proxy/">
+<span class="md-ellipsis">
+    
+  
+    Corporate Proxy
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../releasing/">
+<span class="md-ellipsis">
+    
+  
+    Releasing
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../customization/">
+<span class="md-ellipsis">
+    
+  
+    Customization
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item md-nav__item--active">
+<input class="md-nav__toggle md-toggle" id="__toc" type="checkbox"/>
+<label class="md-nav__link md-nav__link--active" for="__toc">
+<span class="md-ellipsis">
+    
+  
+    Overlays
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<a class="md-nav__link md-nav__link--active" href="./">
+<span class="md-ellipsis">
+    
+  
+    Overlays
+  
+
+    
+  </span>
+</a>
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#quick-start">
+<span class="md-ellipsis">
+      
+        Quick start
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#repository-layout">
+<span class="md-ellipsis">
+      
+        Repository layout
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#addresses">
+<span class="md-ellipsis">
+      
+        Addresses
+      
+    </span>
+</a>
+<nav aria-label="Addresses" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#when-you-give-no-name">
+<span class="md-ellipsis">
+      
+        When you give no name
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#commands">
+<span class="md-ellipsis">
+      
+        Commands
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#scope-files">
+<span class="md-ellipsis">
+      
+        Scope files
+      
+    </span>
+</a>
+<nav aria-label="Scope files" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#the-scopes-header">
+<span class="md-ellipsis">
+      
+        The # scopes: header
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#standard-scopes">
+<span class="md-ellipsis">
+      
+        Standard scopes
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#shell-config">
+<span class="md-ellipsis">
+      
+        Shell config
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#hooks">
+<span class="md-ellipsis">
+      
+        Hooks
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#what-changes-when">
+<span class="md-ellipsis">
+      
+        What changes when
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#what-users-can-do">
+<span class="md-ellipsis">
+      
+        What users can do
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#building-an-image-on-an-overlay">
+<span class="md-ellipsis">
+      
+        Building an image on an overlay
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#testing-an-overlay-before-you-ship-it">
+<span class="md-ellipsis">
+      
+        Testing an overlay before you ship it
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#reference">
+<span class="md-ellipsis">
+      
+        Reference
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#quick-start">
+<span class="md-ellipsis">
+      
+        Quick start
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#repository-layout">
+<span class="md-ellipsis">
+      
+        Repository layout
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#addresses">
+<span class="md-ellipsis">
+      
+        Addresses
+      
+    </span>
+</a>
+<nav aria-label="Addresses" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#when-you-give-no-name">
+<span class="md-ellipsis">
+      
+        When you give no name
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#commands">
+<span class="md-ellipsis">
+      
+        Commands
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#scope-files">
+<span class="md-ellipsis">
+      
+        Scope files
+      
+    </span>
+</a>
+<nav aria-label="Scope files" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#the-scopes-header">
+<span class="md-ellipsis">
+      
+        The # scopes: header
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#standard-scopes">
+<span class="md-ellipsis">
+      
+        Standard scopes
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#shell-config">
+<span class="md-ellipsis">
+      
+        Shell config
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#hooks">
+<span class="md-ellipsis">
+      
+        Hooks
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#what-changes-when">
+<span class="md-ellipsis">
+      
+        What changes when
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#what-users-can-do">
+<span class="md-ellipsis">
+      
+        What users can do
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#building-an-image-on-an-overlay">
+<span class="md-ellipsis">
+      
+        Building an image on an overlay
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#testing-an-overlay-before-you-ship-it">
+<span class="md-ellipsis">
+      
+        Testing an overlay before you ship it
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#reference">
+<span class="md-ellipsis">
+      
+        Reference
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-content" data-md-component="content">
+<article class="md-content__inner md-typeset">
+<h1 id="overlays">Overlays<a class="headerlink" href="#overlays" title="Permanent link">¤</a></h1>
+<p>An overlay is a named set of scopes - your own packages, shell config and setup scripts - on top of the
+standard Envy-NX scopes. A team or an organization uses one to describe its environment in a single
+place, for example the tools every Coder workspace or Dev Container should have. Overlays live in a
+repository, and users subscribe to them by name. Every setup run updates the subscriptions, so a change
+to an overlay reaches every machine on its next run.</p>
+<p>This page is for the people who write an overlay, use one, or build an image on one. For your own scopes
+and packages, see <a href="../customization/">Customization</a>.</p>
+<h2 id="quick-start">Quick start<a class="headerlink" href="#quick-start" title="Permanent link">¤</a></h2>
+<p>See what a repository offers, then subscribe to an overlay by name:</p>
+<div class="highlight"><pre><span></span><code>nx<span class="w"> </span>overlay<span class="w"> </span>browse<span class="w"> </span>github:my-org/dev-overlays
+<span class="c1">#   base - Shell, PowerShell and oh-my-posh</span>
+<span class="c1">#   k8s  - Kubernetes tools</span>
+nx<span class="w"> </span>overlay<span class="w"> </span>add<span class="w"> </span>github:my-org/dev-overlays<span class="w"> </span>k8s
+nx<span class="w"> </span>overlay<span class="w">        </span><span class="c1"># your subscriptions: repository, ref, commit and scopes</span>
+nx<span class="w"> </span>doctor<span class="w">         </span><span class="c1"># confirms the commands in `# bins:` are on PATH</span>
+</code></pre></div>
+<p><code>nx overlay add</code> saves the subscription and runs <code>nx setup</code> to apply it. From then on every <code>nx setup</code> and
+<code>nx upgrade</code> fetches it and applies what changed.</p>
+<h2 id="repository-layout">Repository layout<a class="headerlink" href="#repository-layout" title="Permanent link">¤</a></h2>
+<p>Every overlay is a folder under <code>overlays/</code>, and the folder name is the overlay's name. A repository with
+one overlay has the same shape with one folder:</p>
+<div class="highlight"><pre><span></span><code>dev-overlays/
+├── overlays/
+│   ├── default/            # installed when no name is given - see below
+│   │   ├── README.md       # the first line is the description `nx overlay browse` shows
+│   │   └── scopes/
+│   │       └── base.nix
+│   └── k8s/
+│       ├── README.md
+│       ├── scopes/         # scope files - installed because they are here
+│       │   ├── k8s.nix
+│       │   └── sofka.nix -&gt; ../../../lib/sofka.nix
+│       ├── shell_cfg/      # shell files sourced at login
+│       │   └── aliases_k8s.sh
+│       └── hooks/
+│           └── post-setup.d/   # run only when the repository is a local folder
+│               └── 10-npm-globals.sh
+└── lib/                    # shared files, used by symlink or import
+    └── sofka.nix
+</code></pre></div>
+<p>Everything but <code>scopes/</code> is optional. The repository root is never an overlay, and anything outside
+<code>overlays/</code> is shared: a scope file can <code>import ../../../lib/sofka.nix</code>, or <code>scopes/</code> can hold a symlink
+to it.</p>
+<p><strong>Name one overlay <code>default</code>.</strong> An address with no overlay name installs the repository's only overlay,
+or else the one named <code>default</code>. A repository that relies on having just one overlay changes what a
+no-name address means the day it gets a second one. <code>default</code> keeps it stable.</p>
+<h2 id="addresses">Addresses<a class="headerlink" href="#addresses" title="Permanent link">¤</a></h2>
+<div class="highlight"><pre><span></span><code>nx<span class="w"> </span>overlay<span class="w"> </span>add<span class="w"> </span>github:my-org/dev-overlays<span class="w"> </span>k8s<span class="w"> </span>cloud<span class="w">          </span><span class="c1"># two overlays by name</span>
+nx<span class="w"> </span>overlay<span class="w"> </span>add<span class="w"> </span>github:my-org/dev-overlays<span class="w"> </span>k8s<span class="w"> </span>--ref<span class="w"> </span>v2<span class="w">       </span><span class="c1"># pinned to a tag or branch</span>
+nx<span class="w"> </span>overlay<span class="w"> </span>add<span class="w"> </span>github:my-org/dev-overlays<span class="w"> </span>--all<span class="w">              </span><span class="c1"># every overlay in the repository</span>
+nx<span class="w"> </span>overlay<span class="w"> </span>add<span class="w"> </span>github:other-team/overlays<span class="w"> </span>k8s<span class="w"> </span>--as<span class="w"> </span>k8s-other<span class="w"> </span><span class="c1"># a second overlay named k8s</span>
+nx<span class="w"> </span>overlay<span class="w"> </span>add<span class="w"> </span>~/src/dev-overlays<span class="w"> </span>k8s<span class="w">                        </span><span class="c1"># a local folder, copied as it is</span>
+</code></pre></div>
+<p>The repository is <code>github:&lt;owner&gt;/&lt;repo&gt;</code>, any <code>https://</code> or ssh git URL, or a local folder. Git fetches
+with your own credentials, so a private repository works when <code>gh auth setup-git</code> or an SSH key already
+gives you access - <code>github:</code> fetches over https, so with SSH keys only, use <code>git@github.com:&lt;owner&gt;/&lt;repo&gt;.git</code>. Envy-NX handles no secrets.</p>
+<p><code>nix/setup.sh --overlay</code> and <code>wsl/wsl_setup.ps1 -Overlay</code> take one overlay per address, in Nix
+flake-reference style:</p>
+<table>
+<thead>
+<tr>
+<th>Address</th>
+<th>Overlay</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>'github:my-org/dev-overlays#k8s'</code></td>
+<td><code>k8s</code>, from the default branch</td>
+</tr>
+<tr>
+<td><code>'github:my-org/dev-overlays/v2#k8s'</code></td>
+<td><code>k8s</code>, at the tag or branch <code>v2</code></td>
+</tr>
+<tr>
+<td><code>'https://git.example.com/dev.git?ref=v2#k8s'</code></td>
+<td><code>k8s</code>, at <code>v2</code>, from any git URL</td>
+</tr>
+<tr>
+<td><code>'/opt/dev-overlays#k8s'</code></td>
+<td><code>k8s</code>, from a local folder (no ref)</td>
+</tr>
+</tbody>
+</table>
+<p>Quote addresses in a shell: zsh treats <code>?</code> and <code>#</code> as glob characters.</p>
+<h3 id="when-you-give-no-name">When you give no name<a class="headerlink" href="#when-you-give-no-name" title="Permanent link">¤</a></h3>
+<table>
+<thead>
+<tr>
+<th>The repository has</th>
+<th><code>nx overlay add &lt;repo&gt;</code> / <code>--overlay &lt;repo&gt;</code> installs</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>one overlay</td>
+<td>it</td>
+</tr>
+<tr>
+<td>an overlay named <code>default</code></td>
+<td><code>default</code></td>
+</tr>
+<tr>
+<td>several, none named <code>default</code></td>
+<td>in a terminal, a picker with the descriptions; unattended, nothing - it lists the names</td>
+</tr>
+<tr>
+<td>no <code>overlays/</code> folder</td>
+<td>nothing: "no overlays/ in this repository"</td>
+</tr>
+</tbody>
+</table>
+<p><code>--all</code> installs every overlay; a missing name never means everything. What you picked is saved by name,
+so an overlay added to the repository later never changes an existing subscription, and an unattended
+upgrade never asks.</p>
+<h2 id="commands">Commands<a class="headerlink" href="#commands" title="Permanent link">¤</a></h2>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>nx overlay</code></td>
+<td>subscriptions: name, repository, ref, commit and scopes</td>
+</tr>
+<tr>
+<td><code>nx overlay browse &lt;repo&gt;</code></td>
+<td>the repository's overlays and their descriptions; installs nothing</td>
+</tr>
+<tr>
+<td><code>nx overlay add &lt;repo&gt; [overlay...]</code></td>
+<td>subscribe and apply; <code>--ref</code>, <code>--as &lt;name&gt;</code>, <code>--all</code></td>
+</tr>
+<tr>
+<td><code>nx overlay remove &lt;name...&gt;</code></td>
+<td>unsubscribe; their scopes are removed on the same run</td>
+</tr>
+<tr>
+<td><code>nx overlay update</code></td>
+<td>fetch every subscription and apply (the same as <code>nx upgrade</code>)</td>
+</tr>
+<tr>
+<td><code>nx scope remove &lt;overlay&gt;/&lt;scope&gt;</code></td>
+<td>opt out of one scope; it stays out across updates</td>
+</tr>
+<tr>
+<td><code>nx scope add &lt;overlay&gt;/&lt;scope&gt;</code></td>
+<td>opt back in (runs <code>nx setup</code>)</td>
+</tr>
+</tbody>
+</table>
+<p>Adding a subscription you already have changes nothing and keeps your opt-outs, so an image can run the
+same <code>--overlay</code> at build and at every start.</p>
+<h2 id="scope-files">Scope files<a class="headerlink" href="#scope-files" title="Permanent link">¤</a></h2>
+<p>A scope file in <code>overlays/&lt;name&gt;/scopes/</code> is installed because it is there, as <code>&lt;name&gt;/&lt;scope&gt;</code>: overlays
+<code>k8s</code> and <code>web</code> can both ship <code>base.nix</code>. Delete the file and the next run removes the scope and its
+packages.</p>
+<ul>
+<li><strong>File name.</strong> Letters, digits, <code>-</code> and <code>_</code> only, for example <code>k8s.nix</code> or <code>data_tools.nix</code>. Setup skips
+  any other name with a warning.</li>
+<li><strong>Packages.</strong> One nixpkgs attribute name per line between <code>[</code> and <code>]</code>. Find names with <code>nx search &lt;term&gt;</code>
+  or on <a href="https://search.nixos.org/packages">search.nixos.org</a>.</li>
+<li><strong><code># bins:</code></strong> lists the commands the packages provide. <code>nx doctor</code> checks that each one is on PATH.
+  Optional, but it turns a missing package into a visible warning.</li>
+<li><strong>Tools nixpkgs does not have.</strong> A scope file is a Nix function, so it can build a tool from a release
+  binary: return a <code>stdenvNoCC.mkDerivation</code> over <code>fetchurl</code> of the release asset for
+  <code>pkgs.stdenv.hostPlatform.system</code>. The build is pure, so every asset needs a fixed hash; keep the
+  version current from the repository's own CI, with a scheduled job that reads the release's checksums
+  and commits the new version and hashes. See
+  <a href="../customization/#packages-that-are-not-in-nixpkgs">Packages that are not in nixpkgs</a>.</li>
+</ul>
+<p>Setup copies every <code>.nix</code> file of the repository into <code>~/.config/nix-env/overlays/</code>, so imports across
+folders resolve. A symlinked file is followed only while it stays inside the repository and out of <code>.git</code>.
+One that points elsewhere - directly or through a symlinked folder - is refused and named, because
+whatever is copied ends up in the world-readable Nix store. Symlinked folders are not walked: link the
+files, or import them.</p>
+<h3 id="the-scopes-header">The <code># scopes:</code> header<a class="headerlink" href="#the-scopes-header" title="Permanent link">¤</a></h3>
+<p>Some tools are not plain packages. <code>gcloud</code>, <code>nodejs</code> and <code>az</code> run an install step that a scope file
+cannot repeat. Name those standard scopes in the header instead of passing setup flags:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># scopes: python nodejs gcloud k8s_base az</span>
+</code></pre></div>
+<ul>
+<li>Setup enables the named scopes exactly as if they were passed as flags. Their dependencies come along,
+  and their install steps run.</li>
+<li>An unknown name prints a warning and is skipped, so an overlay written for a newer Envy-NX release still
+  works on an older one.</li>
+<li>Use the names from the list below, with underscores (<code>k8s_base</code>). Only the first <code># scopes:</code> line in a
+  file counts. The header is plain text: put platform differences inside the scope file
+  (<code>pkgs.stdenv.isDarwin</code>) - standard scopes such as <code>docker</code> already handle macOS and Linux themselves.</li>
+</ul>
+<h3 id="standard-scopes">Standard scopes<a class="headerlink" href="#standard-scopes" title="Permanent link">¤</a></h3>
+<p>Every scope can go in the header. These are the ones whose install steps matter for an overlay:</p>
+<table>
+<thead>
+<tr>
+<th>Scope</th>
+<th>Install step</th>
+<th>Brings in</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>nodejs</code></td>
+<td>fnm from Nix, then the Node.js LTS into <code>~/.local/share/fnm</code>, so <code>npm i -g</code> works</td>
+<td></td>
+</tr>
+<tr>
+<td><code>python</code></td>
+<td>uv and prek from Nix; Python versions are managed by uv</td>
+<td></td>
+</tr>
+<tr>
+<td><code>az</code></td>
+<td>azure-cli installed with uv, set up to trust the corporate CA bundle</td>
+<td><code>python</code></td>
+</tr>
+<tr>
+<td><code>gcloud</code></td>
+<td>Google's tarball into <code>~/google-cloud-sdk</code>, so <code>gcloud components install</code> works</td>
+<td></td>
+</tr>
+<tr>
+<td><code>k8s_base</code></td>
+<td>kubectl, kubelogin, helm, k9s; with <code>gcloud</code>, also the GKE auth plugin</td>
+<td></td>
+</tr>
+<tr>
+<td><code>k8s_dev</code></td>
+<td>flux, kustomize, trivy and other cluster tools</td>
+<td><code>k8s_base</code></td>
+</tr>
+<tr>
+<td><code>terraform</code></td>
+<td>tfswitch, which puts <code>terraform</code> into <code>~/.local/bin</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>conda</code></td>
+<td>Miniforge into <code>~/miniforge3</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>playwright</code></td>
+<td>the playwright CLI as a uv tool</td>
+<td><code>python</code></td>
+</tr>
+<tr>
+<td><code>pwsh</code></td>
+<td>PowerShell, plus the <code>pwsh</code> profile</td>
+<td><code>shell</code></td>
+</tr>
+<tr>
+<td><code>zsh</code></td>
+<td>zsh plugins only; the zsh binary must come from the system</td>
+<td><code>shell</code></td>
+</tr>
+</tbody>
+</table>
+<p>The full list with every package is in the <a href="../">scope table</a>.</p>
+<h2 id="shell-config">Shell config<a class="headerlink" href="#shell-config" title="Permanent link">¤</a></h2>
+<p>Files in <code>shell_cfg/</code> are copied to <code>~/.config/shell/overlay/</code> on every setup run, and the managed block
+in <code>~/.bashrc</code> and <code>~/.zshrc</code> sources them after the standard aliases, so an overlay alias wins.</p>
+<ul>
+<li><strong>Pick the shell by extension.</strong> <code>.sh</code> loads in bash and zsh, <code>.bash</code> in bash only, <code>.zsh</code> in zsh only.
+  Other files are copied but not loaded. Names may use letters, digits, <code>.</code>, <code>-</code> and <code>_</code>.</li>
+<li><strong>Write <code>.sh</code> files for both shells.</strong> No bash-only syntax such as <code>[[ =~ ]]</code> captures or arrays indexed
+  from 0, and use <code>function name() {</code> rather than <code>name() {</code>.</li>
+<li><strong>A change asks first.</strong> Shell config runs in every shell, so an update that changes it - or adds or
+  removes the folder - shows the diff and asks. An unattended run keeps the previous files and warns until
+  someone accepts the change in a terminal. A new subscription, a new <code>--ref</code>, a local folder, and an
+  address given on the command line (<code>--overlay</code>, <code>nx overlay add</code>) apply without asking: naming it was the review.</li>
+<li><strong>Your own file with the same name wins</strong> (<code>~/.config/nix-env/local/shell_cfg/</code>).</li>
+<li>PowerShell does not read these files.</li>
+</ul>
+<h2 id="hooks">Hooks<a class="headerlink" href="#hooks" title="Permanent link">¤</a></h2>
+<p>Scripts in <code>overlays/&lt;name&gt;/hooks/post-setup.d/*.sh</code> run near the end of setup - <strong>only when the
+repository is a local folder</strong>, which the machine's owner placed there, such as an image's
+<code>/opt/dev-overlays</code>. An overlay fetched from a git repository never runs hooks: running another team's
+scripts on every setup is too wide a reach.</p>
+<p>Use hooks for tools that a command installs rather than a package: global npm packages,
+<code>uv tool install</code>, gcloud components.</p>
+<ul>
+<li>
+<p><strong>They run on every setup run.</strong> On a Coder workspace that means every start. Check first, then install,
+  so a run with nothing to do is fast:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># overlays/k8s/hooks/post-setup.d/10-npm-globals.sh</span>
+<span class="nv">v</span><span class="o">=</span><span class="m">5</span>.6.3
+npm<span class="w"> </span>ls<span class="w"> </span>-g<span class="w"> </span><span class="s2">"typescript@</span><span class="nv">$v</span><span class="s2">"</span><span class="w"> </span>&gt;/dev/null<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="o">||</span><span class="w"> </span>npm<span class="w"> </span>install<span class="w"> </span>-g<span class="w"> </span><span class="s2">"typescript@</span><span class="nv">$v</span><span class="s2">"</span>
+</code></pre></div>
+</li>
+<li>
+<p><strong>Each runs as its own <code>bash</code> process</strong> as the user, with <code>ENV_DIR</code>, <code>NIX_ENV_PLATFORM</code> and
+  <code>NIX_ENV_SCOPES</code> set. PATH covers the Nix profile, <code>~/.local/bin</code>, fnm's default Node and
+  <code>~/google-cloud-sdk/bin</code>, so <code>npm</code>, <code>uv</code> and <code>gcloud</code> work. Behind a TLS-inspecting proxy it gets the
+  same trust-store variables as your shell (<code>NODE_EXTRA_CA_CERTS</code>, <code>SSL_CERT_FILE</code>, <code>PIP_CERT</code>, ...)
+  when <code>~/.config/certs</code> holds the certificates.</p>
+</li>
+<li><strong>A failing hook prints a warning</strong> and setup still finishes.</li>
+<li><strong>Deleting a hook stops it running, but does not undo it.</strong> To remove what a hook installed, ship a hook
+  that uninstalls it.</li>
+</ul>
+<h2 id="what-changes-when">What changes when<a class="headerlink" href="#what-changes-when" title="Permanent link">¤</a></h2>
+<table>
+<thead>
+<tr>
+<th>When the overlay …</th>
+<th>every subscribed machine, on its next setup run …</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>adds a package to a scope file</td>
+<td>installs it</td>
+</tr>
+<tr>
+<td>removes a package from a scope file</td>
+<td>uninstalls it</td>
+</tr>
+<tr>
+<td>adds a scope file</td>
+<td>installs its packages</td>
+</tr>
+<tr>
+<td>deletes a scope file</td>
+<td>uninstalls its packages</td>
+</tr>
+<tr>
+<td>adds a name to <code># scopes:</code></td>
+<td>installs that scope, with its install step</td>
+</tr>
+<tr>
+<td>removes a name from <code># scopes:</code></td>
+<td>removes that scope <strong>once</strong>, with its remove step, and prints it (see below)</td>
+</tr>
+<tr>
+<td>changes <code>shell_cfg/</code></td>
+<td>shows the diff and asks; unattended, keeps the old files (an <code>--overlay</code> address applies it)</td>
+</tr>
+<tr>
+<td>cannot be fetched</td>
+<td>keeps the previous copy - nothing is removed (an <code>--overlay</code> address stops setup)</td>
+</tr>
+</tbody>
+</table>
+<p>Updates are fast-forward only: setup prints the incoming commits and changed files, and a repository whose
+history was rewritten, or a tag moved backwards, keeps its previous copy with a warning.</p>
+<p>Removing a name from the header deserves care:</p>
+<ul>
+<li><strong>The remove step deletes the scope's home folder</strong> on an unattended run, without asking. Dropping
+  <code>gcloud</code> deletes <code>~/google-cloud-sdk</code> with its components (the login in <code>~/.config/gcloud</code> stays).
+  Dropping <code>nodejs</code> deletes fnm's Node, including every global npm package users installed. Dropping
+  <code>python</code> deletes uv's Pythons and tools.</li>
+<li><strong>A scope another scope needs stays.</strong> Dropping <code>python</code> while <code>az</code> is still named keeps <code>python</code>,
+  because <code>az</code> depends on it.</li>
+<li><strong>It happens once.</strong> A user who adds the scope back afterwards with <code>nx setup --gcloud</code> keeps it.</li>
+</ul>
+<h2 id="what-users-can-do">What users can do<a class="headerlink" href="#what-users-can-do" title="Permanent link">¤</a></h2>
+<ul>
+<li><strong>Add anything on top.</strong> <code>nx install &lt;pkg&gt;</code>, <code>nx setup --&lt;scope&gt;</code>, or their own scopes with
+  <code>nx scope add</code>. All of it survives image upgrades.</li>
+<li><strong>Opt out of a subscribed scope.</strong> <code>nx scope remove k8s/sofka</code> keeps it out across updates;
+  <code>nx scope add k8s/sofka</code> brings it back. A standard scope a header names works the same way:
+  <code>nx scope remove gcloud</code> runs its remove step once and keeps it out; <code>nx scope add gcloud</code> brings it back.</li>
+<li><strong>Prefer their own prompt.</strong> A prompt engine an overlay's header names replaces the user's other engine,
+  but a personal scope naming the other engine wins.</li>
+</ul>
+<h2 id="building-an-image-on-an-overlay">Building an image on an overlay<a class="headerlink" href="#building-an-image-on-an-overlay" title="Permanent link">¤</a></h2>
+<p>A container image (a Coder workspace template, a Dev Container) copies the overlay repository in and runs
+the same setup command at build time and at every start. The overlay is then the one description of the
+environment, and the image passes no scope flags.</p>
+<div class="highlight"><pre><span></span><code><span class="c"># Nix itself is installed earlier in the image, single-user (--no-daemon), owned by the workspace user.</span>
+
+<span class="c"># Envy-NX: the latest release, no git history needed</span>
+<span class="k">RUN</span><span class="w"> </span>curl<span class="w"> </span>--proto<span class="w"> </span><span class="s1">'=https'</span><span class="w"> </span>--tlsv1.2<span class="w"> </span>-fsSL<span class="w"> </span>--connect-timeout<span class="w"> </span><span class="m">30</span><span class="w"> </span>--max-time<span class="w"> </span><span class="m">600</span><span class="w"> </span>-o<span class="w"> </span>/tmp/envy-nx.tar.gz<span class="w"> </span><span class="se">\</span>
+<span class="w">      </span>https://github.com/szymonos/envy-nx/releases/latest/download/envy-nx.tar.gz<span class="w"> </span><span class="se">\</span>
+<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>mkdir<span class="w"> </span>-p<span class="w"> </span>/opt/envy-nx<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>tar<span class="w"> </span>xzf<span class="w"> </span>/tmp/envy-nx.tar.gz<span class="w"> </span>-C<span class="w"> </span>/opt/envy-nx<span class="w"> </span>--strip-components<span class="o">=</span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
+<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>rm<span class="w"> </span>/tmp/envy-nx.tar.gz
+
+<span class="c"># The overlay repository lives next to the Dockerfile in your template repository</span>
+<span class="k">COPY</span><span class="w"> </span>dev-overlays/<span class="w"> </span>/opt/dev-overlays/
+
+<span class="k">USER</span><span class="w"> </span><span class="s">coder</span>
+<span class="k">RUN</span><span class="w"> </span>/opt/envy-nx/nix/setup.sh<span class="w"> </span>--unattended<span class="w"> </span>--overlay<span class="w"> </span><span class="s1">'/opt/dev-overlays#k8s'</span>
+</code></pre></div>
+<p>And at every workspace start, from the entrypoint:</p>
+<div class="highlight"><pre><span></span><code>/opt/envy-nx/nix/setup.sh<span class="w"> </span>--skip-repo-update<span class="w"> </span>--unattended<span class="w"> </span>--overlay<span class="w"> </span><span class="s1">'/opt/dev-overlays#k8s'</span>
+</code></pre></div>
+<p>Things to know:</p>
+<ul>
+<li><strong>Name the overlay.</strong> An unattended run cannot ask, so an address without a name works only for a
+  repository with one overlay or a <code>default</code>.</li>
+<li><strong>Run setup at start, not only at build.</strong> The workspace home is a volume that hides whatever the build
+  wrote to <code>$HOME</code>: <code>~/.nix-profile</code>, the shell profiles, and the tools installed into the home folder
+  (Node through fnm, the gcloud tarball, uv tools). The build still pays off: the packages it downloaded
+  stay in <code>/nix/store</code>, so the start only links them.</li>
+<li><strong>The start applies image upgrades.</strong> A new image with a changed overlay or a newer Envy-NX reaches an
+  existing home on its next start. Scopes the user added, and scopes they opted out of, stay that way.</li>
+<li><strong>A local folder runs its hooks.</strong> The image copied it in, so its <code>hooks/post-setup.d</code> scripts run.</li>
+<li><strong>A missing folder stops the start.</strong> An address given with <code>--overlay</code> must resolve: if the folder is
+  not there, for example a mount that has not arrived yet, setup stops before it changes any scope, rather
+  than start the workspace without its tools. A saved subscription refreshed by <code>nx upgrade</code> keeps its
+  previous copy instead.</li>
+<li><strong>Shell config follows the image.</strong> The <code>--overlay</code> address counts as reviewed, so a new image's
+  <code>shell_cfg/</code> applies at the next start without asking.</li>
+<li><strong>Pick the Envy-NX version on purpose.</strong> <code>releases/latest</code> takes every release, each of which passed
+  Envy-NX CI on Linux and macOS. To hold a version, download <code>releases/download/v&lt;X.Y.Z&gt;/envy-nx.tar.gz</code>
+  instead and bump it with your template releases.</li>
+<li><strong>No root in the overlay.</strong> An overlay installs nothing that needs root. Daemons, system packages and
+  anything run through <code>sudo</code> stay in the image.</li>
+</ul>
+<h2 id="testing-an-overlay-before-you-ship-it">Testing an overlay before you ship it<a class="headerlink" href="#testing-an-overlay-before-you-ship-it" title="Permanent link">¤</a></h2>
+<p>Subscribe to your working copy - a local folder applies without asking and runs its hooks:</p>
+<div class="highlight"><pre><span></span><code>nx<span class="w"> </span>overlay<span class="w"> </span>add<span class="w"> </span>~/src/dev-overlays<span class="w"> </span>k8s<span class="w">   </span><span class="c1"># your working copy</span>
+nx<span class="w"> </span>setup<span class="w">                                </span><span class="c1"># after each edit</span>
+nx<span class="w"> </span>overlay<span class="w">                              </span><span class="c1"># what was picked up</span>
+nx<span class="w"> </span>doctor<span class="w">                               </span><span class="c1"># every `# bins:` command on PATH</span>
+</code></pre></div>
+<p>Use <code>nx setup</code>, not <code>nx upgrade</code>. <code>nx upgrade</code> skips install steps, so a scope you just added to the header
+would get its packages but not its installer.</p>
+<p>Before you ship, check that:</p>
+<ul>
+<li>setup prints no <code>unknown scope</code>, <code>ignored</code> or <code>refused</code> warning for your files,</li>
+<li>every hook runs twice in a row without error, and the second run is quick,</li>
+<li><code>nx doctor</code> reports no missing commands.</li>
+</ul>
+<h2 id="reference">Reference<a class="headerlink" href="#reference" title="Permanent link">¤</a></h2>
+<ul>
+<li><a href="../customization/">Customization</a> - your own scopes and packages, pinning.</li>
+<li><a href="https://github.com/szymonos/envy-nx/blob/main/design/decisions/0015-overlay-subscriptions.md">Decision 0015</a> - how subscriptions fetch, copy and namespace overlays, and the options that were rejected.</li>
+<li><a href="https://github.com/szymonos/envy-nx/blob/main/design/decisions/0013-overlays-org-extension-point.md">Decision 0013</a> - why an overlay's scopes and <code># scopes:</code> header are installed on every run.</li>
+</ul>
+</article>
+</div>
+<script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+</div>
+</main>
+<footer class="md-footer">
+<div class="md-footer-meta md-typeset">
+<div class="md-footer-meta__inner md-grid">
+<div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" rel="noopener" target="_blank">
+      Material for MkDocs
+    </a>
+</div>
+</div>
+</div>
+</footer>
+</div>
+<div class="md-dialog" data-md-component="dialog">
+<div class="md-dialog__inner md-typeset"></div>
+</div>
+<script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.indexes", "navigation.sections", "content.code.copy", "content.tabs.link"], "search": "../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+<script src="../assets/javascripts/bundle.c21346df.min.js"></script>
+<script src="../assets/javascripts/diagram-zoom.js"></script>
+</body>
+</html>
