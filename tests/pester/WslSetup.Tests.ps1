@@ -216,6 +216,22 @@ Describe 'wsl_setup.ps1 orchestration' {
         }
     }
 
+    Context 'Nix mode with Overlay' {
+        It 'passes each address to nix/setup.sh as its own --overlay, ? and # intact' {
+            $global:WslTestCheckDistroJson = New-CheckDistro
+            $overlays = @('https://host/o/r.git?ref=v1#k8s', 'github:o/other/v2#base')
+
+            & "$Script:RepoRoot/wsl/wsl_setup.ps1" -Distro 'Ubuntu' -Scope @('shell') -Overlay $overlays -SkipRepoUpdate 6>$null
+
+            $nixCall = [string[]]($global:WslTestCalls | Where-Object { ($_ -join ' ') -match 'nix/setup\.sh' } | Select-Object -First 1)
+            $i = [array]::IndexOf($nixCall, 'https://host/o/r.git?ref=v1#k8s')
+            $i | Should -BeGreaterThan 0
+            $nixCall[$i - 1] | Should -Be '--overlay'
+            $nixCall[$i + 1] | Should -Be '--overlay'
+            $nixCall[$i + 2] | Should -Be 'github:o/other/v2#base'
+        }
+    }
+
     Context 'Zsh scope installs system-wide before nix' {
         It 'calls install_zsh.sh and passes --zsh to nix/setup.sh' {
             $global:WslTestCheckDistroJson = New-CheckDistro

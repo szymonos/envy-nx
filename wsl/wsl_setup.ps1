@@ -46,6 +46,9 @@ Mutually exclusive with OmpTheme.
 .PARAMETER GtkTheme
 Specify gtk theme for wslg. Available values: light, dark.
 Default: automatically detects based on the system theme.
+.PARAMETER Overlay
+Overlays to subscribe to inside the distro, one '<repo>#<overlay>' address per item,
+e.g. 'github:Owner/repo#k8s' or 'github:Owner/repo/v2#k8s'. Each is passed to nix/setup.sh as --overlay.
 .PARAMETER Repos
 List of GitHub repositories in format "Owner/RepoName" to clone into the WSL.
 .PARAMETER AddCertificate
@@ -81,6 +84,9 @@ wsl/wsl_setup.ps1 $Distro -s $Scope -o $OmpTheme -AddCertificate
 # :set up shell with the specified starship theme (mutually exclusive with OmpTheme)
 $StarshipTheme = 'nerd'
 wsl/wsl_setup.ps1 $Distro -s $Scope -StarshipTheme $StarshipTheme
+# :set up WSL distro subscribed to an overlay repository
+$Overlay = @('github:szymonos/nix-overlay#k8s')
+wsl/wsl_setup.ps1 $Distro -s $Scope -Overlay $Overlay
 # :set up WSL distro and clone specified GitHub repositories
 $Repos = @('szymonos/envy-nx')
 wsl/wsl_setup.ps1 $Distro -r $Repos -s $Scope -o $OmpTheme
@@ -131,6 +137,12 @@ param (
     [Parameter(ParameterSetName = 'GitHub')]
     [ValidateSet('light', 'dark')]
     [string]$GtkTheme,
+
+    [Parameter(ParameterSetName = 'Update')]
+    [Parameter(ParameterSetName = 'Setup')]
+    [Parameter(ParameterSetName = 'GitHub')]
+    [ValidateNotNullOrEmpty()]
+    [string[]]$Overlay,
 
     [Parameter(Mandatory, ParameterSetName = 'GitHub')]
     [ValidateScript(
@@ -323,6 +335,7 @@ process {
             -PwshEnvSet $script:pwshEnvSet `
             -OmpTheme $OmpTheme `
             -StarshipTheme $StarshipTheme `
+            -Overlay $Overlay `
             -SkipModulesUpdate ([bool]$SkipModulesUpdate) `
             -DistroRecord $script:distroRecords[$Distro]
         $script:sshKeyFp = $scopeResult.SshKeyFp
