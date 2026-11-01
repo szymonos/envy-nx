@@ -402,6 +402,8 @@ True if the Windows User-scope env vars haven't been written yet.
 Optional --omp-theme value forwarded to nix/setup.sh.
 .PARAMETER StarshipTheme
 Optional --starship-theme value forwarded to nix/setup.sh.
+.PARAMETER Overlay
+Overlay addresses, each forwarded to nix/setup.sh as its own --overlay.
 .PARAMETER SkipModulesUpdate
 True if -SkipModulesUpdate was passed (suppresses --update-modules).
 .PARAMETER DistroRecord
@@ -432,6 +434,8 @@ function Install-WslScopes {
         [string]$OmpTheme,
 
         [string]$StarshipTheme,
+
+        [string[]]$Overlay,
 
         [bool]$SkipModulesUpdate,
 
@@ -480,6 +484,11 @@ function Install-WslScopes {
     }
     if ($StarshipTheme) {
         $nixArgs.AddRange([string[]]@('--starship-theme', $StarshipTheme))
+    }
+    # Invoke-WslExe passes each argument to `wsl.exe --exec` on its own, with no
+    # shell on either side, so the ? and & of an address need no quoting
+    foreach ($ov in $Overlay) {
+        $nixArgs.AddRange([string[]]@('--overlay', $ov))
     }
 
     # -- run nix setup (packages + configure scripts + profiles) --
