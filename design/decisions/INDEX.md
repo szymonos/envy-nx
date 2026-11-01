@@ -20,3 +20,4 @@ New decisions are added by hand, following the shape of the existing records, or
 | 0012 | One upgrade path through setup.sh   | `nx_pkg.sh`, `nx_lifecycle.sh`, `nix/lib/phases/nix_profile.sh`      | [0012](0012-one-upgrade-path.md)                 |
 | 0013 | Overlays as the org extension point | `nix/lib/phases/platform.sh`, `scopes.sh`, `.assets/lib/nx_scope.sh` | [0013](0013-overlays-org-extension-point.md)     |
 | 0014 | pwsh libraries via RUNPATH          | `nix/flake.nix`                                                      | [0014](0014-pwsh-runpath-not-ld-library-path.md) |
+| 0015 | Overlays subscribed by name         | `nix/lib/phases/overlays.sh`, `nx_overlay.sh`, `nix/flake.nix`       | [0015](0015-overlay-subscriptions.md)            |

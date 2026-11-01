@@ -67,12 +67,26 @@
     {
       "name": "overlay",
       "family": "scope",
-      "summary": "manage overlay directories",
+      "summary": "manage overlay subscriptions",
       "subverbs": [
-        { "name": "list", "summary": "show overlay directories and contents" },
-        { "name": "status", "summary": "show overlay sync status" },
-        { "name": "set", "summary": "use a directory as the organization overlay", "args": [{ "name": "path", "required": true }] },
-        { "name": "unset", "summary": "stop using the organization overlay" }
+        {
+          "name": "add",
+          "summary": "subscribe to overlays by name and apply them",
+          "args": [{ "name": "repo", "required": true }, { "name": "overlay", "variadic": true }],
+          "flags": [
+            { "long": "--ref", "summary": "tag or branch to follow", "takes_value": true },
+            { "long": "--as", "summary": "subscription name for one overlay", "takes_value": true },
+            { "long": "--all", "summary": "every overlay in the repository" }
+          ]
+        },
+        { "name": "remove", "aliases": ["rm"], "summary": "drop subscriptions and their scopes", "args": [{ "name": "name", "variadic": true, "required": true }] },
+        { "name": "update", "summary": "fetch every subscription and apply the changes" },
+        {
+          "name": "browse",
+          "summary": "list the overlays in a repository",
+          "args": [{ "name": "repo", "required": true }],
+          "flags": [{ "long": "--ref", "summary": "tag or branch to read", "takes_value": true }]
+        }
       ]
     },
     {
@@ -135,7 +149,7 @@
         { "long": "--omp-theme", "summary": "oh-my-posh theme name", "takes_value": true, "value_completer": "theme_omp" },
         { "long": "--starship-theme", "summary": "starship theme name", "takes_value": true, "value_completer": "theme_starship" },
         { "long": "--remove", "summary": "remove scopes", "takes_value": true, "value_completer": "all_scopes" },
-        { "long": "--overlay-dir", "summary": "use a directory as the organization overlay", "takes_value": true },
+        { "long": "--overlay", "summary": "subscribe to an overlay: <repo>#<overlay>", "takes_value": true },
         { "long": "--help", "short": "-h", "summary": "show help" }
       ]
     },

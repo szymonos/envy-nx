@@ -1,7 +1,7 @@
 # phase: platform
-# OS detection, overlay directory discovery, hook runner.
+# OS detection, personal scopes discovery, hook runners.
 #
-# Reads:  ENV_DIR, NIX_ENV_OVERLAY_DIR (env), overlay_dir_arg, VALID_SCOPES
+# Reads:  ENV_DIR, VALID_SCOPES, OVERLAY_HOOK_DIRS
 # Writes: platform, NIX_ENV_PLATFORM, OVERLAY_DIR, overlay_entries
 #
 # Note: phase_platform_run_hooks sources hook scripts in the current shell
@@ -53,6 +53,22 @@ _overlay_header_scopes() {
   done < <(sed -En 's/^#[[:space:]]*scopes:[[:space:]]*//p' "$1" | head -n 1 | tr '-' '_' | tr -s '[:space:]' '\n')
 }
 
+# Records the standard scopes named by the header of scope file $2, and
+# everything they depend on, as overlay entries of origin $1, so a dependency is
+# protected and removed the same way as a scope the header names.
+_overlay_add_header_entries() {
+  local _hdr _saved _s
+  _hdr="$(_overlay_header_scopes "$2" | tr '\n' ' ')"
+  [ -n "$_hdr" ] || return 0
+  _saved="$_scope_set"
+  _scope_set=" $_hdr"
+  omp_theme="" resolve_scope_deps
+  for _s in $_scope_set; do
+    overlay_entries+="$1 $_s $2"$'\n'
+  done
+  _scope_set="$_saved"
+}
+
 # Prints "<origin> <file>" of the first overlay entry providing scope $1.
 _overlay_lookup() {
   local _o _s _f
@@ -62,74 +78,23 @@ _overlay_lookup() {
   return 1
 }
 
-# Collects every overlay directory: the org overlay first, then $ENV_DIR/local
-# (the personal one), as a colon-separated
-# OVERLAY_DIR. Each scope file is synced as local_<name>.nix and recorded in
-# overlay_entries as "<origin> <scope> <file>" lines, with one more line per
-# standard scope its header names. On a name clash the org file wins.
+# Personal scopes: each $ENV_DIR/local/scopes/*.nix (`nx scope add`) is synced as
+# local_<name>.nix and recorded in overlay_entries as a "local <scope> <file>"
+# line, with one more line per standard scope its header names. OVERLAY_DIR
+# starts as that folder; the overlays phase puts subscriptions in front of it.
 phase_platform_discover_overlay() {
   OVERLAY_DIR=""
   overlay_entries=""
-  # The org overlay comes from --overlay-dir, then NIX_ENV_OVERLAY_DIR, then the
-  # path the last run saved in $ENV_DIR/overlay_dir, so a shell that does not
-  # export the variable still sees it. Only `nx overlay unset` forgets it.
-  local _org="" _src=""
-  if [ -n "${overlay_dir_arg:-}" ]; then
-    _org="$overlay_dir_arg" _src="--overlay-dir"
-  elif [ -n "${NIX_ENV_OVERLAY_DIR:-}" ]; then
-    _org="$NIX_ENV_OVERLAY_DIR" _src="NIX_ENV_OVERLAY_DIR"
-  elif [ -f "$ENV_DIR/overlay_dir" ]; then
-    _org="$(head -n 1 "$ENV_DIR/overlay_dir")" _src="$ENV_DIR/overlay_dir"
-    if [ -z "$_org" ]; then
-      _ir_error="$ENV_DIR/overlay_dir is empty"
-      err "$_ir_error - run nx overlay set <path>, or nx overlay unset to stop using an organization overlay"
-      exit 1
-    fi
+  # CLEANUP: CQ-007 - the organization overlay folder became a subscription
+  if [ -n "${NIX_ENV_OVERLAY_DIR:-}" ] || [ -f "$ENV_DIR/overlay_dir" ]; then
+    warn "NIX_ENV_OVERLAY_DIR and nx overlay set are gone - move the folder's scopes/ (and shell_cfg/, hooks/) into <folder>/overlays/<name>/ and subscribe: nix/setup.sh --overlay '<folder>#<name>'"
   fi
-  if [ -n "$_org" ]; then
-    # OVERLAY_DIR joins folders with `:`, and the saved file holds one line
-    case "$_org" in
-    *:* | *"
-"*)
-      _ir_error="organization overlay path cannot contain ':' or a newline: $_org"
-      err "$_ir_error"
-      exit 1
-      ;;
-    esac
-    # A missing or unreadable folder (a mount not there yet, a permission change)
-    # would read as "every org scope deleted" and run their remove steps, so stop
-    # before touching anything.
-    if [ ! -d "$_org" ] || [ ! -r "$_org" ] || [ ! -x "$_org" ] ||
-      { { [ -e "$_org/scopes" ] || [ -L "$_org/scopes" ]; } &&
-        { [ ! -d "$_org/scopes" ] || [ ! -r "$_org/scopes" ] || [ ! -x "$_org/scopes" ]; }; }; then
-      _ir_error="organization overlay $_org (from $_src) is not a readable directory"
-      err "$_ir_error - fix the path or its permissions, or run nx overlay unset to stop using it"
-      exit 1
-    fi
-    _org="$(cd "$_org" && pwd)"
-    # physical paths, so a symlink to the config folder is caught too
-    if [ "$(cd "$_org" && pwd -P)" = "$(cd "$ENV_DIR" && pwd -P)" ]; then
-      _ir_error="organization overlay $_org (from $_src) is the Envy-NX config folder itself"
-      err "$_ir_error - point it at the overlay folder"
-      exit 1
-    fi
-    if [ "$(head -n 1 "$ENV_DIR/overlay_dir" 2>/dev/null)" != "$_org" ]; then
-      local _tmp
-      _tmp="$(mktemp "$ENV_DIR/overlay_dir.XXXXXX")"
-      printf '%s\n' "$_org" >"$_tmp" && mv -f "$_tmp" "$ENV_DIR/overlay_dir"
-    fi
-    OVERLAY_DIR="$_org"
-  fi
-  if [ -d "$ENV_DIR/local" ] && [ "$ENV_DIR/local" != "$_org" ]; then
-    OVERLAY_DIR="${OVERLAY_DIR:+$OVERLAY_DIR:}$ENV_DIR/local"
-  fi
+  [ -d "$ENV_DIR/local" ] && OVERLAY_DIR="$ENV_DIR/local"
   export OVERLAY_DIR
-  local _dir _origin _nix _name _prev _s
+  local _dir _origin=local _nix _name
   while IFS= read -r _dir; do
     [ -n "$_dir" ] || continue
-    _origin=local
-    [ "$_dir" = "$_org" ] && _origin=org
-    info "overlay directory: $_dir"
+    info "personal scopes: $_dir"
     for _nix in "$_dir/scopes"/*.nix; do
       [ -f "$_nix" ] || continue
       _name="local_$(basename "$_nix" .nix)"
@@ -144,25 +109,9 @@ phase_platform_discover_overlay() {
         continue
         ;;
       esac
-      if _prev="$(_overlay_lookup "$_name")"; then
-        warn "  $_nix ignored - the organization overlay provides ${_name#local_} (${_prev#* })"
-        continue
-      fi
       cp "$_nix" "$ENV_DIR/scopes/$_name.nix"
       overlay_entries+="$_origin $_name $_nix"$'\n'
-      # the header's scopes and everything they depend on, so a dependency is
-      # protected and removed the same way as a scope the header names
-      local _hdr _saved
-      _hdr="$(_overlay_header_scopes "$_nix" | tr '\n' ' ')"
-      if [ -n "$_hdr" ]; then
-        _saved="$_scope_set"
-        _scope_set=" $_hdr"
-        omp_theme="" resolve_scope_deps
-        for _s in $_scope_set; do
-          overlay_entries+="$_origin $_s $_nix"$'\n'
-        done
-        _scope_set="$_saved"
-      fi
+      _overlay_add_header_entries "$_origin" "$_nix"
     done
   done < <(printf '%s\n' "$OVERLAY_DIR" | tr ':' '\n')
   local _local_nix
@@ -178,7 +127,9 @@ phase_platform_discover_overlay() {
   return 0
 }
 
-# Overlay post-setup hooks, org overlay first. PATH carries the nix profile,
+# Post-setup hooks of overlays read from a local folder (OVERLAY_HOOK_DIRS),
+# then of the personal scopes folder. OVERLAY_DIR also lists the copies of
+# subscribed overlays, which never hold hooks/. PATH carries the nix profile,
 # ~/.local/bin, fnm's default Node and the gcloud tarball install, so a hook can
 # call npm, uv or gcloud. Without FNM_DIR, fnm picks its folder itself: an
 # existing ~/.fnm, else the XDG data folder, or Application Support on macOS.
@@ -193,13 +144,24 @@ phase_platform_run_overlay_hooks() {
     _path="$_path:$HOME/Library/Application Support/fnm/$_fnm_bin"
   fi
   _path="$_path:$HOME/google-cloud-sdk/bin:$HOME/.local/bin:$HOME/.nix-profile/bin:$PATH"
+  # The trust-store variables the managed rc block exports (the `# :certs` block
+  # of _nx_render_nix_block), so a hook's npm, pip or curl trusts a TLS-inspecting
+  # proxy the way an interactive shell does. Setup's own environment has none.
+  local _certs="$HOME/.config/certs" _env=()
+  [ -f "$_certs/ca-custom.crt" ] && _env+=("NODE_EXTRA_CA_CERTS=$_certs/ca-custom.crt")
+  if [ -f "$_certs/ca-bundle.crt" ]; then
+    _env+=("REQUESTS_CA_BUNDLE=$_certs/ca-bundle.crt" "SSL_CERT_FILE=$_certs/ca-bundle.crt")
+    _env+=("CURL_CA_BUNDLE=$_certs/ca-bundle.crt" "PIP_CERT=$_certs/ca-bundle.crt")
+    _env+=("AWS_CA_BUNDLE=$_certs/ca-bundle.crt" "CLOUDSDK_CORE_CUSTOM_CA_CERTS_FILE=$_certs/ca-bundle.crt")
+  fi
   # the list comes in on fd 3 so a hook reading stdin cannot eat the next entry
   while IFS= read -r _dir <&3; do
     [ -n "$_dir" ] && [ -d "$_dir/hooks/post-setup.d" ] || continue
     for _hook in "$_dir/hooks/post-setup.d"/*.sh; do
       [ -f "$_hook" ] || continue
       info "running overlay hook: $_hook"
-      ENV_DIR="$ENV_DIR" PATH="$_path" bash "$_hook" 3<&- || warn "overlay hook failed: $_hook"
+      env ${_env[@]+"${_env[@]}"} ENV_DIR="$ENV_DIR" PATH="$_path" bash "$_hook" 3<&- ||
+        warn "overlay hook failed: $_hook"
     done
-  done 3< <(printf '%s\n' "${OVERLAY_DIR:-}" | tr ':' '\n')
+  done 3< <(printf '%s:%s\n' "${OVERLAY_HOOK_DIRS:-}" "${OVERLAY_DIR:-}" | tr ':' '\n')
 }

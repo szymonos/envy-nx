@@ -237,9 +237,11 @@ EOF
 
 # -- overlay ------------------------------------------------------------------
 
-@test "nx overlay set saves the path under zsh without breaking PATH" {
-  mkdir -p "$TEST_DIR/org"
-  run _zsh "source $NX_LIB_DIR/nx.sh && nx_main overlay set $TEST_DIR/org && command -v mkdir"
+@test "nx overlay browse and add work under zsh without breaking PATH" {
+  mkdir -p "$TEST_DIR/ov/overlays/k8s/scopes" "$TEST_DIR/ov/overlays/web/scopes"
+  printf '# Kubernetes tools\n' >"$TEST_DIR/ov/overlays/k8s/README.md"
+  run _zsh "source $NX_LIB_DIR/nx.sh && function _nx_lifecycle_setup() { :; } && nx_main overlay browse $TEST_DIR/ov && nx_main overlay add '$TEST_DIR/ov#k8s' && command -v mkdir"
   [ "$status" -eq 0 ]
-  [ "$(cat "$ENV_DIR/overlay_dir")" = "$TEST_DIR/org" ]
+  [[ "$output" == *k8s*"Kubernetes tools"* ]]
+  grep -qx "k8s k8s - $TEST_DIR/ov" "$ENV_DIR/overlays.list"
 }

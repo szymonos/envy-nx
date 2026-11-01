@@ -288,7 +288,7 @@ Commands:
   rollback                 rollback to previous profile generation
   list                     list installed packages
   scope                    manage scopes (nx scope help)
-  overlay                  manage overlay directories (nx overlay help)
+  overlay                  manage overlay subscriptions (nx overlay help)
   pin                      manage nixpkgs revision pin (nx pin help)
   profile                  manage shell profile blocks (nx profile help)
   setup     [flags...]     add or remove scopes and themes, then upgrade (runs nix/setup.sh)
@@ -457,57 +457,63 @@ NX_VERB_HELP_EOF
     ;;
   overlay)
     case "${2:-}" in
-    list)
+    add)
       cat <<'NX_VERB_HELP_EOF'
-Usage: nx overlay list
+Usage: nx overlay add <repo> [overlay...] [options]
 
-show overlay directories and contents
+subscribe to overlays by name and apply them
+
+Options:
+  --ref <value>  tag or branch to follow
+  --as <value>   subscription name for one overlay
+  --all          every overlay in the repository
+  -h, --help     show this help
+NX_VERB_HELP_EOF
+      ;;
+    remove | rm)
+      cat <<'NX_VERB_HELP_EOF'
+Usage: nx overlay remove <name...>
+
+drop subscriptions and their scopes
+
+Aliases: rm
 
 Options:
   -h, --help  show this help
 NX_VERB_HELP_EOF
       ;;
-    status)
+    update)
       cat <<'NX_VERB_HELP_EOF'
-Usage: nx overlay status
+Usage: nx overlay update
 
-show overlay sync status
+fetch every subscription and apply the changes
 
 Options:
   -h, --help  show this help
 NX_VERB_HELP_EOF
       ;;
-    set)
+    browse)
       cat <<'NX_VERB_HELP_EOF'
-Usage: nx overlay set <path>
+Usage: nx overlay browse <repo> [options]
 
-use a directory as the organization overlay
+list the overlays in a repository
 
 Options:
-  -h, --help  show this help
-NX_VERB_HELP_EOF
-      ;;
-    unset)
-      cat <<'NX_VERB_HELP_EOF'
-Usage: nx overlay unset
-
-stop using the organization overlay
-
-Options:
-  -h, --help  show this help
+  --ref <value>  tag or branch to read
+  -h, --help     show this help
 NX_VERB_HELP_EOF
       ;;
     *)
       cat <<'NX_VERB_HELP_EOF'
 Usage: nx overlay <command>
 
-manage overlay directories
+manage overlay subscriptions
 
 Commands:
-  list        show overlay directories and contents
-  status      show overlay sync status
-  set <path>  use a directory as the organization overlay
-  unset       stop using the organization overlay
+  add <repo> [overlay...]  subscribe to overlays by name and apply them
+  remove <name...>         drop subscriptions and their scopes
+  update                   fetch every subscription and apply the changes
+  browse <repo>            list the overlays in a repository
 NX_VERB_HELP_EOF
       ;;
     esac

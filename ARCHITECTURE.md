@@ -94,13 +94,14 @@ Implications for any change you make:
 
 ### 3a. Setup orchestration (`nix/setup.sh` + `nix/lib/phases/`)
 
-`nix/setup.sh` is a slim orchestrator (~225 lines <!-- arch:max-lines nix/setup.sh 230 -->, ~130 of executable code; the `--sync-only` and `--skip-configure` modes gate phases here rather than in the phase libraries, so the run shape stays readable in one file). All logic lives in phase libraries; the orchestrator only sequences them and emits `_ir_flush` calls between phase transitions for crash-resilient provenance.
+`nix/setup.sh` is a slim orchestrator (~230 lines <!-- arch:max-lines nix/setup.sh 235 -->, ~130 of executable code; the `--sync-only` and `--skip-configure` modes gate phases here rather than in the phase libraries, so the run shape stays readable in one file). All logic lives in phase libraries; the orchestrator only sequences them and emits `_ir_flush` calls between phase transitions for crash-resilient provenance.
 
 | Phase file                       | Responsibility                                                                               |
 | -------------------------------- | -------------------------------------------------------------------------------------------- |
-| `nix/lib/io.sh`                  | Output helpers + side-effect wrappers (`_io_nix`, `_io_curl_probe`, `_io_run`)               |
+| `nix/lib/io.sh`                  | Output helpers + side-effect wrappers (`_io_nix`, `_io_curl_probe`, `_io_run`, `_io_git`)    |
 | `nix/lib/phases/bootstrap.sh`    | Repo auto-refresh, root guard, paths, nix detect/install, jq bootstrap, args                 |
-| `nix/lib/phases/platform.sh`     | OS detection, overlay discovery, pre/post-setup and overlay hook runners                     |
+| `nix/lib/phases/platform.sh`     | OS detection, personal scopes discovery, pre/post-setup and overlay hook runners             |
+| `nix/lib/phases/overlays.sh`     | Overlay subscriptions: resolve, fetch, copy `*.nix` + `shell_cfg/`, entries, `index.nix`     |
 | `nix/lib/phases/scopes.sh`       | Load/merge scopes, apply overlay scopes, resolve deps, write `config.nix`, apply removes     |
 | `nix/lib/phases/nix_profile.sh`  | Flake update, `nix profile add/upgrade`, MITM probe                                          |
 | `nix/lib/phases/configure.sh`    | gh/git/per-scope `configure/*.sh` dispatch (via `_io_run`)                                   |
@@ -273,7 +274,7 @@ Implemented in `resolve_scope_deps` (`.assets/lib/scopes.sh`). `--omp-theme <the
 | `vscode_server_env`     | `~/.vscode-server/server-env-setup` includes nix PATH (if `~/.nix-profile/bin` exists)                                                   | WARN: nix PATH missing                                                           |
 | `nix_profile`           | `nix-env` in `nix profile list`                                                                                                          | FAIL: not found                                                                  |
 | `nix_profile_link`      | `~/.nix-profile` is a symlink resolving to a live target                                                                                 | FAIL: missing or dangling                                                        |
-| `overlay_dir`           | Org overlay (`NIX_ENV_OVERLAY_DIR` or `overlay_dir`) readable (if set)                                                                   | FAIL: not a readable directory                                                   |
+| `overlay_subscriptions` | Each `overlays.list` entry has its clone and its copy (if any)                                                                           | FAIL: names the subscriptions not fetched                                        |
 | `version_skew`          | Installed version matches latest GitHub release (if `gh` available)                                                                      | WARN: installed version is older                                                 |
 
 **PowerShell `nx` wrapper.** `.assets/config/pwsh_cfg/_aliases_nix.ps1` defines a PS `nx` function that proxies almost every verb to `bash $ENV_DIR/nx.sh "$@"`. The single exception is `nx profile *`, handled natively because **the bash and PS profile dispatchers operate on structurally different files** (`~/.bashrc`/`~/.zshrc` with `# >>> nix:managed >>>` blocks vs `$PROFILE.CurrentUserAllHosts` with `#region nix:* ... #endregion` regions). The `$PROFILE` path is resolved by the .NET runtime per host and cannot be derived from bash; the region syntax is PowerShell-specific. This is **symmetric implementation, not duplicated logic** - both the bash dispatcher and the PS `switch ($subCmd)` arms are generated from the same manifest (see §3d), so the user-facing subverb surface stays in sync by construction.
@@ -456,12 +457,15 @@ The probe is gated on `ca-custom.crt` existence (the cause), not `ca-bundle.crt`
 
 Packages assemble bottom-up into a single `buildEnv` profile entry. No layer can shadow another.
 
-| Layer | What           | Source                      | Managed by                  |
-| ----- | -------------- | --------------------------- | --------------------------- |
-| 1     | Base           | `nix/scopes/base.nix`       | Always installed            |
-| 2     | Repo scopes    | `nix/scopes/<name>.nix`     | `setup.sh --<scope>` flags  |
-| 3     | Overlay scopes | `local_*.nix` in scopes dir | `nx scope add`, overlay dir |
-| 4     | Extra packages | `packages.nix`              | `nx install` / `nx remove`  |
+| Layer | What            | Source                      | Managed by                 |
+| ----- | --------------- | --------------------------- | -------------------------- |
+| 1     | Base            | `nix/scopes/base.nix`       | Always installed           |
+| 2     | Repo scopes     | `nix/scopes/<name>.nix`     | `setup.sh --<scope>` flags |
+| 3     | Personal scopes | `local_*.nix` in scopes dir | `nx scope add`             |
+| 3b    | Overlays        | `overlays/index.nix` files  | `nx overlay add`           |
+| 4     | Extra packages  | `packages.nix`              | `nx install` / `nx remove` |
+
+Overlay scopes are `<overlay>/<scope>` ids in `config.nix`; the flake resolves each through `overlays/index.nix` before falling back to `scopes/<id>.nix` (decision [0015](design/decisions/0015-overlay-subscriptions.md)).
 
 All four merge into a single `nix profile upgrade` - one atomic operation, one rollback point. Layers 3 and 4 are user/team customization; layers 1-2 are repo-controlled.
 
@@ -986,24 +990,27 @@ This project follows [Keep a Changelog](https://keepachangelog.com) format and [
 
 Persists after the repo is removed.
 
-| Runtime file         | Source                                    | Created by                        |
-| -------------------- | ----------------------------------------- | --------------------------------- |
-| `flake.nix`          | `nix/flake.nix`                           | `nix/setup.sh`                    |
-| `scopes/*.nix`       | `nix/scopes/*.nix`                        | `nix/setup.sh`                    |
-| `config.nix`         | generated                                 | `nix/setup.sh` or `nx scope`      |
-| `packages.nix`       | generated                                 | `nx install` / `nx remove`        |
-| `omp/theme.omp.json` | `.assets/config/omp_cfg/`                 | `nix/configure/omp.sh`            |
-| `profile_base.ps1`   | `.assets/config/pwsh_cfg/profile_nix.ps1` | `nix/configure/profiles.ps1`      |
-| `nx.sh`              | `.assets/lib/nx.sh`                       | `nix/setup.sh` (`install_atomic`) |
-| `nx_pkg.sh`          | `.assets/lib/nx_pkg.sh`                   | `nix/setup.sh` (`install_atomic`) |
-| `nx_scope.sh`        | `.assets/lib/nx_scope.sh`                 | `nix/setup.sh` (`install_atomic`) |
-| `nx_profile.sh`      | `.assets/lib/nx_profile.sh`               | `nix/setup.sh` (`install_atomic`) |
-| `nx_lifecycle.sh`    | `.assets/lib/nx_lifecycle.sh`             | `nix/setup.sh` (`install_atomic`) |
-| `nx_doctor.sh`       | `.assets/lib/nx_doctor.sh`                | `nix/setup.sh` (`install_atomic`) |
-| `profile_block.sh`   | `.assets/lib/profile_block.sh`            | `nix/setup.sh` (`install_atomic`) |
-| `pinned_rev`         | optional                                  | `nx pin set <rev>`                |
-| `overlay_scopes`     | generated (last run's overlay entries)    | `nix/setup.sh`                    |
-| `overlay_dir`        | org overlay path                          | `nix/setup.sh` / `nx overlay set` |
+| Runtime file         | Source                                       | Created by                        |                                |
+| -------------------- | -------------------------------------------- | --------------------------------- | ------------------------------ |
+| `flake.nix`          | `nix/flake.nix`                              | `nix/setup.sh`                    |                                |
+| `scopes/*.nix`       | `nix/scopes/*.nix`                           | `nix/setup.sh`                    |                                |
+| `config.nix`         | generated                                    | `nix/setup.sh` or `nx scope`      |                                |
+| `packages.nix`       | generated                                    | `nx install` / `nx remove`        |                                |
+| `omp/theme.omp.json` | `.assets/config/omp_cfg/`                    | `nix/configure/omp.sh`            |                                |
+| `profile_base.ps1`   | `.assets/config/pwsh_cfg/profile_nix.ps1`    | `nix/configure/profiles.ps1`      |                                |
+| `nx.sh`              | `.assets/lib/nx.sh`                          | `nix/setup.sh` (`install_atomic`) |                                |
+| `nx_pkg.sh`          | `.assets/lib/nx_pkg.sh`                      | `nix/setup.sh` (`install_atomic`) |                                |
+| `nx_scope.sh`        | `.assets/lib/nx_scope.sh`                    | `nix/setup.sh` (`install_atomic`) |                                |
+| `nx_profile.sh`      | `.assets/lib/nx_profile.sh`                  | `nix/setup.sh` (`install_atomic`) |                                |
+| `nx_lifecycle.sh`    | `.assets/lib/nx_lifecycle.sh`                | `nix/setup.sh` (`install_atomic`) |                                |
+| `nx_doctor.sh`       | `.assets/lib/nx_doctor.sh`                   | `nix/setup.sh` (`install_atomic`) |                                |
+| `profile_block.sh`   | `.assets/lib/profile_block.sh`               | `nix/setup.sh` (`install_atomic`) |                                |
+| `pinned_rev`         | optional                                     | `nx pin set <rev>`                |                                |
+| `overlay_scopes`     | generated (last run's overlay entries)       | `nix/setup.sh`                    |                                |
+| `nx_overlay.sh`      | `.assets/lib/nx_overlay.sh`                  | `nix/setup.sh` (`install_atomic`) |                                |
+| `overlays.list`      | `<name> <overlay> <ref                       | -> <repo>` per line               | `nx overlay add` / `--overlay` |
+| `overlays.exclude`   | `<name>/<scope>` opted out                   | `nx scope remove <name>/<scope>`  |                                |
+| `overlays/`          | `*.nix` + `shell_cfg/` per repo, `index.nix` | `nix/setup.sh` (overlays phase)   |                                |
 
 ### 13.2. Hook directories (`~/.config/nix-env/hooks/`)
 
@@ -1014,30 +1021,39 @@ Not created automatically. `*.sh` files sourced in lexical order.
 | `pre-setup.d/`  | Before scope resolution | `NIX_ENV_VERSION`, `NIX_ENV_PLATFORM`, `ENV_DIR`, `NIX_ENV_PHASE=pre-setup` |
 | `post-setup.d/` | After profile config    | All above + `NIX_ENV_SCOPES`, `NIX_ENV_PHASE=post-setup`                    |
 
-### 13.3. Overlay directories (org overlay and `~/.config/nix-env/local/`)
+### 13.3. Overlays (subscriptions) and personal scopes (`~/.config/nix-env/local/`)
 
-Both apply, the org overlay first, then the personal one
-(`~/.config/nix-env/local/`). Setup exports them as a colon-separated `OVERLAY_DIR`. Setup creates
-neither; `nx scope add` creates the personal one. Decision [0013](design/decisions/0013-overlays-org-extension-point.md) has the rules.
+An overlay is `overlays/<name>/` in a repository: `scopes/*.nix`, optional `shell_cfg/`,
+`hooks/post-setup.d/` and `README.md`. Users subscribe by name (`nx overlay add`, `nix/setup.sh --overlay
+'<repo>#<name>'`); `overlays.list` holds `<name> <overlay> <ref|-> <repo>` per subscription, resolved once
+at add time. Decisions [0013](design/decisions/0013-overlays-org-extension-point.md) (installed on every
+run, `# scopes:` header) and [0015](design/decisions/0015-overlay-subscriptions.md) (subscriptions) have
+the rules.
 
-The org overlay path comes from `--overlay-dir`, then `$NIX_ENV_OVERLAY_DIR`, then
-`~/.config/nix-env/overlay_dir`; setup saves the one it used there, and stops if it is not a readable
-directory. `nx overlay set <path>` / `nx overlay unset` edit the saved path.
-
-| Path                      | Purpose                                                                                |
+| Path in an overlay        | Purpose                                                                                |
 | ------------------------- | -------------------------------------------------------------------------------------- |
-| `scopes/*.nix`            | Extra nix packages, copied as `local_*.nix` and enabled on every run                   |
+| `scopes/*.nix`            | Scope files, installed as `<overlay>/<scope>` on every run                             |
 | `# scopes:` header        | Standard scopes a scope file needs, merged into the requested scopes before resolution |
 | `shell_cfg/*`             | Copied to `~/.config/shell/overlay/` and sourced by the nix block (personal file wins) |
-| `hooks/post-setup.d/*.sh` | Run as child processes after the per-machine post-setup hooks; a failure only warns    |
+| `hooks/post-setup.d/*.sh` | Local-folder repositories only: child processes after the per-machine post-setup hooks |
 
-`phase_platform_discover_overlay` records each scope file and header scope as an
-`<origin> <scope> <file>` line in `overlay_entries` (origin `org` or `local`); on a scope name clash
-the org file wins. `phase_scopes_apply_overlay` enables every entry, refuses `--remove` for header
-scopes, drops `local_*` scopes no overlay provides, and removes once a header scope that left the header.
-Once `config.nix` is written, `phase_scopes_save_overlay_state` saves the entries to
-`~/.config/nix-env/overlay_scopes`. `nx scope` reads that file to refuse
-removing, adding or editing what the org overlay provides.
+`phase_platform_discover_overlay` syncs the personal scopes (`$ENV_DIR/local/scopes/*.nix`, written by
+`nx scope add`) as `local_<name>.nix` and records each scope file and header scope as a
+`local <scope> <file>` line in `overlay_entries`. `phase_overlays_sync` runs next. For each subscription
+it clones or fast-forwards a remote repository into `~/.cache/nix-env/overlays/<repo key>/` (one clone per
+repository and ref), or reads a local folder as it is, copies every `*.nix` file and the subscribed
+overlays' `shell_cfg/` into `~/.config/nix-env/overlays/<repo key>/`, refuses symlinks that resolve
+outside the source or into `.git`, and writes `overlays/index.nix` mapping each `<overlay>/<scope>` id to
+its file. Every id not in `overlays.exclude` becomes an entry of origin `sub`, header scopes included. A
+source that cannot be read keeps its previous copy (`overlays/.applied` records what each subscription
+last used). Applied overlays join `OVERLAY_DIR` before the personal folder; a local folder's overlay
+folders go in `OVERLAY_HOOK_DIRS`, the only overlay hooks that run.
+
+`phase_scopes_apply_overlay` enables every entry, points `--remove` of a header scope at its scope file,
+drops `local_*` and `<overlay>/<scope>` ids no entry provides, and removes once a header scope that left
+every header. Once `config.nix` is written, `phase_scopes_save_overlay_state` saves the entries to
+`~/.config/nix-env/overlay_scopes`, which `nx scope` reads to point at the header instead of removing a
+scope it names.
 
 ### 13.4. Shell config (`~/.config/shell/`)
 
@@ -1102,12 +1118,11 @@ source line per file present when the block is rendered, by the same extension c
 
 These are read, not set, by `nx*.sh`. Useful for tests, dev iteration, and overriding default behavior.
 
-| Variable                 | Read by                | Purpose                                                                                                                                                                                                                                                                                                                                                                   |
-| ------------------------ | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `NX_LIB_DIR`             | `_nx_find_lib`         | Override library lookup path (highest priority); used by `test_nx_zsh.bats` to point at the source repo without copying files                                                                                                                                                                                                                                             |
-| `NX_INVOKING_SHELL`      | `nx_doctor.sh`         | Shell name (`bash`/`zsh`) the `nx` wrapper detected from `$BASH_VERSION`/`$ZSH_VERSION`; routes the `shell_profile` check to the right rc file. Falls back to `$ZSH_VERSION` then `basename $SHELL` when unset (direct invocations)                                                                                                                                       |
-| `NIX_ENV_OVERLAY_DIR`    | `nx_scope.sh`, `nx.sh` | Organization overlay path; takes precedence over `~/.config/nix-env/overlay_dir` (set by `nx overlay set`)                                                                                                                                                                                                                                                                |
-| `NX_DOCTOR_SKIP_NETWORK` | `nx_doctor.sh`         | When set to `1`, skips `_check_version_skew` (which calls `gh api`). Used by `tests/bats/test_nx_doctor.bats` to keep the bats hook deterministic + fast - parallel test runs would otherwise rate-limit GitHub or hang on `gh`'s tty auth prompt when the sandbox HOME has no gh credentials. Production runs always do the network check (with a 5s timeout for safety) |
+| Variable                 | Read by        | Purpose                                                                                                                                                                                                                                                                                                                                                                   |
+| ------------------------ | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NX_LIB_DIR`             | `_nx_find_lib` | Override library lookup path (highest priority); used by `test_nx_zsh.bats` to point at the source repo without copying files                                                                                                                                                                                                                                             |
+| `NX_INVOKING_SHELL`      | `nx_doctor.sh` | Shell name (`bash`/`zsh`) the `nx` wrapper detected from `$BASH_VERSION`/`$ZSH_VERSION`; routes the `shell_profile` check to the right rc file. Falls back to `$ZSH_VERSION` then `basename $SHELL` when unset (direct invocations)                                                                                                                                       |
+| `NX_DOCTOR_SKIP_NETWORK` | `nx_doctor.sh` | When set to `1`, skips `_check_version_skew` (which calls `gh api`). Used by `tests/bats/test_nx_doctor.bats` to keep the bats hook deterministic + fast - parallel test runs would otherwise rate-limit GitHub or hang on `gh`'s tty auth prompt when the sandbox HOME has no gh credentials. Production runs always do the network check (with a 5s timeout for safety) |
 
 ## 14. Cross-links
 

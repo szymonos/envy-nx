@@ -6,7 +6,7 @@
 # Writes: SCRIPT_ROOT, NIX_ENV_VERSION, NIX_SRC, CONFIGURE_DIR, ENV_DIR,
 #         CONFIG_NIX, omp_theme, starship_theme, unattended, update_modules,
 #         upgrade_latest, quiet_summary, allow_unfree,
-#         remove_scopes, any_scope, _scope_set, _cli_scope_set, overlay_dir_arg, _ir_skip, _ir_error,
+#         remove_scopes, any_scope, _scope_set, _cli_scope_set, overlay_args, _ir_skip, _ir_error,
 #         NX_REEXECED
 
 # Refresh the repo from upstream when behind. Skips silently when:
@@ -396,7 +396,7 @@ phase_bootstrap_sync_env_dir() {
   # its opening line, body lines then interpreted as commands).
   local _nx_lib
   # >>> nx-libs generated >>> (regenerate: python3 -m tests.hooks.gen_nx_completions)
-  for _nx_lib in nx.sh nx_lifecycle.sh nx_pkg.sh nx_profile.sh nx_scope.sh nx_doctor.sh profile_block.sh cert_probe.sh nx_rev.sh; do
+  for _nx_lib in nx.sh nx_lifecycle.sh nx_pkg.sh nx_profile.sh nx_scope.sh nx_doctor.sh profile_block.sh cert_probe.sh nx_rev.sh nx_overlay.sh; do
     # <<< nx-libs generated <<<
     install_atomic "$SCRIPT_ROOT/.assets/lib/$_nx_lib" "$ENV_DIR/$_nx_lib"
   done
@@ -473,7 +473,9 @@ Options:
   --allow-unfree            Allow unfree (proprietary-licensed) nix packages
   --omp-theme <name>        Install oh-my-posh with theme (base, nerd, powerline, ...)
   --starship-theme <name>   Install starship with theme (base, nerd)
-  --overlay-dir <path>      Use <path> as the organization overlay and remember it
+  --overlay <address>       Subscribe to an overlay by name (repeatable): '<repo>#<overlay>',
+                            e.g. 'github:<owner>/<repo>#k8s', 'github:<owner>/<repo>/v2#k8s',
+                            '/opt/overlays#k8s' (a local folder, copied as it is)
   --unattended              Skip all interactive steps (gh auth, SSH key registration, git config)
   --skip-repo-update        Skip the git fetch + fast-forward of the source repo
   --update-modules          Update installed PowerShell modules
@@ -492,7 +494,7 @@ NX_SETUP_FLAGS=(
   --nodejs --playwright --pwsh --python --rice --shell --terraform --zsh
   --all --omp-theme --starship-theme --remove
   --unattended --register-ssh-key --skip-repo-update --update-modules
-  --allow-unfree --upgrade --latest --quiet-summary --sync-only --skip-configure --overlay-dir
+  --allow-unfree --upgrade --latest --quiet-summary --sync-only --skip-configure --overlay
 )
 
 # Map a rejected token onto the flag the user probably meant. Covers the two
@@ -549,7 +551,7 @@ phase_bootstrap_parse_args() {
   remove_scopes=()
   _scope_set=" "
   any_scope=false
-  overlay_dir_arg=""
+  overlay_args=()
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -582,13 +584,16 @@ phase_bootstrap_parse_args() {
       any_scope=true
       shift
       ;;
-    --overlay-dir)
-      overlay_dir_arg="${2:-}"
-      if [[ -z "$overlay_dir_arg" || "$overlay_dir_arg" == --* ]]; then
-        err "--overlay-dir requires a directory"
+    --overlay)
+      if [[ -z "${2:-}" || "$2" == --* ]]; then
+        err "--overlay requires an address, e.g. github:<owner>/<repo>#<overlay>"
         exit 2
       fi
-      [[ "$overlay_dir_arg" == /* ]] || overlay_dir_arg="${NX_CALLER_PWD:-$PWD}/$overlay_dir_arg"
+      # a relative folder resolves against where setup started
+      case "$2" in
+      github:* | *://* | *@*:* | /*) overlay_args+=("$2") ;;
+      *) overlay_args+=("${NX_CALLER_PWD:-$PWD}/$2") ;;
+      esac
       shift
       ;;
     --remove)

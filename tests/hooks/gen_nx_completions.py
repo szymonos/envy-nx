@@ -876,9 +876,16 @@ def _lib_files_list(manifest):
     # shared Mozilla-pinned probe for nx_doctor.sh's _check_cert_bundle.
     # nx_rev.sh is the nixpkgs-revision ladder shared by `nx upgrade` and the
     # nix_profile phase, so it must reach ENV_DIR for the former to run.
+    # nx_overlay.sh parses overlay addresses for `nx overlay` and setup.
     families = sorted({v["family"] for v in manifest["verbs"] if v.get("family")})
     files = ["nx.sh"] + [f"nx_{f}.sh" for f in families]
-    files += ["nx_doctor.sh", "profile_block.sh", "cert_probe.sh", "nx_rev.sh"]
+    files += [
+        "nx_doctor.sh",
+        "profile_block.sh",
+        "cert_probe.sh",
+        "nx_rev.sh",
+        "nx_overlay.sh",
+    ]
     # de-dupe while preserving order
     seen, out = set(), []
     for f in files:

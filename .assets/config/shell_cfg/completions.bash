@@ -12,7 +12,7 @@ function _nx_completions() {
   elif [ "$COMP_CWORD" -eq 2 ] && [ "$prev" = "scope" ]; then
     while IFS= read -r line; do COMPREPLY+=("$line"); done < <(compgen -W "list show tree add edit remove rm" -- "$cur")
   elif [ "$COMP_CWORD" -eq 2 ] && [ "$prev" = "overlay" ]; then
-    while IFS= read -r line; do COMPREPLY+=("$line"); done < <(compgen -W "list status set unset" -- "$cur")
+    while IFS= read -r line; do COMPREPLY+=("$line"); done < <(compgen -W "add remove rm update browse" -- "$cur")
   elif [ "$COMP_CWORD" -eq 2 ] && [ "$prev" = "pin" ]; then
     while IFS= read -r line; do COMPREPLY+=("$line"); done < <(compgen -W "set remove rm show help" -- "$cur")
   elif [ "$COMP_CWORD" -eq 2 ] && [ "$prev" = "profile" ]; then
@@ -44,11 +44,15 @@ function _nx_completions() {
       [ -n "$_scopes" ] && while IFS= read -r line; do COMPREPLY+=("$line"); done < <(compgen -W "$_scopes" -- "$cur")
       ;;
     *)
-      while IFS= read -r line; do COMPREPLY+=("$line"); done < <(compgen -W "--az --bun --conda --docker --gcloud --k8s-base --k8s-dev --k8s-ext --nodejs --playwright --pwsh --python --rice --shell --terraform --zsh --all --latest --allow-unfree --unattended --skip-repo-update --update-modules --omp-theme --starship-theme --remove --overlay-dir --help -h" -- "$cur")
+      while IFS= read -r line; do COMPREPLY+=("$line"); done < <(compgen -W "--az --bun --conda --docker --gcloud --k8s-base --k8s-dev --k8s-ext --nodejs --playwright --pwsh --python --rice --shell --terraform --zsh --all --latest --allow-unfree --unattended --skip-repo-update --update-modules --omp-theme --starship-theme --remove --overlay --help -h" -- "$cur")
       ;;
     esac
   elif [ "$COMP_CWORD" -ge 2 ] && [ "${COMP_WORDS[1]}" = "doctor" ]; then
     while IFS= read -r line; do COMPREPLY+=("$line"); done < <(compgen -W "--strict --json" -- "$cur")
+  elif [ "$COMP_CWORD" -ge 3 ] && [ "${COMP_WORDS[1]}" = "overlay" ] && [ "${COMP_WORDS[2]}" = "add" ]; then
+    while IFS= read -r line; do COMPREPLY+=("$line"); done < <(compgen -W "--ref --as --all" -- "$cur")
+  elif [ "$COMP_CWORD" -ge 3 ] && [ "${COMP_WORDS[1]}" = "overlay" ] && [ "${COMP_WORDS[2]}" = "browse" ]; then
+    while IFS= read -r line; do COMPREPLY+=("$line"); done < <(compgen -W "--ref" -- "$cur")
   elif [ "$COMP_CWORD" -ge 3 ] && [ "${COMP_WORDS[1]}" = "profile" ] && [ "${COMP_WORDS[2]}" = "regenerate" ]; then
     while IFS= read -r line; do COMPREPLY+=("$line"); done < <(compgen -W "--dry-run --shell" -- "$cur")
   elif [ "$COMP_CWORD" -ge 3 ] && [ "${COMP_WORDS[1]}" = "self" ] && [ "${COMP_WORDS[2]}" = "update" ]; then

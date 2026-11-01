@@ -56,25 +56,30 @@ phase_scopes_load_existing() {
   fi
 }
 
-# Overlays are the target state for what they provide (decision 0013). Their
-# scopes, and the standard scopes their `# scopes:` headers name, are enabled on
-# every run and cannot be removed around the overlay. A scope an overlay stops
-# providing is dropped; a header scope also gets its remove step, once.
-# $ENV_DIR/overlay_scopes keeps the last run's entries for that comparison and
-# for nx, which reads it to refuse the same removals.
+# Overlays are the target state for what they provide (decisions 0013, 0015).
+# Their scopes, and the standard scopes their `# scopes:` headers name, are
+# enabled on every run; a subscribed scope is opted out of with
+# `nx scope remove <overlay>/<scope>`, a header scope by opting out of the scope
+# file naming it. A scope an overlay stops providing is dropped; a header scope
+# also gets its remove step, once. $ENV_DIR/overlay_scopes keeps the last run's
+# entries for that comparison and for nx.
 phase_scopes_apply_overlay() {
   local _state="$ENV_DIR/overlay_scopes"
-  local _o _s _f _hit _kept=() _r _saved _resolved
+  local _o _s _f _hit _kept=() _r _saved _resolved _dropped=" "
   for _r in "${remove_scopes[@]}"; do
-    # an org scope file is refused by its name with or without the local_
-    # prefix; parse_args has already turned the name's - into _
-    _hit=""
-    while read -r _o _s _f; do
-      [ "$_o" = org ] && [ "${_s//-/_}" = "local_${_r#local_}" ] && _hit="$_o $_f" && break
-    done <<<"${overlay_entries:-}"
-    if [ -n "$_hit" ] || _hit="$(_overlay_lookup "$_r")"; then
-      if [ "${_hit%% *}" = org ]; then
-        warn "$_r is controlled by the organization overlay (${_hit#* }) - not removed"
+    if _hit="$(_overlay_lookup "$_r")"; then
+      if [[ "$_r" == */* ]]; then
+        warn "$_r comes from an overlay subscription - opt out with nx scope remove $_r"
+      elif [ "${_hit%% *}" = sub ]; then
+        # An overlay header's scope is opted out of, and stays out across runs.
+        # It is not queued here: the dropped-scope pass below runs its remove step
+        # once, and only when no remaining scope still depends on it.
+        grep -qxF "$_r" "$ENV_DIR/overlays.exclude" 2>/dev/null ||
+          printf '%s\n' "$_r" >>"$ENV_DIR/overlays.exclude"
+        overlay_entries="$(printf '%s' "${overlay_entries:-}" | awk -v s="$_r" '!($1 == "sub" && $2 == s)')"$'\n'
+        info "$_r opted out of the overlays naming it - nx scope add $_r brings it back"
+        # dropped like a name gone from a header, even before overlay_scopes exists
+        scope_has "$_r" && _dropped+="$_r "
       else
         warn "$_r is named in the # scopes: header of ${_hit#* } - remove it there"
       fi
@@ -85,28 +90,28 @@ phase_scopes_apply_overlay() {
   remove_scopes=("${_kept[@]}")
 
   while read -r _o _s _f; do
-    [ -n "$_s" ] || continue
-    if [ "$_o" = org ] && [[ " ${_cli_scope_set:-} " == *" $_s "* ]]; then
-      info "$_s is provided by the organization overlay ($_f)"
-    fi
-    scope_add "$_s"
+    [ -n "$_s" ] && scope_add "$_s"
   done <<<"${overlay_entries:-}"
 
+  # overlay scope files (local_<name>, <overlay>/<name>) go with their overlay
   for _s in $_scope_set; do
-    [[ "$_s" == local_* ]] || continue
+    [[ "$_s" == local_* || "$_s" == */* ]] || continue
     _overlay_lookup "$_s" >/dev/null || scope_del "$_s"
   done
 
-  [ -f "$_state" ] || return 0
-  local _dropped=" "
-  while read -r _o _s _f; do
-    [[ -n "$_s" && "$_s" != local_* ]] || continue
-    _overlay_lookup "$_s" >/dev/null && continue
-    [[ " ${_cli_scope_set:-} " == *" $_s "* ]] && continue
-    scope_has "$_s" || continue
-    [[ " ${remove_scopes[*]} " == *" $_s "* || "$_dropped" == *" $_s "* ]] && continue
-    _dropped+="$_s "
-  done <"$_state"
+  if [ -f "$_state" ]; then
+    while read -r _o _s _f; do
+      [[ -n "$_s" && "$_s" != local_* && "$_s" != */* ]] || continue
+      # CLEANUP: CQ-007 - an organization overlay (up to 1.32.x) removes nothing
+      [ "$_o" = org ] && continue
+      _overlay_lookup "$_s" >/dev/null && continue
+      [[ " ${_cli_scope_set:-} " == *" $_s "* ]] && continue
+      scope_has "$_s" || continue
+      [[ " ${remove_scopes[*]} " == *" $_s "* || "$_dropped" == *" $_s "* ]] && continue
+      _dropped+="$_s "
+    done <"$_state"
+  fi
+  [ "$_dropped" != " " ] || return 0
   # A dropped scope that the scopes staying still depend on comes straight back,
   # so its remove step would only delete state the scope still uses.
   _saved="$_scope_set"
@@ -182,13 +187,14 @@ phase_scopes_enforce_prompt_exclusivity() {
     exit 2
   fi
   # The engine an overlay names replaces the user's other one, flag or not.
-  # When both overlays name a different engine, the org overlay's wins.
+  # When a personal scope and a subscription name different engines, the
+  # personal one wins: it is the user's own choice.
   local _omp _star _engine=""
   _omp="$(_overlay_lookup oh_my_posh)" || _omp=""
   _star="$(_overlay_lookup starship)" || _star=""
-  if [ -n "$_omp" ] && { [ -z "$_star" ] || { [ "${_omp%% *}" = org ] && [ "${_star%% *}" = local ]; }; }; then
+  if [ -n "$_omp" ] && { [ -z "$_star" ] || { [ "${_omp%% *}" = local ] && [ "${_star%% *}" = sub ]; }; }; then
     _engine=oh_my_posh
-  elif [ -n "$_star" ] && { [ -z "$_omp" ] || { [ "${_star%% *}" = org ] && [ "${_omp%% *}" = local ]; }; }; then
+  elif [ -n "$_star" ] && { [ -z "$_omp" ] || { [ "${_star%% *}" = local ] && [ "${_omp%% *}" = sub ]; }; }; then
     _engine=starship
   elif [ -n "$_omp" ]; then
     warn "overlays name both prompt engines (${_omp#* }, ${_star#* }) - keeping oh_my_posh"

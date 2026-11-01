@@ -135,35 +135,33 @@ EOF
 
 # -- flake_lock check --------------------------------------------------------
 
-@test "overlay_dir passes for a saved org overlay with a scopes folder" {
+@test "overlay_subscriptions passes when the clone and the copy exist" {
   _write_install_json
-  mkdir -p "$TEST_DIR/org/scopes"
-  printf '%s\n' "$TEST_DIR/org" >"$ENV_DIR/overlay_dir"
-  run bash "$DOCTOR_SCRIPT"
-  [[ "$output" == *"PASS  overlay_dir"* ]]
+  printf 'k8s k8s v2 github:o/r\n' >"$ENV_DIR/overlays.list"
+  local key
+  key="$(bash -c ". \"$(dirname "$DOCTOR_SCRIPT")/nx_overlay.sh\"; _nx_ov_parse github:o/r v2" | cut -d "|" -f 4)"
+  mkdir -p "$HOME/.cache/nix-env/overlays/$key/.git" "$ENV_DIR/overlays/$key/overlays/k8s"
+  XDG_CACHE_HOME="$HOME/.cache" run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"PASS  overlay_subscriptions"* ]]
 }
 
-@test "overlay_dir fails when the org overlay's scopes entry is not a folder" {
+@test "overlay_subscriptions passes for a local folder with its copy" {
   _write_install_json
-  mkdir -p "$TEST_DIR/org"
-  ln -s "$TEST_DIR/nowhere" "$TEST_DIR/org/scopes"
-  printf '%s\n' "$TEST_DIR/org" >"$ENV_DIR/overlay_dir"
+  mkdir -p "$TEST_DIR/overlays-src"
+  printf 'k8s k8s - %s\n' "$TEST_DIR/overlays-src" >"$ENV_DIR/overlays.list"
+  local key
+  key="$(bash -c ". \"$(dirname "$DOCTOR_SCRIPT")/nx_overlay.sh\"; _nx_ov_parse \"$TEST_DIR/overlays-src\"" | cut -d "|" -f 4)"
+  mkdir -p "$ENV_DIR/overlays/$key/overlays/k8s"
   run bash "$DOCTOR_SCRIPT"
-  [[ "$output" == *"FAIL  overlay_dir"* ]]
+  [[ "$output" == *"PASS  overlay_subscriptions"* ]]
 }
 
-@test "overlay_dir fails when the org overlay is the config folder" {
+@test "overlay_subscriptions fails naming a subscription never fetched" {
   _write_install_json
-  printf '%s\n' "$ENV_DIR" >"$ENV_DIR/overlay_dir"
+  printf 'k8s k8s - github:o/r\n' >"$ENV_DIR/overlays.list"
   run bash "$DOCTOR_SCRIPT"
-  [[ "$output" == *"FAIL  overlay_dir"* ]]
-}
-
-@test "overlay_dir fails when the saved path is empty" {
-  _write_install_json
-  : >"$ENV_DIR/overlay_dir"
-  run bash "$DOCTOR_SCRIPT"
-  [[ "$output" == *"FAIL  overlay_dir"* ]]
+  [[ "$output" == *"FAIL  overlay_subscriptions"*"k8s"* ]]
+  [[ "$output" == *"Fix: run nx upgrade"* ]]
 }
 
 @test "flake_lock passes when flake.lock exists with nixpkgs node" {
@@ -787,6 +785,7 @@ _write_env_dir_files() {
   : >"$ENV_DIR/profile_block.sh"
   : >"$ENV_DIR/cert_probe.sh"
   : >"$ENV_DIR/nx_rev.sh"
+  : >"$ENV_DIR/nx_overlay.sh"
   : >"$ENV_DIR/config.nix"
 }
 

@@ -146,6 +146,16 @@ function _nx_pkg_upgrade() {
     _nx_lifecycle_setup --skip-configure "$@"
     return
   fi
+  # Overlay subscriptions update only in setup, which clones a missing repo. When
+  # that clone fails too, the packages still upgrade from what is on disk.
+  if command grep -q '[^[:space:]]' "$_NX_ENV_DIR/overlays.list" 2>/dev/null; then
+    _nx_lifecycle_setup --skip-configure "$@" && return 0
+    # a checkout on disk now means setup itself failed, not the clone
+    if [ -f "$HOME/source/repos/szymonos/envy-nx/nix/setup.sh" ]; then
+      return 1
+    fi
+    printf "\e[33moverlay subscriptions not updated - the source repo could not be cloned\e[0m\n" >&2
+  fi
   printf "\e[90msource repo not found - upgrading packages from the revision already on disk\e[0m\n"
 
   # Records the failed attempt so `nx doctor` can surface a machine that
@@ -263,7 +273,7 @@ function _nx_pkg_list() {
       while IFS= read -r s; do
         while IFS= read -r pkg; do
           [ -n "$pkg" ] && printf '%s\t(%s)\n' "$pkg" "$s"
-        done < <(_nx_scope_pkgs "$scopes_dir/$s.nix")
+        done < <(_nx_scope_pkgs "$(_nx_ov_scope_file "$_NX_ENV_DIR" "$s")")
       done <<<"$scopes"
     fi
     local pkgs

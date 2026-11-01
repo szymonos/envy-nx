@@ -44,7 +44,7 @@ The complete install → configure → upgrade → rollback → uninstall lifecy
 The overlay system supports three levels of customization:
 
 - **Base layer** - curated scopes shipped with this repository
-- **Overlay layer** - organization or team scopes and shell config distributed via `NIX_ENV_OVERLAY_DIR`
+- **Overlay layer** - organization or team scopes and shell config in an overlay repository, subscribed by name
 - **User layer** - individual packages via `nx install`
 
 An organization can maintain its own overlay repository with custom scopes (internal CLI tools, team-specific packages) and shell aliases - without modifying the base repository. Base updates are pulled independently of overlay changes.
@@ -59,7 +59,7 @@ The tool provides building blocks that an Internal Developer Platform can consum
 | Health checks      | `nx doctor --json`                                              | Monitoring endpoint, fleet health dashboard        |
 | Install provenance | `install.json` (version, scopes, timestamp, status)             | Audit trail, compliance reporting                  |
 | Hook directories   | `pre-setup.d/`, `post-setup.d/`                                 | Org policy injection without forking               |
-| Overlay mechanism  | `NIX_ENV_OVERLAY_DIR`                                           | Scope and config distribution                      |
+| Overlay mechanism  | `nx overlay add`, `nix/setup.sh --overlay <repo>#<overlay>`     | Scope and config distribution                      |
 | Env var namespace  | `NIX_ENV_*` reserved for extensions                             | Enterprise-specific configuration                  |
 | Unattended mode    | `--unattended` flag                                             | MDM deployment, Ansible playbooks, Coder templates |
 

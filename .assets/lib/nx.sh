@@ -245,7 +245,7 @@ function _nx_all_scope_pkgs() {
     while IFS= read -r s; do
       while IFS= read -r pkg; do
         [ -n "$pkg" ] && printf '%s\t%s\n' "$pkg" "$s"
-      done < <(_nx_scope_pkgs "$scopes_dir/$s.nix")
+      done < <(_nx_scope_pkgs "$(_nx_ov_scope_file "$_NX_ENV_DIR" "$s")")
     done <<<"$scopes"
   fi
 }
@@ -337,7 +337,8 @@ function _nx_read_install_field() {
 # `_nx_find_lib` does the lookup with the same BASH_SOURCE/zsh fallback.
 # nx_rev.sh carries no verbs but is loaded here because `nx upgrade` cannot
 # resolve a revision without it, and silently falling back to nixpkgs-unstable
-# HEAD would defeat the validated pin.
+# HEAD would defeat the validated pin. nx_overlay.sh parses overlay
+# subscription addresses, shared with the overlays setup phase.
 #
 # If any family file is missing the install is in a broken intermediate
 # state (typically: cross-major upgrade where an old `_nx_self_sync` knew
@@ -346,7 +347,7 @@ function _nx_read_install_field() {
 # subsequent invocation - cleaner than letting `nx <verb>` fall through to
 # `command not found: _nx_<family>_<verb>`.
 _nx_missing_families=""
-for _nx_family in nx_pkg.sh nx_scope.sh nx_profile.sh nx_lifecycle.sh nx_rev.sh; do
+for _nx_family in nx_pkg.sh nx_scope.sh nx_profile.sh nx_lifecycle.sh nx_rev.sh nx_overlay.sh; do
   _nx_family_path="$(_nx_find_lib "$_nx_family")" || {
     _nx_missing_families="$_nx_missing_families $_nx_family"
     continue

@@ -1,5 +1,14 @@
 # Overlays as the org extension point
 
+> **Superseded in part by [0015](0015-overlay-subscriptions.md) (1.33.0).** The
+> organization overlay folder (`NIX_ENV_OVERLAY_DIR`, `--overlay-dir`,
+> `nx overlay set/unset`) and its lock - D4 and the refusals in D1 and D2 - are
+> gone: an organization publishes overlays that users subscribe to by name, and
+> an image subscribes to a local folder. D1 (a scope file is installed), D2 (the
+> `# scopes:` header and its once-only removal) and D3 (hooks run as child
+> processes, now only from a local folder) still hold, for subscriptions and for
+> personal scopes in `$ENV_DIR/local`.
+
 An org that bakes Envy-NX into a container image (a Coder workspace template, a
 Codespaces or Dev Container image) needs its own packages on top of the standard
 scopes, and wants that list to live with the image. The overlay directory
