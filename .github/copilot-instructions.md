@@ -122,5 +122,12 @@ cross-version upgrade walk.
   finding; nothing but the scripts and their agents writes there. (#122)
 - **Commands in a SKILL.md written `scripts/<name>`** resolve against the skill's own directory, where the agent
   runs them - not a missing repo-root path. (#122)
+- **Overlay subscription state is the user's own** - `overlays.list`, `overlays.exclude`, `~/.config/nix-env/overlays/`
+  and the clone cache under `~/.cache/nix-env/overlays/` are written only by setup and `nx`. A symlink or alias
+  planted at one of them is not a finding. (#129)
+- **Symlinked folders in a subscribed overlay repository are not walked** - `find` without `-L`, so a link to `/`
+  cannot make setup crawl the disk. Symlinked files and imports cover sharing. (decision 0015)
+- **Overlay addresses cannot contain spaces** - `overlays.list` is `<name> <overlay> <ref|-> <repo>` per line, read by bash 3.2
+  `read`. A local path with a space is symlinked first. (#129)
 - **"a REVIEW.md rule" in `release-auto`** names the rule, not a write target. Only an instruction to edit the rules
   must name `.github/copilot-instructions.md`. (#121)
