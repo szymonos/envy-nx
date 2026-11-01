@@ -22,6 +22,36 @@ Pick ONE signal per item (all are reasonable for a single-maintainer project):
 
 ---
 
+## CQ-007: Drop the organization overlay folder leftovers
+
+- **Status:** open
+- **Added:** 2026-11-01
+- **Trigger:** 60-90 days after 1.33.0, which folded the organization overlay
+  folder into subscriptions (decision 0015)
+- **Scope:** `nix/lib/phases/platform.sh`, `nix/lib/phases/scopes.sh`
+
+### Context
+
+Up to 1.32.x an organization overlay came from `NIX_ENV_OVERLAY_DIR` or a path
+saved in `~/.config/nix-env/overlay_dir`, and its entries were recorded as
+origin `org` in `overlay_scopes`. Setup warns when either is still there, and
+never runs a remove step for an `org` line the first run after the upgrade
+finds, so the switch removes nothing.
+
+### What to do
+
+1. Remove the warning (`# CLEANUP: CQ-007`) from `phase_platform_discover_overlay`.
+2. Remove the `org` skip (`# CLEANUP: CQ-007`) from `phase_scopes_apply_overlay`.
+
+### Verification
+
+```bash
+git grep -n 'CQ-007'                                # only this entry left
+make test-unit
+```
+
+---
+
 ## CQ-006: Drop the pwsh `LD_LIBRARY_PATH` / PATH scrub at `nix/setup.sh` entry
 
 - **Status:** open

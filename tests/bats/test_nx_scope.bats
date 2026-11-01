@@ -617,7 +617,7 @@ EOF
 { pkgs }: with pkgs; [ htop ]
 EOF
   # Stub EDITOR to a no-op so the test doesn't try to open vi.
-  EDITOR=true NIX_ENV_OVERLAY_DIR="$ov_dir" run _nx_scope_dispatch edit tools
+  EDITOR=true run _nx_scope_dispatch edit tools
   [ "$status" -eq 0 ]
   [[ "$output" == *"Synced scope 'tools'"* ]]
 }

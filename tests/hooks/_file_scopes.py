@@ -45,6 +45,8 @@ INTERACTIVE_SHELL: tuple[str, ...] = (
     ".assets/lib/nx_scope.sh",
     ".assets/lib/nx_profile.sh",
     ".assets/lib/nx_lifecycle.sh",
+    # overlay address parser, sourced by nx.sh with the family files
+    ".assets/lib/nx_overlay.sh",
     # Doctor, profile block helper, generic helpers - sourced transitively
     ".assets/lib/nx_doctor.sh",
     ".assets/lib/profile_block.sh",

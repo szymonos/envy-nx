@@ -44,9 +44,14 @@ CHECKS="
   vscode_server_env
   nix_profile
   nix_profile_link
-  overlay_dir
+  overlay_subscriptions
   version_skew
 "
+
+# Overlay subscription helpers (_nx_ov_parse, _nx_ov_scope_file). nx_overlay.sh
+# sits next to this file in the repo and in ENV_DIR, and depends on nothing.
+# shellcheck source=nx_overlay.sh
+. "$(dirname "${BASH_SOURCE[0]}")/nx_overlay.sh" 2>/dev/null || true
 
 # ---- check functions -------------------------------------------------------
 
@@ -192,7 +197,7 @@ _check_env_dir_files() {
   # in opaque ways.
   local _missing="" _f
   # >>> nx-libs generated >>> (regenerate: python3 -m tests.hooks.gen_nx_completions)
-  for _f in flake.nix nx.sh nx_lifecycle.sh nx_pkg.sh nx_profile.sh nx_scope.sh nx_doctor.sh profile_block.sh cert_probe.sh nx_rev.sh config.nix; do
+  for _f in flake.nix nx.sh nx_lifecycle.sh nx_pkg.sh nx_profile.sh nx_scope.sh nx_doctor.sh profile_block.sh cert_probe.sh nx_rev.sh nx_overlay.sh config.nix; do
     # <<< nx-libs generated <<<
     [ -f "$ENV_DIR/$_f" ] || _missing="${_missing:+$_missing, }$_f"
   done
@@ -248,11 +253,13 @@ _check_scope_binaries() {
     printf 'warn\tcannot verify (scope files or install.json not found)\tre-run nix/setup.sh to populate scope files and install.json\n'
     return
   fi
-  local _scopes _missing="" _scope _entry _bin _bins
+  local _scopes _missing="" _scope _entry _bin _bins _sf
   _scopes="$(jq -r '.scopes[]? // empty' "$DEV_ENV_DIR/install.json" 2>/dev/null)" || true
   for _scope in $_scopes; do
-    [ -f "$_scopes_dir/$_scope.nix" ] || continue
-    _bins="$(sed -n 's/^# bins: *//p' "$_scopes_dir/$_scope.nix")" || true
+    _sf="$_scopes_dir/$_scope.nix"
+    case "$_scope" in */*) _sf="$(_nx_ov_scope_file "$ENV_DIR" "$_scope" 2>/dev/null)" || continue ;; esac
+    [ -f "$_sf" ] || continue
+    _bins="$(sed -n 's/^# bins: *//p' "$_sf")" || true
     # `(external-installer)` sentinel: scope's bin may not be on PATH in any
     # reliable context (conda pre-init, docker daemon-only). Skip both checks.
     case "$_bins" in '('*) continue ;; esac
@@ -293,11 +300,13 @@ _check_scope_bins_in_profile() {
   if [ -z "$_scopes_dir" ] || [ ! -f "$DEV_ENV_DIR/install.json" ] || ! _nx_has_cmd jq; then
     return
   fi
-  local _scopes _missing="" _scope _entry _bins
+  local _scopes _missing="" _scope _entry _bins _sf
   _scopes="$(jq -r '.scopes[]? // empty' "$DEV_ENV_DIR/install.json" 2>/dev/null)" || true
   for _scope in $_scopes; do
-    [ -f "$_scopes_dir/$_scope.nix" ] || continue
-    _bins="$(sed -n 's/^# bins: *//p' "$_scopes_dir/$_scope.nix")" || true
+    _sf="$_scopes_dir/$_scope.nix"
+    case "$_scope" in */*) _sf="$(_nx_ov_scope_file "$ENV_DIR" "$_scope" 2>/dev/null)" || continue ;; esac
+    [ -f "$_sf" ] || continue
+    _bins="$(sed -n 's/^# bins: *//p' "$_sf")" || true
     # `(external-installer)` sentinel - see _check_scope_binaries above.
     case "$_bins" in '('*) continue ;; esac
     for _entry in $_bins; do
@@ -601,36 +610,36 @@ _check_nix_profile_link() {
   fi
 }
 
-_check_overlay_dir() {
-  # Only audited when an organization overlay is in use: NIX_ENV_OVERLAY_DIR,
-  # else the path `nx overlay set` or the last setup run saved.
-  local _dir="${NIX_ENV_OVERLAY_DIR:-}"
-  if [ -z "$_dir" ] && [ -f "$ENV_DIR/overlay_dir" ]; then
-    _dir="$(head -n 1 "$ENV_DIR/overlay_dir")"
-    if [ -z "$_dir" ]; then
-      printf 'fail\t%s/overlay_dir is empty\trun nx overlay set <path>, or nx overlay unset\n' "$ENV_DIR"
-      return
+_check_overlay_subscriptions() {
+  # Each line of overlays.list (`<name> <overlay> <ref|-> <repo>`) needs the copy
+  # setup builds, and its source: the clone, or the local folder.
+  local _list="$ENV_DIR/overlays.list" _n _o _r _repo _p _key _local _bad=""
+  grep -q '[^[:space:]]' "$_list" 2>/dev/null || return
+  if ! command -v _nx_ov_parse >/dev/null 2>&1; then
+    printf 'fail\tnx_overlay.sh is missing\tre-run nix/setup.sh\n'
+    return
+  fi
+  while read -r _n _o _r _repo || [ -n "$_n" ]; do
+    case "$_n" in "" | \#*) continue ;; esac
+    [ "$_r" = - ] && _r=""
+    if ! _p="$(_nx_ov_parse "$_repo" "$_r" 2>/dev/null)"; then
+      _bad="${_bad:+$_bad, }$_n (invalid repository)"
+      continue
     fi
-  fi
-  [ -n "$_dir" ] || return
-  # the same tests setup applies before it reads the overlay
-  case "$_dir" in
-  *:* | *"
-"*)
-    printf 'fail\torganization overlay path %s contains a colon or a newline\tmove the overlay to a path without them\n' "$_dir"
-    return
-    ;;
-  esac
-  if [ -d "$_dir" ] && [ -d "$ENV_DIR" ] && [ "$(cd "$_dir" && pwd -P)" = "$(cd "$ENV_DIR" && pwd -P)" ]; then
-    printf 'fail\torganization overlay %s is the Envy-NX config folder\tpoint it at the overlay folder with nx overlay set <path>\n' "$_dir"
-    return
-  fi
-  if [ -d "$_dir" ] && [ -r "$_dir" ] && [ -x "$_dir" ] &&
-    { { [ ! -e "$_dir/scopes" ] && [ ! -L "$_dir/scopes" ]; } ||
-      { [ -d "$_dir/scopes" ] && [ -r "$_dir/scopes" ] && [ -x "$_dir/scopes" ]; }; }; then
+    _key="$(printf '%s' "$_p" | cut -d '|' -f 4)"
+    _local="$(printf '%s' "$_p" | cut -d '|' -f 5)"
+    if [ ! -d "$ENV_DIR/overlays/$_key/overlays/$_o" ]; then
+      _bad="${_bad:+$_bad, }$_n"
+    elif [ "$_local" = true ] && [ ! -d "$_repo" ]; then
+      _bad="${_bad:+$_bad, }$_n (local folder missing)"
+    elif [ "$_local" != true ] && [ ! -d "$(_nx_ov_cache_dir)/$_key/.git" ]; then
+      _bad="${_bad:+$_bad, }$_n (clone missing)"
+    fi
+  done <"$_list"
+  if [ -z "$_bad" ]; then
     echo "pass"
   else
-    printf 'fail\torganization overlay %s is not a readable directory\tfix the path, or run nx overlay unset (and drop NIX_ENV_OVERLAY_DIR) to stop using it; setup refuses to run until then\n' "$_dir"
+    printf 'fail\toverlay subscriptions not fetched: %s\trun nx upgrade; check the address and your git access with nx overlay\n' "$_bad"
   fi
 }
 

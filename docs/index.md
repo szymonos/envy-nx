@@ -94,7 +94,7 @@ graph TD
 ```
 
 - **Base layer** - curated scopes shipped with this repository
-- **Overlay layer** - team or org customization via `NIX_ENV_OVERLAY_DIR`, survives base upgrades
+- **Overlay layer** - team or org overlays subscribed by name with `nx overlay add`, survives base upgrades
 - **User layer** - individual packages via `nx install`
 
 See [Customization](customization.md) for the full guide.

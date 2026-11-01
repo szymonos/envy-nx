@@ -900,7 +900,7 @@ EOF
   run nx overlay help
   [ "$status" -eq 0 ]
   [[ "$output" == *"Usage: nx overlay"* ]]
-  [[ "$output" == *"nx scope list"* ]]
+  [[ "$output" == *"browse <repo>"* ]]
 }
 
 # -- install/remove: _nx_apply integration ------------------------------------
@@ -1391,41 +1391,12 @@ EOF
   [ "$count" -eq 1 ]
 }
 
-# -- overlay (merged list+status) ---------------------------------------------
+# -- overlay ------------------------------------------------------------------
 
-@test "overlay shows scopes and shell config" {
-  mkdir -p "$ENV_DIR/local/scopes"
-  printf '{ pkgs }: with pkgs; []\n' >"$ENV_DIR/local/scopes/devtools.nix"
-  printf '{ pkgs }: with pkgs; []\n' >"$ENV_DIR/scopes/local_devtools.nix"
-  mkdir -p "$ENV_DIR/local/shell_cfg"
-  printf '# custom\n' >"$ENV_DIR/local/shell_cfg/custom.sh"
+@test "overlay reports no subscriptions and points at browse" {
   run nx overlay
   [ "$status" -eq 0 ]
-  [[ "$output" == *"devtools"* ]]
-  [[ "$output" == *"custom.sh"* ]]
-}
-
-@test "overlay reports no overlay when missing" {
-  run nx overlay
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"No overlay directory"* ]]
-}
-
-@test "overlay shows modified indicator for divergent scopes" {
-  mkdir -p "$ENV_DIR/local/scopes"
-  printf '{ pkgs }: with pkgs; [ httpie ]\n' >"$ENV_DIR/local/scopes/mytools.nix"
-  printf '{ pkgs }: with pkgs; [ httpie jq ]\n' >"$ENV_DIR/scopes/local_mytools.nix"
-  run nx overlay
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"modified"* ]]
-}
-
-@test "overlay shows source missing for orphaned scope" {
-  mkdir -p "$ENV_DIR/local"
-  printf '{ pkgs }: with pkgs; []\n' >"$ENV_DIR/scopes/local_orphan.nix"
-  run nx overlay
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"source missing"* ]]
+  [[ "$output" == *"No overlay subscriptions"*"nx overlay browse"* ]]
 }
 
 # -- scope edge cases ---------------------------------------------------------

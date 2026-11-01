@@ -46,7 +46,7 @@ export PATH
 # ---- resolve paths -----------------------------------------------------------
 SCRIPT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB_DIR="$SCRIPT_ROOT/nix/lib"
-# phase_bootstrap_parse_args resolves a relative --overlay-dir against it; kept across the post-refresh re-exec
+# phase_bootstrap_parse_args resolves a relative --overlay folder against it; kept across the post-refresh re-exec
 [ -n "${NX_REEXECED:-}" ] || export NX_CALLER_PWD="$PWD"
 pushd "$SCRIPT_ROOT" >/dev/null
 
@@ -55,7 +55,7 @@ pushd "$SCRIPT_ROOT" >/dev/null
 source "$LIB_DIR/io.sh"
 # shellcheck source=../.assets/lib/helpers.sh
 source "$SCRIPT_ROOT/.assets/lib/helpers.sh"
-for _p in bootstrap platform scopes nix_profile configure profiles post_install summary; do
+for _p in bootstrap platform overlays scopes nix_profile configure profiles post_install summary; do
   # shellcheck source=/dev/null
   source "$LIB_DIR/phases/$_p.sh"
 done
@@ -170,6 +170,7 @@ _ir_flush "in_progress"
 export NIX_ENV_PHASE="pre-setup"
 phase_platform_run_hooks "$ENV_DIR/hooks/pre-setup.d"
 phase_platform_discover_overlay
+phase_overlays_sync
 
 _ir_phase="scope-resolve"
 _ir_flush "in_progress"

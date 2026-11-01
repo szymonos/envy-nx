@@ -105,7 +105,7 @@ These are the building blocks the enterprise fork will consume:
   release tarballs
 - **Health checks** -- `nx doctor --json` usable by any monitoring
 - **Hook directories** -- org customization without forking
-- **Overlay skeleton** -- `NIX_ENV_OVERLAY_DIR` for org scope/config
+- **Overlay skeleton** -- overlays subscribed by name (`nx overlay add`, `--overlay <repo>#<overlay>`) for org scope/config
   injection
 - **Install provenance** -- `install.json` for audit trails
 - **Release tarballs** -- versioned artifacts for any artifact store

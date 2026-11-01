@@ -16,7 +16,7 @@ function _nx() {
     'list:list installed packages'
     'ls:list installed packages'
     'scope:manage scopes'
-    'overlay:manage overlay directories'
+    'overlay:manage overlay subscriptions'
     'pin:manage nixpkgs revision pin'
     'profile:manage shell profile blocks'
     'setup:add or remove scopes and themes, then upgrade (runs nix/setup.sh)'
@@ -84,12 +84,30 @@ function _nx() {
     if (( CURRENT == 3 )); then
       local -a overlay_cmds
       overlay_cmds=(
-        'list:show overlay directories and contents'
-        'status:show overlay sync status'
-        'set:use a directory as the organization overlay'
-        'unset:stop using the organization overlay'
+        'add:subscribe to overlays by name and apply them'
+        'remove:drop subscriptions and their scopes'
+        'rm:drop subscriptions and their scopes'
+        'update:fetch every subscription and apply the changes'
+        'browse:list the overlays in a repository'
       )
       _describe 'overlay command' overlay_cmds
+    elif (( CURRENT >= 4 )); then
+      if [[ "${words[3]}" == "add" ]]; then
+        local -a add_flags
+        add_flags=(
+          '--ref:tag or branch to follow'
+          '--as:subscription name for one overlay'
+          '--all:every overlay in the repository'
+        )
+        _describe 'flag' add_flags
+      fi
+      if [[ "${words[3]}" == "browse" ]]; then
+        local -a browse_flags
+        browse_flags=(
+          '--ref:tag or branch to read'
+        )
+        _describe 'flag' browse_flags
+      fi
     fi
     ;;
   pin)
@@ -177,7 +195,7 @@ function _nx() {
         '--omp-theme:oh-my-posh theme name'
         '--starship-theme:starship theme name'
         '--remove:remove scopes'
-        '--overlay-dir:use a directory as the organization overlay'
+        '--overlay:subscribe to an overlay: <repo>#<overlay>'
         '--help:show help'
         '-h:show help'
       )

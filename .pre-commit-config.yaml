@@ -27,13 +27,13 @@ repos:
         name: Check nix-path scripts for bash 3.2 / BSD compatibility
         entry: python3 -m tests.hooks.check_bash32
         language: system
-        files: (nix/.*\.sh$|\.assets/lib/(scopes|profile_block|nx|nx_pkg|nx_scope|nx_profile|nx_lifecycle|nx_doctor|helpers)\.sh$|\.assets/config/shell_cfg/(aliases_nix|aliases_git|aliases_kubectl|functions)\.sh$|\.assets/setup/setup_common\.sh$|\.assets/provision/install_copilot\.sh$)
+        files: (nix/.*\.sh$|\.assets/lib/(scopes|profile_block|nx|nx_pkg|nx_scope|nx_profile|nx_lifecycle|nx_doctor|nx_overlay|helpers)\.sh$|\.assets/config/shell_cfg/(aliases_nix|aliases_git|aliases_kubectl|functions)\.sh$|\.assets/setup/setup_common\.sh$|\.assets/provision/install_copilot\.sh$)
         types: [file]
       - id: check-zsh-compat
         name: Check shell-sourced scripts for zsh compatibility
         entry: python3 -m tests.hooks.check_zsh_compat
         language: system
-        files: (\.assets/config/shell_cfg/.*\.sh$|\.assets/lib/(nx|nx_pkg|nx_scope|nx_profile|nx_lifecycle|profile_block)\.sh$)
+        files: (\.assets/config/shell_cfg/.*\.sh$|\.assets/lib/(nx|nx_pkg|nx_scope|nx_profile|nx_lifecycle|nx_overlay|profile_block)\.sh$)
         types: [file]
       - id: check-no-tty-read
         name: Forbid `read ... </dev/tty` without `# tty-ok` marker

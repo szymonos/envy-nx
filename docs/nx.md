@@ -30,7 +30,7 @@ If you stopped reading here and only used those six commands, you would already 
 | `nx list`         | `apt list --installed` | Show every package with its scope/origin annotation     |
 | `nx rollback`     | (unique)               | Revert to the previous Nix profile generation           |
 | `nx scope`        | `apt-get groups`       | Manage named bundles of packages (curated or custom)    |
-| `nx overlay`      | (unique)               | Inspect team/org customization layer                    |
+| `nx overlay`      | (unique)               | Subscribe to team/org overlays by name                  |
 | `nx pin`          | (unique)               | Lock nixpkgs to a specific commit for reproducibility   |
 | `nx profile`      | (unique)               | Manage shell-rc managed blocks (bash/zsh)               |
 | `nx setup`        | (unique)               | Re-run full provisioning (`nix/setup.sh` from anywhere) |
@@ -121,7 +121,7 @@ $ nx list
   * uv                    (python)
 ```
 
-Every installed package, annotated with where it came from: `(base)` for the always-on baseline, `(scope-name)` for scope-owned packages, `(extra)` for `nx install` additions, `(local)` for overlay scopes. No more guessing why a binary is on your PATH.
+Every installed package, annotated with where it came from: `(base)` for the always-on baseline, `(scope-name)` for scope-owned packages, `(extra)` for `nx install` additions, `(local)` for personal scopes, `(<overlay>/<scope>)` for subscribed ones. No more guessing why a binary is on your PATH.
 
 ### `nx search <query>`
 
@@ -141,22 +141,26 @@ See [Customization](customization.md) for the full layering model. The day-to-da
 nx scope list                           # what's enabled
 nx scope show k8s_dev                   # what packages does k8s_dev contain
 nx scope tree                           # everything, expanded
-nx scope add devtools httpie jq bat     # create a custom scope (overlay layer)
+nx scope add devtools httpie jq bat     # create a personal scope
 nx scope edit devtools                  # open in $EDITOR
 nx scope remove devtools                # drop the scope
 ```
 
 !!! info "Base vs overlay"
 
-    Scopes shipped in this repository are read-only - `nx scope edit shell` will refuse and tell you to create an overlay scope instead. Custom overlay scopes get a `local_` prefix on disk so they cannot collide with base scope names. Adding a scope re-runs `nix profile upgrade` automatically, so the new packages land immediately.
+    Scopes shipped in this repository are read-only - `nx scope edit shell` will refuse and tell you to create a personal scope instead. Personal scopes get a `local_` prefix on disk so they cannot collide with base scope names. Adding a scope re-runs `nix profile upgrade` automatically, so the new packages land immediately.
 
 ### `nx overlay`
 
 ```bash
 nx overlay
+nx overlay browse github:my-org/dev-overlays           # its overlays and what they are for
+nx overlay add github:my-org/dev-overlays k8s         # subscribe by name and apply
+nx overlay remove k8s                                 # unsubscribe
+nx overlay update                                     # fetch every subscription (same as nx upgrade)
 ```
 
-Shows both overlay directories - the org overlay first (set with `nx overlay set <path>` or `$NIX_ENV_OVERLAY_DIR`), then the personal `~/.config/nix-env/local/` - with their scopes, the standard scopes each `# scopes:` header names, shell config and hooks. Scopes are marked `(modified)`, `(not synced)` or `(ignored - the organization overlay provides it)`, shell config `(synced)`, `(differs)` or `(not installed)`, and hooks show whether they run. Synced copies with no source left are listed as `(source missing)`.
+Lists each subscription with its overlay, repository, ref and the commit it is on (or `not fetched`), then its scopes. Subscribed scopes are named `<overlay>/<scope>`; `nx scope remove k8s/sofka` opts out of one, marked `(opted out)`, and `nx scope add k8s/sofka` brings it back. With no name, `nx overlay add` installs the only overlay or the one named `default`, and otherwise asks in a terminal. See [Overlays](overlays.md).
 
 ## Lifecycle - the unique entry point
 
@@ -231,7 +235,7 @@ Read-only health checks that don't touch state. Failing or warning checks print 
 | `vscode_server_env`     | `~/.vscode-server/server-env-setup` includes nix PATH                                                                                |
 | `nix_profile`           | `nix-env` entry exists in `nix profile list`                                                                                         |
 | `nix_profile_link`      | `~/.nix-profile` is a live symlink (not missing or dangling)                                                                         |
-| `overlay_dir`           | Organization overlay is readable (when one is set)                                                                                   |
+| `overlay_subscriptions` | Every overlay subscription has its copy and its source: the clone, or the local folder (when any is set)                             |
 | `version_skew`          | Installed version matches the latest GitHub release (when `gh` is available)                                                         |
 
 The `nx doctor --strict` form is what CI runs after every smoke test. Locally, run it whenever something feels off - it usually points at the broken edge in one line.

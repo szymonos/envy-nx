@@ -61,6 +61,8 @@ _io_nix() {
   fi
 }
 _io_nix_eval() { nix eval --impure --raw --expr "$1"; }
+# Overlay subscriptions fetch with the user's own git credentials (gh or ssh).
+_io_git() { git "$@"; }
 # No --proto/--tlsv1.2: $1 is $NIX_ENV_TLS_PROBE_URL, which the user may point at
 # an http:// endpoint (nx_doctor.sh strips an http:// prefix from it), and a
 # rejected protocol or TLS floor would be reported as a MITM cert failure.

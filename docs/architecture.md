@@ -166,12 +166,12 @@ graph TD
     L4 --> L3 --> L2 --> L1
 ```
 
-| Layer              | What                                           | Source                      | Who manages it               |
-| ------------------ | ---------------------------------------------- | --------------------------- | ---------------------------- |
-| **Base**           | Core tools (git, gh, jq, openssl, vim, ...)    | `nix/scopes/base.nix`       | Always installed             |
-| **Repo scopes**    | Curated groups (shell, python, k8s, terraform) | `nix/scopes/<name>.nix`     | `setup.sh` flags             |
-| **Overlay scopes** | Custom groups (team CLIs, org utilities)       | `local_*.nix` in scopes dir | `nx scope add` / overlay dir |
-| **Extra packages** | Individual tools, ad-hoc                       | `packages.nix`              | `nx install` / `nx remove`   |
+| Layer              | What                                           | Source                     | Who manages it                    |
+| ------------------ | ---------------------------------------------- | -------------------------- | --------------------------------- |
+| **Base**           | Core tools (git, gh, jq, openssl, vim, ...)    | `nix/scopes/base.nix`      | Always installed                  |
+| **Repo scopes**    | Curated groups (shell, python, k8s, terraform) | `nix/scopes/<name>.nix`    | `setup.sh` flags                  |
+| **Overlay scopes** | Custom groups (team CLIs, org utilities)       | `local_*.nix`, `overlays/` | `nx scope add` / `nx overlay add` |
+| **Extra packages** | Individual tools, ad-hoc                       | `packages.nix`             | `nx install` / `nx remove`        |
 
 All four merge into a single `nix profile upgrade` - one atomic operation, one rollback point. There is no layered priority or shadowing; the flake concatenates them and asks Nix to build the union. Conflict (same binary from two layers) is a build error, surfaced at provisioning time, not at runtime.
 
@@ -196,7 +196,7 @@ Equal-priority collisions are always a build error - `buildEnv` never silently p
 This design enables the three customization patterns without forking:
 
 - **Solo developer** - `nx install httpie` adds a package to layer 4, no scope involved.
-- **Team** - point `NIX_ENV_OVERLAY_DIR` at a shared git repo with team-specific scopes (layer 3).
+- **Team** - publish an overlay repository and subscribe with `nx overlay add <repo> <overlay>` (layer 3).
 - **Organization** - distribute org-wide scopes and shell config through the same overlay mechanism.
 
 See [Customization](customization.md) for the full guide.
@@ -443,10 +443,10 @@ graph TD
 | Level        | Mechanism                                | Use case                         |
 | ------------ | ---------------------------------------- | -------------------------------- |
 | Individual   | `nx install <pkg>` → `packages.nix`      | One-off tools                    |
-| Team         | Shared overlay via `NIX_ENV_OVERLAY_DIR` | Team-specific scopes and aliases |
+| Team         | Overlay subscribed with `nx overlay add` | Team-specific scopes and aliases |
 | Organization | Org-managed overlay repo                 | Org-wide scopes and shell config |
 
-Overlay scopes are copied with a `local_` prefix to avoid collisions with base scope names, and enabled on every run. The org overlay (`NIX_ENV_OVERLAY_DIR`) and the personal one (`~/.config/nix-env/local/`) apply together, and the org overlay controls the scopes it provides. Per-machine hooks (`pre-setup.d/` and `post-setup.d/`) are read from `~/.config/nix-env/hooks/` and run during `nix/setup.sh` with documented environment variables (`NIX_ENV_VERSION`, `NIX_ENV_PLATFORM`, `NIX_ENV_SCOPES`, `NIX_ENV_PHASE`). An overlay can also ship `post-setup.d/` hooks, which run afterwards as separate processes. A typical organization use case: a `pre-setup.d/pin_nixpkgs.sh` hook writes the org-approved `pinned_rev` so every developer resolves the same `nixpkgs` revision.
+Personal scopes are copied with a `local_` prefix and subscribed overlay scopes are named `<overlay>/<scope>`, so neither collides with a base scope name, and both are enabled on every run. Per-machine hooks (`pre-setup.d/` and `post-setup.d/`) are read from `~/.config/nix-env/hooks/` and run during `nix/setup.sh` with documented environment variables (`NIX_ENV_VERSION`, `NIX_ENV_PLATFORM`, `NIX_ENV_SCOPES`, `NIX_ENV_PHASE`). An overlay subscribed from a local folder can also ship `post-setup.d/` hooks, which run afterwards as separate processes. A typical organization use case: a `pre-setup.d/pin_nixpkgs.sh` hook writes the org-approved `pinned_rev` so every developer resolves the same `nixpkgs` revision.
 
 See [Customization](customization.md) for the full guide and worked examples.
 
