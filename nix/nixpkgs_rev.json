@@ -1,7 +1,7 @@
 {
   "_about": "The nixpkgs revision this repo has validated. Advanced only by .github/workflows/bump_nixpkgs_rev.yml, after the full gating suite passes on Linux and macOS. Consumed by nix/lib/phases/nix_profile.sh and .assets/lib/nx_pkg.sh, which pin the flake's nixpkgs input to it instead of tracking nixpkgs-unstable HEAD. See design/decisions/0011-validated-nixpkgs-rev.md.",
-  "rev": "5c9de89ec55bff981cb8da1a4ee92b10f1438ffc",
-  "lastModified": 1793582901,
-  "validated_at": "2026-11-02T11:58:33Z",
-  "run_url": "https://github.com/szymonos/envy-nx/actions/runs/41440494549"
+  "rev": "4fe25e12eb9f4c744966dd3de5a05246cf098601",
+  "lastModified": 1793977579,
+  "validated_at": "2026-11-09T12:27:29Z",
+  "run_url": "https://github.com/szymonos/envy-nx/actions/runs/42616770723"
 }
