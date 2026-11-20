@@ -166,16 +166,18 @@ function Invoke-WslBaseSetup {
 
     # *boot setup
     Invoke-WslExe --distribution $Distro --user root install -m 0755 .assets/setup/autoexec.sh /etc
-    # Compose the [boot] command. Prefix with `systemctl start
-    # user-runtime-dir@<def_uid>.service` to materialize /run/user/<def_uid> at
-    # WSL boot. WSL's bash entry doesn't fire pam_systemd, so logind never
-    # spawns the user runtime dir on its own; on Fedora and other distros that
-    # ship pam_systemd only in PAM stacks WSL doesn't traverse, anything that
-    # needs XDG_RUNTIME_DIR (fnm, dbus user-session, ...) breaks on every shell
-    # start. Guarded with `command -v systemctl` so non-systemd boots no-op,
-    # and stderr piped to /dev/null so the line is silent on distros where the
-    # unit isn't applicable. Always re-written so existing wsl.conf gets the
-    # new prefix on the next setup run.
+    # WSL's shell entry doesn't go through pam_systemd, so logind never creates
+    # /run/user/<def_uid> on its own, and anything that needs XDG_RUNTIME_DIR
+    # (pwsh named mutexes, fnm, dbus user session) breaks. Linger makes logind
+    # create it at boot. The guard makes non-systemd distros a no-op.
+    # loginctl fails while systemd is not running (it is enabled later by the
+    # docker phase); the linger file it would write is read by logind at start.
+    $lingerCmd = 'command -v loginctl >/dev/null 2>&1 || exit 0; loginctl enable-linger {0} 2>/dev/null || {{ u=$(id -nu {0}) && mkdir -p /var/lib/systemd/linger && touch "/var/lib/systemd/linger/$u"; }} || true' -f $Check.def_uid
+    Invoke-WslExe --distribution $Distro --user root --exec sh -c $lingerCmd
+    # The [boot] command also starts user-runtime-dir@<def_uid>.service as a
+    # fallback. It runs before systemd reliably accepts systemctl calls, so on
+    # some boots it silently does nothing; linger above is what guarantees the
+    # directory. Always re-written so existing wsl.conf files stay current.
     $bootCmdValue = "command -v systemctl >/dev/null 2>&1 && systemctl start user-runtime-dir@$($Check.def_uid).service 2>/dev/null; [ -x /etc/autoexec.sh ] && /etc/autoexec.sh || true"
     $bootConf = [ordered]@{
         boot = @{ command = "`"$bootCmdValue`"" }

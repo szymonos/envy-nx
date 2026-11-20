@@ -339,6 +339,20 @@ Describe 'Invoke-WslBaseSetup' {
         $cmd | Should -Match 'command -v systemctl'
         $cmd | Should -Match 'autoexec\.sh'
     }
+
+    It 'enables linger for def_uid as root' {
+        $check = New-CheckDistroHashtable -Uid 1000 -Flags @{ def_uid = 1001 }
+        Invoke-WslBaseSetup `
+            -Distro 'Ubuntu' `
+            -Check $check `
+            -FixNetwork $true `
+            -AddCertificate $true `
+            -DistroRecord (New-DistroRecord)
+
+        Should -Invoke -CommandName 'wsl.exe' -ModuleName 'utils-setup' -Times 1 -Exactly -ParameterFilter {
+            ($args -join ' ') -match '--user root --exec sh -c .*loginctl enable-linger 1001 .*id -nu 1001\).*/var/lib/systemd/linger/\$u'
+        }
+    }
 }
 
 Describe 'Sync-WslGitHubConfig' {

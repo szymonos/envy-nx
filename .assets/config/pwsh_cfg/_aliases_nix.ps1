@@ -349,6 +349,10 @@ function _NxProfileRegenerate {
     # fnm writes its multishell symlink to $XDG_RUNTIME_DIR/fnm_multishells and
     # crashes if the parent is missing. WSL bash entry skips pam_systemd, and
     # rootless containers (Coder) lack logind, so /run/user/$UID may not exist.
+    # The fix reaches child processes such as fnm, not pwsh itself: .NET on Unix
+    # reads the environment it started with for its named mutexes (PSReadLine
+    # history), so a missing dir still crashes pwsh launched directly. That is
+    # fixed at the source (linger in wsl_setup, `nx doctor` runtime_dir check).
     # Native Windows pwsh has $env:XDG_RUNTIME_DIR unset, so the inner block is
     # skipped and `id -u` (Linux/macOS-only) never runs.
     $nixBinFnm = [IO.Path]::Combine($nixBin, 'fnm')
