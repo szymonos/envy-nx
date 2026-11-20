@@ -325,7 +325,14 @@ credits from `.release/reviews.jsonl`, the total review time and the time from
 writes itself. Its `decisions` payload says `posted`, `updated` or `none`. Then
 it applies the `test:integration` label, wipes `.release/` and prints
 `integration.since`. A failed post or label exits 1 with the run intact; the
-retry edits the same comment rather than adding one. The label re-runs the
+retry edits the same comment rather than adding one. A PR that conflicts with
+`main` is refused before the label, since its workflows would never start:
+`abort` first, which returns the cut to uncommitted work, bring the branch up
+to date with `origin/main` by hand, then run `/release-auto <X.Y.Z>` again.
+Rebasing first would leave `abort` resetting below `main`'s new commits. A
+merge state GitHub still reports as unknown after six polls 5 seconds apart
+is a different case: it exits 1 with the run intact, and `push --done` is
+simply re-run. The label re-runs the
 suite on every push, which is why it is applied only now.
 
 ```bash

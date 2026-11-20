@@ -879,6 +879,42 @@ print('OK')
   [[ "$output" == *OK* ]]
 }
 
+@test "recut never rewrites a trunk commit made after the last tag" {
+  _remote_repo
+  echo ".release/" >>.git/info/exclude
+  git tag v0.1.0
+  echo "trunk" >CHANGELOG.md
+  git add CHANGELOG.md
+  git commit -qm "docs: trunk edit after the tag"
+  git push -q origin main
+  local trunk_commit
+  trunk_commit="$(git rev-parse HEAD)"
+  git switch -qc release/0.2.0
+  mkdir -p .assets
+  echo "feature" >.assets/thing.sh
+  printf 'trunk\nrelease\n' >CHANGELOG.md
+  run _py "
+import release
+plan = {'version': '0.2.0', 'groups': [
+    {'globs': ['.assets/**'], 'prefix': 'feat', 'message': 'feat(x): add thing'},
+    {'globs': ['CHANGELOG.md'], 'prefix': 'docs', 'message': 'docs(changelog): cut 0.2.0'},
+]}
+state = {'version': '0.2.0', 'last_tag': 'v0.1.0', 'is_rerun': False}
+state['reset_target'] = release._resolve_reset_target(state, plan)
+assert state['reset_target'] == '$trunk_commit', state
+release.recut(plan, state)
+state['is_rerun'] = True
+state['reset_target'] = release._resolve_reset_target(state, plan)
+assert release.git(['rev-parse', state['reset_target']]) == '$trunk_commit', state
+release.recut(plan, state)
+print('OK')
+"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *OK* ]]
+  git merge-base --is-ancestor "$trunk_commit" HEAD
+  [ "$(git rev-list --count "$trunk_commit..HEAD")" -eq 2 ]
+}
+
 @test "rebase_onto_trunk replays the branch and keeps uncommitted work" {
   _remote_repo
   _branch_behind_trunk

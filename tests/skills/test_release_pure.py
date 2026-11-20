@@ -1086,6 +1086,57 @@ def test_trigger_integration_only_removes_a_present_label(
     assert calls == [["pr", "edit", "--add-label", "test:integration"]]
 
 
+def test_trigger_integration_refuses_a_conflicting_pr(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A conflicting PR has no merge ref, so its workflows would never start."""
+    calls: list[list[str]] = []
+    monkeypatch.setattr(release, "integration_workflows", lambda: ["test_linux.yml"])
+    monkeypatch.setattr(
+        release, "_gh_json", lambda _a: {"labels": [], "mergeable": "CONFLICTING"}
+    )
+    monkeypatch.setattr(release, "_gh", calls.append)
+
+    with pytest.raises(release.ReleaseError, match="conflicts with main"):
+        release.trigger_integration()
+    assert calls == []
+
+
+def test_trigger_integration_waits_out_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """UNKNOWN right after a push is polled until GitHub decides, never labelled."""
+    calls: list[list[str]] = []
+    states = iter(["UNKNOWN", "CONFLICTING"])
+    monkeypatch.setattr(release, "integration_workflows", lambda: ["test_linux.yml"])
+    monkeypatch.setattr(
+        release, "_gh_json", lambda _a: {"labels": [], "mergeable": next(states)}
+    )
+    monkeypatch.setattr(release, "_gh", calls.append)
+    monkeypatch.setattr(release.time, "sleep", lambda _s: None)
+
+    with pytest.raises(release.ReleaseError, match="conflicts with main"):
+        release.trigger_integration()
+    assert calls == []
+
+
+def test_trigger_integration_gives_up_on_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A mergeable state that never settles is a retryable error, not a label."""
+    calls: list[list[str]] = []
+    monkeypatch.setattr(release, "integration_workflows", lambda: ["test_linux.yml"])
+    monkeypatch.setattr(
+        release, "_gh_json", lambda _a: {"labels": [], "mergeable": "UNKNOWN"}
+    )
+    monkeypatch.setattr(release, "_gh", calls.append)
+    monkeypatch.setattr(release.time, "sleep", lambda _s: None)
+
+    with pytest.raises(release.ReleaseError, match="re-run"):
+        release.trigger_integration()
+    assert calls == []
+
+
 def test_finish_keeps_the_run_when_the_trigger_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

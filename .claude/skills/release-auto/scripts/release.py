@@ -177,6 +177,10 @@ BULLET_WORD_CAP = 40
 # finds defects in the first round's own fixes. Those fixes get second-opinion
 # instead. A push Copilot never reviewed or was asked to does not count.
 CODA_PUSH_CAP = 1
+# Polls `push --done` makes, and the seconds between them, while GitHub has not
+# yet reported whether the PR merges.
+MERGEABLE_POLLS = 6
+MERGEABLE_INTERVAL = 5
 
 
 # -- errors -------------------------------------------------------------------
@@ -941,7 +945,8 @@ def phase_start(
         "audit_rules": audit_rules,
         "skip_review": skip_review,
         "last_tag": tag,
-        "reset_target": tag,  # first cut; re-run target refined at plan time
+        # first cut; re-run target refined at plan time
+        "reset_target": (floor := _rewrite_floor(tag)),
         "is_rerun": is_rerun,
         "phase": "await_phase1",
         "head_sha": head_sha(),
@@ -951,7 +956,8 @@ def phase_start(
 
     extract = run_extract(version)
     cspell = _cspell_scan()
-    diff = git(["diff", "--name-status", tag], check=False)
+    # From the floor, not the tag: the plan globs only what recut rewrites.
+    diff = git(["diff", "--name-status", floor], check=False)
     # A reopen re-cuts commits that were already reviewed when first cut.
     reviewed = not (skip_review or reopen)
     review = reviewed and BRIEF_SCRIPT.is_file()
@@ -1228,25 +1234,25 @@ def changelog_problems(version: str, body: str, last: str, paths: list[str]) -> 
 
 def _resolve_reset_target(state: dict, plan: dict) -> str:
     """
-    Pick the soft-reset target: last tag for a first cut, else oldest touched^.
+    Pick the soft-reset target: the rewrite floor, or oldest touched^ on a re-run.
 
     Re-run/merge case (target version block pre-existed): reset only as far back
-    as the oldest commit since the tag that this run's plan touches, so untouched
-    earlier commits stay intact.
+    as the oldest commit above the floor that this run's plan touches, so
+    untouched earlier commits stay intact.
     """
-    tag = state["last_tag"]
+    floor = _rewrite_floor(state["last_tag"])
     if not state.get("is_rerun"):
-        return tag
+        return floor
     # Only consider paths the CURRENT plan actually covers - not the full changed
     # universe. Resetting based on unrelated changed paths would drag the target
     # back over commits this run does not touch, forcing recut to rewrite them (or
     # fail prevalidation with those paths as orphans).
-    universe = tracked_and_untracked(tag)
+    universe = tracked_and_untracked(floor)
     assigned, _ = assign_paths(universe, plan)
     covered = [p for ps in assigned.values() for p in ps]
     oldest: str | None = None
     for path in covered:
-        log = git(["log", "--format=%H", f"{tag}..HEAD", "--", path], check=False)
+        log = git(["log", "--format=%H", f"{floor}..HEAD", "--", path], check=False)
         commits = [c for c in log.splitlines() if c]
         if commits:
             candidate = commits[-1]  # oldest touch of this path
@@ -1255,8 +1261,27 @@ def _resolve_reset_target(state: dict, plan: dict) -> str:
             if _is_ancestor(candidate, oldest) and candidate != oldest:
                 oldest = candidate
     if oldest is None:
-        return tag
-    return f"{oldest}^"
+        return floor
+    # A commit merged in from a side branch can have its parent below the floor.
+    target = f"{oldest}^"
+    return target if _is_ancestor(floor, target) else floor
+
+
+def _rewrite_floor(tag: str) -> str:
+    """
+    Return the oldest base ``recut`` may reset to.
+
+    That is the tag, or the branch's fork point from ``origin/<TRUNK>`` when it
+    is newer.
+
+    Commits on trunk after the tag are already in the PR's base; rewriting them
+    makes every file they touched conflict with trunk. The tag stays the floor
+    when ``origin/<TRUNK>`` does not resolve.
+    """
+    base = git(["merge-base", f"origin/{TRUNK}", "HEAD"], check=False)
+    if base and tag and _is_ancestor(tag, base):
+        return base
+    return tag
 
 
 def _is_ancestor(a: str, b: str) -> bool:
@@ -1706,6 +1731,8 @@ def trigger_integration() -> dict:
     """
     Apply the integration label to this branch's PR so the suite runs once.
 
+    A PR that conflicts with trunk is refused rather than labelled.
+
     ``labeled`` fires only when the label is added, so one already present is
     removed first. ``since`` is taken a little before the trigger to absorb
     clock skew between this machine and GitHub.
@@ -1717,10 +1744,29 @@ def trigger_integration() -> dict:
             "reason": f"no workflow is gated on {INTEGRATION_LABEL}",
         }
     since = (datetime.now(UTC) - timedelta(seconds=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    try:
-        labels = _gh_json(["pr", "view", "--json", "labels"])["labels"]
-    except subprocess.TimeoutExpired as exc:
-        raise ReleaseError(f"gh pr view timed out: {exc}") from exc
+    # GitHub builds no merge ref for a conflicting PR, so the labelled workflows
+    # never start. It reports UNKNOWN for a while after a push.
+    for attempt in range(MERGEABLE_POLLS):
+        try:
+            pr = _gh_json(["pr", "view", "--json", "labels,mergeable"])
+        except subprocess.TimeoutExpired as exc:
+            raise ReleaseError(f"gh pr view timed out: {exc}") from exc
+        if pr.get("mergeable") != "UNKNOWN":
+            break
+        if attempt < MERGEABLE_POLLS - 1:
+            time.sleep(MERGEABLE_INTERVAL)
+    else:
+        raise ReleaseError(
+            "GitHub has not yet worked out whether the PR merges cleanly - "
+            f"re-run `{CLI} push --done`"
+        )
+    if pr.get("mergeable") == "CONFLICTING":
+        raise ReleaseError(
+            f"the PR conflicts with {TRUNK}, so the integration workflows would not "
+            f"start - run `{CLI} abort`, bring the branch up to date with "
+            f"origin/{TRUNK} by hand, then `/release-auto <version>` again"
+        )
+    labels = pr["labels"]
     if any(label["name"] == INTEGRATION_LABEL for label in labels):
         _gh(["pr", "edit", "--remove-label", INTEGRATION_LABEL])
     _gh(["pr", "edit", "--add-label", INTEGRATION_LABEL])
