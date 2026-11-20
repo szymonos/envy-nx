@@ -19,7 +19,8 @@ SCRIPT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 info() { printf "\e[96m%s\e[0m\n" "$*"; }
 ok() { printf "\e[32m%s\e[0m\n" "$*"; }
-warn() { printf "\e[33m%s\e[0m\n" "$*" >&2; }
+# stdout: setup runs this through _io_run, which drops stderr on success
+warn() { printf "\e[33m%s\e[0m\n" "$*"; }
 
 # fnm itself is provided by the nodejs scope in nix; if it isn't on PATH or in
 # ~/.nix-profile/bin, the scope didn't install (e.g. nix profile add failed) -
@@ -65,14 +66,28 @@ if command -v npm >/dev/null 2>&1; then
     : # fnm-default or unset - nothing to do
     ;;
   *)
-    warn "npm prefix is '$_existing_prefix' - looks like a leftover from a previous setup"
+    # npm reads npm_config_* variables case-insensitively, and an environment
+    # value outranks ~/.npmrc, so `npm config delete prefix` cannot clear it.
+    _prefix_var=""
+    if [ -n "${NPM_CONFIG_PREFIX:-}" ]; then
+      _prefix_var=NPM_CONFIG_PREFIX
+    elif [ -n "${npm_config_prefix:-}" ]; then
+      _prefix_var=npm_config_prefix
+    fi
+    if [ -n "$_prefix_var" ]; then
+      warn "npm prefix is '$_existing_prefix', set by the $_prefix_var environment variable"
+    else
+      warn "npm prefix is '$_existing_prefix' - looks like a leftover from a previous setup"
+    fi
     warn "  Globals installed via 'npm install -g <pkg>' would land outside fnm's PATH."
     # Decision: clear it (so fnm's per-version default takes over) or keep it.
     # Unattended -> clear directly. Interactive -> prompt [y/N], default no.
     # Non-tty stdin (CI / headless invocation that didn't pass --unattended) ->
     # skip the prompt and retain, mirroring the conda_remove.sh pattern.
     _clear_prefix=false
-    if [ "$unattended" = "true" ]; then
+    if [ -n "$_prefix_var" ]; then
+      warn "  Unset $_prefix_var where it is set (shell profile, container or workspace environment)."
+    elif [ "$unattended" = "true" ]; then
       _clear_prefix=true
     elif [ ! -t 0 ]; then
       info "  Non-interactive shell. Retained: run 'npm config delete prefix' to clear."
