@@ -17,6 +17,8 @@ setup() {
   # xargs -P 4 either rate-limit or hang on /dev/tty auth prompts in a
   # sandbox HOME without gh credentials. Production runs aren't affected.
   export NX_DOCTOR_SKIP_NETWORK=1
+  # runtime_dir audits the caller's real session; tests that need it set it.
+  unset XDG_RUNTIME_DIR
   mkdir -p "$ENV_DIR/scopes" "$DEV_ENV_DIR"
 }
 
@@ -880,6 +882,32 @@ EOF
   run bash "$DOCTOR_SCRIPT"
   [[ "$output" == *"FAIL  nix_profile_link"* ]]
   [[ "$output" == *"not found"* ]]
+}
+
+# -- runtime_dir check ------------------------------------------------------
+
+@test "runtime_dir skipped when XDG_RUNTIME_DIR is unset" {
+  run bash "$DOCTOR_SCRIPT"
+  [[ "$output" != *"runtime_dir"* ]]
+}
+
+@test "runtime_dir passes when XDG_RUNTIME_DIR exists" {
+  mkdir -p "$TEST_DIR/run"
+  XDG_RUNTIME_DIR="$TEST_DIR/run" run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"PASS  runtime_dir"* ]]
+}
+
+@test "runtime_dir warns when the profile fell back to /tmp/runtime-<uid>" {
+  XDG_RUNTIME_DIR="/tmp/runtime-$(id -u)" run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"WARN  runtime_dir"* ]]
+  [[ "$output" == *"missing at login"* ]]
+  [[ "$output" == *"sudo loginctl enable-linger $(id -u) "* ]]
+}
+
+@test "runtime_dir warns when XDG_RUNTIME_DIR does not exist" {
+  XDG_RUNTIME_DIR="$TEST_DIR/missing" run bash "$DOCTOR_SCRIPT"
+  [[ "$output" == *"WARN  runtime_dir"* ]]
+  [[ "$output" == *"$TEST_DIR/missing does not exist"* ]]
 }
 
 # -- cert_bundle check ------------------------------------------------------

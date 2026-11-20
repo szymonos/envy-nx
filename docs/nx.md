@@ -233,6 +233,7 @@ Read-only health checks that don't touch state. Failing or warning checks print 
 | `shell_config_files`    | Every `~/.config/shell/<file>` referenced by the rc resolves on disk                                                                 |
 | `cert_bundle`           | Custom CA bundle present and VS Code env wired up                                                                                    |
 | `vscode_server_env`     | `~/.vscode-server/server-env-setup` includes nix PATH                                                                                |
+| `runtime_dir`           | `$XDG_RUNTIME_DIR` exists and is not the `/tmp/runtime-<uid>` fallback the profile sets when it is missing (skipped when unset)      |
 | `nix_profile`           | `nix-env` entry exists in `nix profile list`                                                                                         |
 | `nix_profile_link`      | `~/.nix-profile` is a live symlink (not missing or dangling)                                                                         |
 | `overlay_subscriptions` | Every overlay subscription has its copy and its source: the clone, or the local folder (when any is set)                             |

@@ -42,6 +42,7 @@ CHECKS="
   shell_config_files
   cert_bundle
   vscode_server_env
+  runtime_dir
   nix_profile
   nix_profile_link
   overlay_subscriptions
@@ -574,6 +575,27 @@ _check_vscode_server_env() {
     echo "pass"
   else
     printf 'warn\tnix PATH not in server-env-setup\trun nx upgrade to regenerate ~/.vscode-server/server-env-setup\n'
+  fi
+}
+
+_check_runtime_dir() {
+  # Unset on macOS and most containers: nothing to audit.
+  [ -n "${XDG_RUNTIME_DIR:-}" ] || return
+  local _uid
+  _uid="$(id -u)"
+  # The uid is rendered rather than $USER: pwsh users copy this hint too, and
+  # there $USER is an unset variable, so sudo would enable linger for root.
+  local _fix="sudo loginctl enable-linger $_uid (or re-run wsl_setup.ps1 on WSL)"
+  # The managed shell block replaces a missing runtime dir with /tmp/runtime-<uid>,
+  # so finding that value means /run/user/<uid> was missing at login. Child
+  # processes recover; pwsh started directly crashes in PSReadLine, because .NET
+  # keeps the value it started with.
+  if [ "$XDG_RUNTIME_DIR" = "/tmp/runtime-$_uid" ]; then
+    printf 'warn\truntime dir was missing at login (fell back to %s)\t%s\n' "$XDG_RUNTIME_DIR" "$_fix"
+  elif [ ! -d "$XDG_RUNTIME_DIR" ]; then
+    printf 'warn\t%s does not exist\t%s\n' "$XDG_RUNTIME_DIR" "$_fix"
+  else
+    echo "pass"
   fi
 }
 
