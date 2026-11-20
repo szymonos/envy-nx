@@ -166,7 +166,8 @@ _overlays_copy_shell_cfg() {
 # is resolved here, once: a single overlay or `default`, else a picker in a
 # terminal, else a refusal listing the names. The same overlay of the same
 # repository at another ref replaces its line; anything else under a taken name
-# stops. Re-adding a subscription changes nothing and keeps its exclusions.
+# stops, or under --unattended replaces it with a warning. Re-adding a
+# subscription changes nothing and keeps its exclusions.
 _overlays_save_args() {
   [ "${#overlay_args[@]}" -gt 0 ] || return 0
   local _list="$ENV_DIR/overlays.list" _a _p _url _ref _name _key _local _listing _names _ov
@@ -224,9 +225,15 @@ _overlays_save_args() {
         exit 2
       fi
       if [ -n "$_found" ] && [ "${_found%% *} ${_found##* }" != "$_ov $_url" ]; then
-        _ir_error="an overlay subscription named '$_ov' already exists ($_found)"
-        err "$_ir_error - subscribe with nx overlay add $_url $_ov --as <name>"
-        exit 1
+        # unattended means an image: it owns the names it subscribes. The name
+        # keeps its scope ids and opt-outs, so scopes the new source also
+        # provides are not reinstalled (decision 0015 D12)
+        if [ "${unattended:-false}" != true ]; then
+          _ir_error="an overlay subscription named '$_ov' already exists ($_found)"
+          err "$_ir_error - subscribe with nx overlay add $_url $_ov --as <name>"
+          exit 1
+        fi
+        warn "overlay $_ov: replacing the subscription to ${_found##* } - re-add it with --as <name> to keep both"
       fi
       _lines="$(printf '%s\n' "$_lines" | awk -v n="$_ov" '$1 != n && NF')"
       _lines="${_lines:+$_lines
