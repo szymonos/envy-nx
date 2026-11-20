@@ -5,6 +5,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.33.2] - 2026-11-20
+
+### Fixed
+
+- The `release-auto` recut now resets no further back than the branch's fork point from `main`, so commits `main` made after the last tag stay intact and the release PR no longer conflicts.
+- `release.py push --done` refuses to label a PR that conflicts with `main`, naming the way to recover, instead of waiting for integration runs that never start.
+
 ## [1.33.1] - 2026-11-20
 
 ### Changed

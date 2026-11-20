@@ -129,5 +129,7 @@ cross-version upgrade walk.
   cannot make setup crawl the disk. Symlinked files and imports cover sharing. (decision 0015)
 - **Overlay addresses cannot contain spaces** - `overlays.list` is `<name> <overlay> <ref|-> <repo>` per line, read by bash 3.2
   `read`. A local path with a space is symlinked first. (#129)
+- **Local `git` calls in `release.py` carry no timeout** - only network calls (`fetch`, `gh`) are bounded; a
+  `merge-base` or `rev-parse` on local refs cannot hang. (#134)
 - **"a REVIEW.md rule" in `release-auto`** names the rule, not a write target. Only an instruction to edit the rules
   must name `.github/copilot-instructions.md`. (#121)
