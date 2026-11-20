@@ -4,6 +4,8 @@
 .assets/tools/build_release.sh
 # :build with explicit version
 VERSION=1.0.0 .assets/tools/build_release.sh
+# :build into another folder
+OUT_DIR=/tmp/release VERSION=1.0.0 .assets/tools/build_release.sh
 '
 set -euo pipefail
 
@@ -13,7 +15,7 @@ VERSION="${VERSION#v}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 RELEASE_NAME="envy-nx-${VERSION}"
-OUT_DIR="$REPO_ROOT/dist"
+OUT_DIR="${OUT_DIR:-$REPO_ROOT/dist}"
 TARBALL="$OUT_DIR/${RELEASE_NAME}.tar.gz"
 
 mkdir -p "$OUT_DIR"
@@ -28,7 +30,7 @@ for dir in modules nix wsl; do
     cp -R "$REPO_ROOT/$dir" "$STAGING/$RELEASE_NAME/$dir"
   fi
 done
-for dir in check config lib provision scripts setup; do
+for dir in check config fix lib provision scripts setup; do
   if [ -d "$REPO_ROOT/.assets/$dir" ]; then
     cp -R "$REPO_ROOT/.assets/$dir" "$STAGING/$RELEASE_NAME/.assets/$dir"
   fi
