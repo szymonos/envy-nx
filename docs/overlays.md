@@ -300,6 +300,11 @@ Things to know:
   previous copy instead.
 - **Shell config follows the image.** The `--overlay` address counts as reviewed, so a new image's
   `shell_cfg/` applies at the next start without asking.
+- **The image owns its subscription name.** If the user already subscribed the same name from another
+  address, for example with `nx overlay add`, the unattended start replaces that subscription with the
+  image's and warns. The name stays, so the user's opt-outs stay, and scopes the image's overlay also
+  provides are not reinstalled. A user who wants both
+  re-adds theirs with `--as <name>`. Without `--unattended`, setup refuses instead.
 - **Pick the Envy-NX version on purpose.** `releases/latest` takes every release, each of which passed
   Envy-NX CI on Linux and macOS. To hold a version, download `releases/download/v<X.Y.Z>/envy-nx.tar.gz`
   instead and bump it with your template releases.

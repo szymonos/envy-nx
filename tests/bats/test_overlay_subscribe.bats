@@ -372,11 +372,32 @@ _config_scopes() {
 }
 
 @test "phase: --overlay under a name another repository holds stops" {
+  unattended=false
   _subscribe "k8s k8s - github:someone/else"
   overlay_args=("$REMOTE#k8s")
   run _overlays_save_args
   [ "$status" -eq 1 ]
   [[ "$output" == *"--as <name>"* ]]
+  grep -qx 'k8s k8s - github:someone/else' "$ENV_DIR/overlays.list"
+}
+
+@test "phase: unattended --overlay takes over a name another address holds, keeping its scopes" {
+  local plain="$TEST_HOME/other"
+  cp -R "$WORK" "$plain"
+  overlay_args=("$plain#k8s")
+  _pass
+  printf 'k8s/sofka\n' >"$ENV_DIR/overlays.exclude"
+  _pass
+  local before
+  before="$(_config_scopes)"
+  overlay_args=("$REMOTE#k8s")
+  run _pass
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"overlay k8s: replacing the subscription to $plain"* ]]
+  [[ "$output" != *"removing"* ]]
+  [ "$(cat "$ENV_DIR/overlays.list")" = "k8s k8s - $REMOTE" ]
+  grep -qx 'k8s/sofka' "$ENV_DIR/overlays.exclude"
+  [ "$(_config_scopes)" = "$before" ]
 }
 
 @test "phase: every applied overlay joins OVERLAY_DIR before the personal scopes" {

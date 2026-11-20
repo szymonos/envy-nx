@@ -92,6 +92,18 @@ from the header, which would reinstall on every start what the remove step just
 deleted. `nx scope add <scope>` takes the exclusion back. A personal scope's
 header is the user's own, so removing a scope it names still means editing it.
 
+**D12. An unattended `--overlay` takes over a name another address holds.**
+Subscription names share one namespace in `overlays.list`, so a user who ran
+`nx overlay add ... coder` before the image started subscribing `coder` would
+otherwise stop every workspace start. `setup.sh --unattended --overlay` rewrites
+that line to its own address and warns; the name, and with it the scope ids and
+`overlays.exclude`, stay, so scopes the new source also provides are not
+removed or reinstalled. Scopes only the old source named go, as on any overlay
+update. The image owns
+what it subscribes (decision 0013). Interactive runs keep refusing with the
+`--as <name>` hint, and so does `nx overlay add`; `wsl_setup.ps1 -Overlay` runs
+without `--unattended`, so it refuses too.
+
 **Rejected:**
 
 - **Paths instead of names (`--dir`, `?dir=`).** A path is a layout detail; a
@@ -107,6 +119,13 @@ header is the user's own, so removing a scope it names still means editing it.
 - **Copying the whole repository.** READMEs and images would enter the store on
   every evaluation. **Copying only the subscribed overlay** breaks shared imports.
 - **Walking symlinked folders.** A link to `/` would make setup crawl the disk.
+- **Renaming the image's subscription on a clash (`coder-2`).** The scope ids
+  change, so every overlay scope is removed and reinstalled.
+- **Keeping the user's subscription on a clash.** The image loses its pinned
+  copy and its hooks.
+- **An opt-in flag for the takeover.** It would guard unattended callers other
+  than images, which mostly start from a fresh home, at the cost of a new option
+  in every image's setup call.
 - **An OS-aware `# scopes:` header.** The header is static text; platform
   differences belong in scope files and in standard scopes such as `docker`.
 
