@@ -5,6 +5,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.33.1] - 2026-11-20
+
+### Changed
+
+- An unattended `nix/setup.sh --overlay` whose name another address already holds now replaces that subscription and warns, instead of stopping setup. Interactive runs and `nx overlay add` still refuse.
+- The replaced subscription keeps its name, so its opt-outs stay and scopes the new source also provides are not reinstalled.
+
+### Fixed
+
+- The release tarball ships `.assets/fix/`, which the gcloud and Azure CLI installers call to set up certificates.
+- An npm prefix set by `NPM_CONFIG_PREFIX` or `npm_config_prefix` is reported with the variable's name, instead of setup prompting on every run or claiming it removed the prefix.
+
 ## [1.33.0] - 2026-11-01
 
 Overlays are now named sets of scopes in a repository's `overlays/<name>/` folders, subscribed by name with no manual clone or `git pull`; the organization overlay folder is folded into subscriptions.
