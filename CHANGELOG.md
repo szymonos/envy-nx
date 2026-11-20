@@ -5,6 +5,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.33.3] - 2026-11-20
+
+### Fixed
+
+- pwsh started directly on WSL, for example as a VS Code terminal profile, no longer crashes in PSReadLine on boots where `/run/user/<uid>` was not created.
+- `wsl/wsl_setup.ps1` now enables linger for the default user, so systemd creates `/run/user/<uid>` on every boot; re-run it to fix existing distros.
+- `nx doctor` now warns when `/run/user/<uid>` was missing at login and names the fix, `sudo loginctl enable-linger <uid>` with your uid filled in.
+
 ## [1.33.2] - 2026-11-20
 
 ### Fixed
